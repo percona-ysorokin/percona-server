@@ -354,6 +354,8 @@ extern PSI_mutex_key key_LOCK_des_key_file;
 extern PSI_mutex_key key_LOCK_temporary_tables;
 extern PSI_mutex_key key_BINLOG_LOCK_commit;
 extern PSI_mutex_key key_BINLOG_LOCK_commit_queue;
+extern PSI_mutex_key key_BINLOG_LOCK_semisync;
+extern PSI_mutex_key key_BINLOG_LOCK_semisync_queue;
 extern PSI_mutex_key key_BINLOG_LOCK_done;
 extern PSI_mutex_key key_BINLOG_LOCK_flush_queue;
 extern PSI_mutex_key key_BINLOG_LOCK_index;
@@ -388,6 +390,8 @@ extern PSI_mutex_key
   key_LOCK_log_throttle_qni;
 extern PSI_mutex_key key_RELAYLOG_LOCK_commit;
 extern PSI_mutex_key key_RELAYLOG_LOCK_commit_queue;
+extern PSI_mutex_key key_RELAYLOG_LOCK_semisync;
+extern PSI_mutex_key key_RELAYLOG_LOCK_semisync_queue;
 extern PSI_mutex_key key_RELAYLOG_LOCK_done;
 extern PSI_mutex_key key_RELAYLOG_LOCK_flush_queue;
 extern PSI_mutex_key key_RELAYLOG_LOCK_index;
