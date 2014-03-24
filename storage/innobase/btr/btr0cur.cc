@@ -3875,6 +3875,7 @@ static const int64_t	rows_in_range_arbitrary_ret_val = 10;
 @param[in]	nth_attempt	if the tree gets modified too much while
 we are trying to analyze it, then we will retry (this function will call
 itself, incrementing this parameter)
+@param[in]	trx		transaction
 @return estimated number of rows; if after rows_in_range_max_retries
 retries the tree keeps changing, then we will just return
 rows_in_range_arbitrary_ret_val as a result (if
@@ -3888,7 +3889,8 @@ btr_estimate_n_rows_in_range_low(
 	ulint		mode1,
 	const dtuple_t*	tuple2,
 	ulint		mode2,
-	unsigned	nth_attempt)
+	unsigned	nth_attempt,
+	trx_t*		trx)
 {
 	btr_path_t	path1[BTR_PATH_ARRAY_N_SLOTS];
 	btr_path_t	path2[BTR_PATH_ARRAY_N_SLOTS];
@@ -3906,7 +3908,7 @@ btr_estimate_n_rows_in_range_low(
 
 	table_n_rows = dict_table_get_n_rows(index->table);
 
-	mtr_start(&mtr);
+	mtr_start_trx(&mtr, trx);
 
 	cursor.path_arr = path1;
 
@@ -3930,7 +3932,7 @@ btr_estimate_n_rows_in_range_low(
 	}
 #endif
 
-	mtr_start(&mtr);
+	mtr_start_trx(&mtr, trx);
 
 	cursor.path_arr = path2;
 
@@ -4019,7 +4021,8 @@ btr_estimate_n_rows_in_range_low(
 				const int64_t	ret =
 					btr_estimate_n_rows_in_range_low(
 						index, tuple1, mode1,
-						tuple2, mode2, nth_attempt + 1);
+						tuple2, mode2,
+						nth_attempt + 1, trx);
 
 				return(ret);
 			}
@@ -4079,6 +4082,7 @@ btr_estimate_n_rows_in_range_low(
 @param[in]	mode1	search mode for range start
 @param[in]	tuple2	range end, may also be empty tuple
 @param[in]	mode2	search mode for range end
+@param[in]	trx	transaction
 @return estimated number of rows */
 int64_t
 btr_estimate_n_rows_in_range(
@@ -4086,10 +4090,12 @@ btr_estimate_n_rows_in_range(
 	const dtuple_t*	tuple1,
 	ulint		mode1,
 	const dtuple_t*	tuple2,
-	ulint		mode2)
+	ulint		mode2,
+	trx_t*		trx)
 {
 	const int64_t	ret = btr_estimate_n_rows_in_range_low(
-		index, tuple1, mode1, tuple2, mode2, 1 /* first attempt */);
+		index, tuple1, mode1, tuple2, mode2, 1 /* first attempt */,
+		trx);
 
 	return(ret);
 }
@@ -5567,7 +5573,8 @@ btr_copy_blob_prefix(
 	ulint		len,	/*!< in: length of buf, in bytes */
 	ulint		space_id,/*!< in: space id of the BLOB pages */
 	ulint		page_no,/*!< in: page number of the first BLOB page */
-	ulint		offset)	/*!< in: offset on the first BLOB page */
+	ulint		offset,	/*!< in: offset on the first BLOB page */
+	trx_t*		trx)	/*!< in: transaction handle */
 {
 	ulint	copied_len	= 0;
 
@@ -5579,7 +5586,7 @@ btr_copy_blob_prefix(
 		ulint		part_len;
 		ulint		copy_len;
 
-		mtr_start(&mtr);
+		mtr_start_trx(&mtr, trx);
 
 		block = buf_page_get(space_id, 0, page_no, RW_S_LATCH, &mtr);
 		buf_block_dbg_add_level(block, SYNC_EXTERN_STORAGE);
@@ -5782,7 +5789,8 @@ btr_copy_externally_stored_field_prefix_low(
 				zero for uncompressed BLOBs */
 	ulint		space_id,/*!< in: space id of the first BLOB page */
 	ulint		page_no,/*!< in: page number of the first BLOB page */
-	ulint		offset)	/*!< in: offset on the first BLOB page */
+	ulint		offset,	/*!< in: offset on the first BLOB page */
+	trx_t*		trx)	/*!< in: transaction handle */
 {
 	if (UNIV_UNLIKELY(len == 0)) {
 		return(0);
@@ -5793,7 +5801,7 @@ btr_copy_externally_stored_field_prefix_low(
 					     space_id, page_no, offset));
 	} else {
 		return(btr_copy_blob_prefix(buf, len, space_id,
-					    page_no, offset));
+					    page_no, offset, trx));
 	}
 }
 
@@ -5814,7 +5822,8 @@ btr_copy_externally_stored_field_prefix(
 				field containing also the reference to
 				the external part; must be protected by
 				a lock or a page latch */
-	ulint		local_len)/*!< in: length of data, in bytes */
+	ulint		local_len,/*!< in: length of data, in bytes */
+	trx_t*		trx)	/*!< in: transaction handle */
 {
 	ulint	space_id;
 	ulint	page_no;
@@ -5853,7 +5862,7 @@ btr_copy_externally_stored_field_prefix(
 							     len - local_len,
 							     zip_size,
 							     space_id, page_no,
-							     offset));
+							     offset, trx));
 }
 
 /*******************************************************************//**
@@ -5872,7 +5881,8 @@ btr_copy_externally_stored_field(
 	ulint		zip_size,/*!< in: nonzero=compressed BLOB page size,
 				zero for uncompressed BLOBs */
 	ulint		local_len,/*!< in: length of data */
-	mem_heap_t*	heap)	/*!< in: mem heap */
+	mem_heap_t*	heap,	/*!< in: mem heap */
+	trx_t*		trx)	/*!< in: transaction handle */
 {
 	ulint	space_id;
 	ulint	page_no;
@@ -5903,7 +5913,8 @@ btr_copy_externally_stored_field(
 							      extern_len,
 							      zip_size,
 							      space_id,
-							      page_no, offset);
+							      page_no, offset,
+							      trx);
 
 	return(buf);
 }
@@ -5922,7 +5933,8 @@ btr_rec_copy_externally_stored_field(
 				zero for uncompressed BLOBs */
 	ulint		no,	/*!< in: field number */
 	ulint*		len,	/*!< out: length of the field */
-	mem_heap_t*	heap)	/*!< in: mem heap */
+	mem_heap_t*	heap,	/*!< in: mem heap */
+	trx_t*		trx)	/*!< in: transaction handle */
 {
 	ulint		local_len;
 	const byte*	data;
@@ -5953,6 +5965,7 @@ btr_rec_copy_externally_stored_field(
 	}
 
 	return(btr_copy_externally_stored_field(len, data,
-						zip_size, local_len, heap));
+						zip_size, local_len, heap,
+						trx));
 }
 #endif /* !UNIV_HOTBACKUP */
