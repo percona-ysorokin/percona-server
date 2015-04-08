@@ -1,0 +1,8 @@
+--source include/have_debug.inc
+--source include/have_innodb.inc
+--source include/have_native_aio.inc
+
+SET GLOBAL innodb_lra_debug = 1;
+SELECT @@GLOBAL.innodb_lra_debug;
+SET GLOBAL innodb_lra_debug = DEFAULT;
+SELECT @@GLOBAL.innodb_lra_debug;
