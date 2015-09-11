@@ -1,0 +1,30 @@
+CREATE TABLE t1(a INT) ENGINE=innodb;
+INSERT INTO t1 VALUES (1), (2), (3);
+SET @slow_query_log_always_write_time_save = @@slow_query_log_always_write_time;
+SET @log_slow_rate_limit_save = @@log_slow_rate_limit;
+SET @log_slow_rate_type_save = @@log_slow_rate_type;
+SET GLOBAL slow_query_log_always_write_time = 10;
+SET GLOBAL log_slow_rate_limit = 10;
+SET GLOBAL log_slow_rate_type = 'query';
+Connection Aux
+LOCK TABLES t1 WRITE;
+Connection Default
+[log_start.inc] percona_bug1490028
+SELECT * FROM t1;
+Connection Aux
+SELECT SLEEP(11);
+SLEEP(11)
+0
+UNLOCK TABLES;
+Connection Default
+a
+1
+2
+3
+[log_stop.inc] percona_bug1490028
+[log_grep.inc] file: percona_bug1490028 pattern: ^SELECT \* FROM t1;$
+[log_grep.inc] lines:   1
+SET GLOBAL slow_query_log_always_write_time = @slow_query_log_always_write_time_save;
+SET GLOBAL log_slow_rate_limit = @log_slow_rate_limit_save;
+SET GLOBAL log_slow_rate_type = @log_slow_rate_type_save;
+DROP TABLE t1;
