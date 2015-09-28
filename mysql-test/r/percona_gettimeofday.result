@@ -1,0 +1,13 @@
+SET @old_long_query_time = @@session.long_query_time;
+SET @old_min_examined_row_limit = @@session.min_examined_row_limit;
+SET SESSION long_query_time=0;
+SET SESSION min_examined_row_limit=0;
+[log_start.inc] clock_shift
+SELECT 'something';
+something
+something
+[log_stop.inc] clock_shift
+[log_grep.inc] file: clock_shift pattern: ^SELECT \'something\';$
+[log_grep.inc] lines:   1
+SET SESSION long_query_time = @old_long_query_time;
+SET SESSION min_examined_row_limit = @old_min_examined_row_limit;

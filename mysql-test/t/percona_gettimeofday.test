@@ -1,0 +1,25 @@
+#
+# Clock shift lp:1497972 (percona_slow_query_log_rate fails sporadically)
+#
+--source include/have_innodb.inc
+
+SET @old_long_query_time = @@session.long_query_time;
+SET @old_min_examined_row_limit = @@session.min_examined_row_limit;
+
+SET SESSION long_query_time=0;
+SET SESSION min_examined_row_limit=0;
+
+#
+# Executing a select statement which must be recorder in the slow query log
+#
+--let log_file=clock_shift
+--source include/log_start.inc
+SELECT 'something';
+--source include/log_stop.inc
+--let grep_pattern = ^SELECT \'something\';\$
+--source include/log_grep.inc
+
+SET SESSION long_query_time = @old_long_query_time;
+SET SESSION min_examined_row_limit = @old_min_examined_row_limit;
+
+--source include/log_cleanup.inc

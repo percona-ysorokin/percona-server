@@ -1514,6 +1514,15 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 static inline ulonglong get_query_exec_time(THD *thd, ulonglong cur_utime)
 {
   ulonglong res;
+  
+  /*
+     Two assertions are needed to determine which exactly problem happened:
+     the clock was set backwards or gettimeofday() was returnin identical
+     values for a relatively long period of time
+  */ 
+  DBUG_ASSERT(cur_utime != thd->utime_after_lock);
+  DBUG_ASSERT(cur_utime > thd->utime_after_lock);
+  
 #ifndef DBUG_OFF
   if (thd->variables.query_exec_time != 0)
     res= thd->lex->sql_command != SQLCOM_SET_OPTION ?
