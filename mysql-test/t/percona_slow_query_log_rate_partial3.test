@@ -1,0 +1,58 @@
+--source include/have_debug.inc
+
+let $old_long_query_time=`SELECT @@global.long_query_time`;
+let $old_log_slow_rate_type=`SELECT @@global.log_slow_rate_type`;
+let $old_log_slow_rate_limit=`SELECT @@global.log_slow_rate_limit`;
+let $old_slow_query_log_always_write_time=`SELECT @@global.slow_query_log_always_write_time`;
+
+# Force deterministic random pattern of slow log filter for new connections
+SET @old_debug=@@global.debug;
+SET GLOBAL debug="+d,seed_slow_log_random";
+
+SET GLOBAL long_query_time=0;
+
+SET GLOBAL log_slow_rate_type='session';
+SET GLOBAL log_slow_rate_limit=3;
+--let log_file=percona.slow_extended.log_slow_rate_limit_1
+
+--connection default
+
+--source include/count_sessions.inc
+--connect (connection_one,localhost,root,,)
+--connect (connection_two,localhost,root,,)
+--connect (connection_three,localhost,root,,)
+
+--source include/log_start.inc
+
+--let i=2
+
+while($i)
+{
+--connection connection_one
+SELECT 'connection_one';
+
+--connection connection_two
+SELECT 'connection_two';
+
+--connection connection_three
+SELECT 'connection_three';
+
+dec $i;
+}
+
+--connection default
+--source include/log_stop.inc
+--disconnect connection_one
+--disconnect connection_two
+--disconnect connection_three
+--source include/wait_until_count_sessions.inc
+--let log_slow_rate_test=1
+--source include/log_grep.inc
+
+--disable_query_log
+SET GLOBAL debug=@old_debug;
+eval SET GLOBAL long_query_time=$old_long_query_time;
+eval SET GLOBAL log_slow_rate_type=$old_log_slow_rate_type;
+eval SET GLOBAL log_slow_rate_limit=$old_log_slow_rate_limit;
+--enable_query_log
+--source include/log_cleanup.inc
