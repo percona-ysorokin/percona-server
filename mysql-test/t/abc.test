@@ -1,0 +1,70 @@
+--source include/have_debug.inc
+
+# Force deterministic session and query ids
+--source include/restart_mysqld.inc
+
+let $old_long_query_time=`SELECT @@global.long_query_time`;
+let $old_log_slow_rate_type=`SELECT @@global.log_slow_rate_type`;
+let $old_log_slow_rate_limit=`SELECT @@global.log_slow_rate_limit`;
+let $old_slow_query_log_always_write_time=`SELECT @@global.slow_query_log_always_write_time`;
+let $random_suffix=`SELECT UUID()`;
+
+# Force deterministic random pattern of slow log filter for new connections
+let $old_debug=`SELECT @@global.debug`;
+SET GLOBAL debug="+d,seed_slow_log_random";
+
+--source include/count_sessions.inc
+
+--let log_file=percona.slow_extended.log_slow_rate_limit_1
+--source include/log_start.inc
+
+SET GLOBAL long_query_time=0;
+SET GLOBAL log_slow_rate_type='session';
+SET GLOBAL log_slow_rate_limit=3;
+
+--connect (connection_one,localhost,root,,)
+SELECT CONNECTION_ID();
+--connect (connection_two,localhost,root,,)
+SELECT CONNECTION_ID();
+--connect (connection_three,localhost,root,,)
+SELECT CONNECTION_ID();
+
+--connection default
+
+--let i=2
+--let k=1
+
+while($i)
+{
+--connection connection_one
+inc $k;
+SELECT 'connection_one';
+
+--connection connection_two
+inc $k;
+SELECT 'connection_two';
+
+--connection connection_three
+inc $k;
+SELECT 'connection_three';
+
+dec $i;
+}
+
+--connection default
+--source include/log_stop.inc
+--disconnect connection_one
+--disconnect connection_two
+--disconnect connection_three
+--source include/wait_until_count_sessions.inc
+--let log_slow_rate_test=1
+--source include/log_grep.inc
+
+--disable_query_log
+eval SET GLOBAL debug='$old_debug';
+eval SET GLOBAL long_query_time=$old_long_query_time;
+eval SET GLOBAL log_slow_rate_type=$old_log_slow_rate_type;
+eval SET GLOBAL log_slow_rate_limit=$old_log_slow_rate_limit;
+--enable_query_log
+--copy_file $MYSQLTEST_VARDIR/percona.slow_extended.log_slow_rate_limit_1.slog $MYSQLTEST_VARDIR/1_$random_suffix
+--source include/log_cleanup.inc

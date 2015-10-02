@@ -2729,17 +2729,21 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
   bool error= 0;
   bool need_purge= false;
   DBUG_ENTER("MYSQL_QUERY_LOG::write");
+  DBUG_PRINT("yura",("write: start:%s", thd->query()));
 
   mysql_mutex_lock(&LOCK_log);
 
   if (!is_open())
   {
     mysql_mutex_unlock(&LOCK_log);
+    DBUG_PRINT("yura",("write: is not open:%s", thd->query()));
     DBUG_RETURN(0);
   }
 
   if (is_open())
   {						// Safety agains reopen
+    DBUG_PRINT("yura",("write: is open:%s", thd->query()));
+    
     int tmp_errno= 0;
     char buff[80], *end;
     char query_time_buff[22+7], lock_time_buff[22+7];
@@ -2750,7 +2754,14 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
     end= buff;
 
     if (max_slowlog_size > 0)
+    {
       error= rotate(max_slowlog_size, &need_purge);
+      DBUG_PRINT("yura",("write: after rotate: %s, error=%d, need_purge=%d", thd->query(), error, need_purge));
+    }
+    else
+    {
+      DBUG_PRINT("yura",("write: no rotate:%s", thd->query()));
+    }
 
     if (!(specialflag & SPECIAL_SHORT_LOG_FORMAT))
     {
@@ -2814,6 +2825,8 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
         == (uint) -1)
       tmp_errno= errno;
 
+    DBUG_PRINT("yura",("write: after header write: %s, error=%u", thd->query(), tmp_errno));
+
     if (thd->variables.log_slow_verbosity & (1ULL << SLOG_V_QUERY_PLAN))
     {
         char tmp_tables_size_buff[21];
@@ -2826,16 +2839,23 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
         {
             tmp_errno= errno;
         }
+        DBUG_PRINT("yura",("write: after tmp tables write: %s, error=%u", thd->query(), tmp_errno));
     }
     if (my_b_write(&log_file, (uchar*) "\n", 1))
+    {
         tmp_errno= errno;
+        DBUG_PRINT("yura",("write: after eol write: %s, error=%u", thd->query(), tmp_errno));
+    }
 
     if (opt_log_slow_sp_statements == 1 &&
         thd->spcont &&
         my_b_printf(&log_file,
                     "# Stored_routine: %s\n",
                     thd->spcont->sp->m_qname.str) == (uint) -1)
+    {
       tmp_errno= errno;
+      DBUG_PRINT("yura",("write: after stored routine write: %s, error=%u", thd->query(), tmp_errno));
+    }
 
 #if defined(ENABLED_PROFILING)
     thd->profiling.print_current(&log_file);
@@ -2848,6 +2868,8 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
       if (my_b_printf(&log_file,
                     "# InnoDB_trx_id: %s\n", buf) == (uint) -1)
         tmp_errno=errno;
+        DBUG_PRINT("yura",("write: after innodb trd id write: %s, error=%u", thd->query(), tmp_errno));
+      DBUG_PRINT("yura",("write: after innodb trd id write: %s, error=%u", thd->query(), tmp_errno));
     }
     if ((thd->variables.log_slow_verbosity & (ULL(1) << SLOG_V_QUERY_PLAN)) &&
          my_b_printf(&log_file,
@@ -2861,7 +2883,10 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
                     ((thd->query_plan_flags & QPLAN_FILESORT) ? "Yes" : "No"),
                     ((thd->query_plan_flags & QPLAN_FILESORT_DISK) ? "Yes" : "No"),
                     thd->query_plan_fsort_passes) == (uint) -1)
+    {
       tmp_errno=errno;
+      DBUG_PRINT("yura",("write: after qc hit write: %s, error=%u", thd->query(), tmp_errno));
+    }
     if ((thd->variables.log_slow_verbosity & (ULL(1) << SLOG_V_INNODB)) && thd->innodb_was_used)
     {
       char buf[3][20];
@@ -2879,26 +2904,33 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
                       buf[0], buf[1], buf[2], thd->innodb_page_access)
           == (uint) -1)
         tmp_errno= errno;
+      DBUG_PRINT("yura",("write: after innodb stats write: %s, error=%u", thd->query(), tmp_errno));
     } 
     else
     {
       if ((thd->variables.log_slow_verbosity & (ULL(1) << SLOG_V_INNODB)) &&
           my_b_printf(&log_file,"# No InnoDB statistics available for this query\n") == (uint) -1)
+      {
         tmp_errno=errno;
+        DBUG_PRINT("yura",("write: after no innodb stats write: %s, error=%u", thd->query(), tmp_errno));
+      }
     }
     if (thd->variables.log_slow_rate_limit > 1)
     {
-      my_b_printf(&log_file,
+      if(my_b_printf(&log_file,
                   "# Log_slow_rate_type: %s  Log_slow_rate_limit: %lu\n",
                   opt_slow_query_log_rate_type == SLOG_RT_SESSION ?
                                                   "session" : "query",
-                  thd->variables.log_slow_rate_limit);
+                  thd->variables.log_slow_rate_limit) == (uint)-1)
+        tmp_errno = errno;
+      DBUG_PRINT("yura",("write: after slow log rate write: %s, error=%u", thd->query(), tmp_errno));
     }
 
     if (thd->db && strcmp(thd->db, db))
     {						// Database changed
       if (my_b_printf(&log_file,"use %s;\n",thd->db) == (uint) -1)
         tmp_errno= errno;
+      DBUG_PRINT("yura",("write: after use write: %s, error=%u", thd->query(), tmp_errno));
       strmov(db,thd->db);
     }
     if (thd->stmt_depends_on_first_successful_insert_id_in_prev_stmt)
@@ -2935,6 +2967,7 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
       if (my_b_write(&log_file, (uchar*) "SET ", 4) ||
           my_b_write(&log_file, (uchar*) buff + 1, (uint) (end-buff)))
         tmp_errno= errno;
+      DBUG_PRINT("yura",("write: after timestamp write: %s, error=%u", thd->query(), tmp_errno));
     }
     if (is_command)
     {
@@ -2944,13 +2977,16 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
                       {DBUG_SET("+d,simulate_file_write_error");});
       if(my_b_write(&log_file, (uchar*) buff, buff_len))
         tmp_errno= errno;
+      DBUG_PRINT("yura",("write: after admin command write: %s, error=%u", thd->query(), tmp_errno));
     }
     if (my_b_write(&log_file, (uchar*) sql_text, sql_text_len) ||
         my_b_write(&log_file, (uchar*) ";\n",2) ||
         flush_io_cache(&log_file))
       tmp_errno= errno;
+    DBUG_PRINT("yura",("write: after statement write and flush: %s, error=%u", thd->query(), tmp_errno));
     if (tmp_errno)
     {
+      DBUG_PRINT("yura",("write: non-zero errno: %s, error=%u", thd->query(), tmp_errno));
       error= 1;
       if (! write_error)
       {
@@ -2958,13 +2994,20 @@ bool MYSQL_QUERY_LOG::write(THD *thd, ulonglong current_utime,
         sql_print_error(ER(ER_ERROR_ON_WRITE), name, error);
       }
     }
+    else
+    {
+      DBUG_PRINT("yura",("write: no errno: %s", thd->query()));
+    }
   }
   ulong save_cur_ext = cur_log_ext;
   mysql_mutex_unlock(&LOCK_log);
   if (max_slowlog_files && need_purge && !error)
+  {
     error= purge_up_to(save_cur_ext > max_slowlog_files ? 
                        save_cur_ext - max_slowlog_files : 0,
                        log_file_name);
+    DBUG_PRINT("yura",("write: after purge up to: %s, error=%d", thd->query(), error));
+  }
   DBUG_RETURN(error);
 }
 

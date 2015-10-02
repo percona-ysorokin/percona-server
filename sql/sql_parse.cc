@@ -1554,6 +1554,7 @@ static inline void copy_global_to_session(THD *thd, ulong flag,
 void log_slow_statement(THD *thd)
 {
   DBUG_ENTER("log_slow_statement");
+  DBUG_PRINT("yura", ("begin: %s", thd->query()));
 
   /*
     The following should never be true with our current code base,
@@ -1561,14 +1562,20 @@ void log_slow_statement(THD *thd)
     statement in a trigger or stored function
   */
   if (unlikely(thd->in_sub_stmt))
+  {
+    DBUG_PRINT("yura", ("return in_sub_stmt: %s", thd->query()));
     DBUG_VOID_RETURN;                           // Don't set time for sub stmt
+  }
 
   /* Follow the slow log filter configuration. */
   if (thd->variables.log_slow_filter != 0 &&
       (!(thd->variables.log_slow_filter & thd->query_plan_flags) ||
        ((thd->variables.log_slow_filter & (1UL << SLOG_F_QC_NO)) &&
         (thd->query_plan_flags & QPLAN_QC))))
+  {
+    DBUG_PRINT("yura", ("slow log filter configuration: %s", thd->query()));
     DBUG_VOID_RETURN;
+  }
 
   ulonglong end_utime_of_query= thd->current_utime();
   ulonglong query_exec_time= get_query_exec_time(thd, end_utime_of_query);
@@ -1589,7 +1596,10 @@ void log_slow_statement(THD *thd)
       thd->lex)
   {
     if (thd->lex->sql_command == SQLCOM_CALL)
+    {
+      DBUG_PRINT("yura", ("sp_statements1: %s", thd->query()));
       DBUG_VOID_RETURN;
+    }
     /* Can be prepared CALL statement */
     if (thd->lex->sql_command == SQLCOM_EXECUTE)
     {
@@ -1597,7 +1607,10 @@ void log_slow_statement(THD *thd)
       LEX_STRING *name= &thd->lex->prepared_stmt_name;
       if ((stmt= thd->stmt_map.find_by_name(name)) != NULL &&
           stmt->lex && stmt->lex->sql_command == SQLCOM_CALL)
+      {
+          DBUG_PRINT("yura", ("sp_statements1: %s", thd->query()));
           DBUG_VOID_RETURN;
+      }
     }
   }
 
@@ -1626,6 +1639,7 @@ void log_slow_statement(THD *thd)
       && query_exec_time < slow_query_log_always_write_time
       && (thd->variables.long_query_time >= 1000000
           || (ulong) query_exec_time < 1000000)) {
+    DBUG_PRINT("yura", ("filter query: %s", thd->query()));
     DBUG_VOID_RETURN;
   }
   if (opt_slow_query_log_rate_type == SLOG_RT_SESSION
@@ -1634,6 +1648,7 @@ void log_slow_statement(THD *thd)
       && query_exec_time < slow_query_log_always_write_time
       && (thd->variables.long_query_time >= 1000000
           || (ulong) query_exec_time < 1000000)) {
+    DBUG_PRINT("yura", ("filter session: %s", thd->query()));
     DBUG_VOID_RETURN;
   }
 
@@ -1653,11 +1668,20 @@ void log_slow_statement(THD *thd)
            !(sql_command_flags[thd->lex->sql_command] & CF_STATUS_COMMAND))) &&
         thd->examined_row_count >= thd->variables.min_examined_row_limit)
     {
+      DBUG_PRINT("yura", ("written: %s", thd->query()));
       thd_proc_info(thd, "logging slow query");
       thd->status_var.long_query_count++;
       slow_log_print(thd, thd->query(), thd->query_length(), 
                      end_utime_of_query);
     }
+    else
+    {
+      DBUG_PRINT("yura", ("magic filter: %s", thd->query()));
+    }
+  }
+  else
+  {
+    DBUG_PRINT("yura", ("log not enabled: %s", thd->query()));
   }
   DBUG_VOID_RETURN;
 }
