@@ -2029,6 +2029,11 @@ public:
   const char *user,*host,*db,*proc_info,*state_info;
   CSET_STRING query_string;
   ulonglong rows_sent, rows_examined;
+#ifdef __linux__
+  pid_t system_tid;
+#else
+  int system_tid;
+#endif
 };
 
 // For sorting by thread_id.
@@ -2094,6 +2099,8 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
   field_list.push_back(field= new Item_return_int("Rows_examined",
                                                   MY_INT64_NUM_DECIMAL_DIGITS,
                                                   MYSQL_TYPE_LONGLONG));
+  field_list.push_back(field= new Item_int(NAME_STRING("Tid"), 0, MY_INT64_NUM_DECIMAL_DIGITS));
+  field->maybe_null=1;
   if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_VOID_RETURN;
@@ -2173,6 +2180,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
         }
         thd_info->rows_sent= tmp->get_sent_row_count();
         thd_info->rows_examined= tmp->get_examined_row_count();
+        thd_info->system_tid= tmp->system_tid;
         mysql_mutex_unlock(&tmp->LOCK_thd_data);
         thd_info->start_time= tmp->start_time.tv_sec;
         thread_infos.push_back(thd_info);
@@ -2206,6 +2214,10 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
                     thd_info->query_string.charset());
     protocol->store(thd_info->rows_sent);
     protocol->store(thd_info->rows_examined);
+    if(thd_info->system_tid != -1)
+      protocol->store((ulonglong) thd_info->system_tid);
+    else
+      protocol->store_null();
     if (protocol->write())
       break; /* purecov: inspected */
   }
@@ -2337,6 +2349,12 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, Item* cond)
       table->field[9]->store((ulonglong) tmp->get_sent_row_count());
       /* ROWS_EXAMINED */
       table->field[10]->store((ulonglong) tmp->get_examined_row_count());
+      /* TID */
+      if(tmp->system_tid != -1)
+      {
+        table->field[11]->store((ulonglong) tmp->system_tid, TRUE);
+        table->field[11]->set_notnull();
+      }
       mysql_mutex_unlock(&tmp->LOCK_thd_data);
 
       if (schema_table_store_record(thd, table))
@@ -8816,6 +8834,8 @@ ST_FIELD_INFO processlist_fields_info[]=
    MY_I_S_UNSIGNED, "Rows_sent", SKIP_OPEN_TABLE},
   {"ROWS_EXAMINED", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
    MY_I_S_UNSIGNED, "Rows_examined", SKIP_OPEN_TABLE},
+  {"TID", 21, MYSQL_TYPE_LONGLONG, 0, (MY_I_S_MAYBE_NULL | MY_I_S_UNSIGNED),
+   "Tid", SKIP_OPEN_TABLE},
   {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 

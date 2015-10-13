@@ -1,0 +1,3 @@
+SELECT COUNT(*) FROM information_schema.processlist WHERE tid NOT IN (SELECT lwp_no FROM lwp_table);
+COUNT(*)
+0

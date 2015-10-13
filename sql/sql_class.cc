@@ -45,6 +45,9 @@
 #include <m_ctype.h>
 #include <sys/stat.h>
 #include <thr_alarm.h>
+#ifdef __linux__
+  #include <sys/syscall.h>  // needed for "syscall(SYS_gettid)"
+#endif
 #ifdef	__WIN__
 #include <io.h>
 #endif
@@ -2126,6 +2129,11 @@ bool THD::store_globals()
   */
   mysys_var->id= thread_id;
   real_id= pthread_self();                      // For debugging
+#ifdef __linux__
+  system_tid = (pid_t)syscall(SYS_gettid);
+#else
+  system_tid = -1;
+#endif
   vio_set_thread_id(net.vio, real_id);
   /*
     We have to call thr_lock_info_init() again here as THD may have been

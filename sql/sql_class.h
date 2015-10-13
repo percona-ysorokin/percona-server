@@ -3105,6 +3105,11 @@ public:
   ulong      statement_id_counter;
   ulong	     rand_saved_seed1, rand_saved_seed2;
   pthread_t  real_id;                           /* For debugging */
+#ifdef __linux__
+  pid_t system_tid;
+#else
+  int system_tid;
+#endif
   my_thread_id  thread_id;
   uint	     tmp_table;
   uint	     server_status,open_options;
