@@ -12859,11 +12859,17 @@ get_constant_key_infix(KEY *index_info, SEL_ARG *index_range_tree,
       key_ptr+= field_length;
       *key_infix_len+= field_length;
     }
-    else if (memcmp(cur_range->min_value, cur_range->max_value, field_length) == 0)
-    { /* cur_range specifies an equality condition. */
-      memcpy(key_ptr, cur_range->min_value, field_length);
-      key_ptr+= field_length;
-      *key_infix_len+= field_length;
+    else if (!cur_range->maybe_null ||
+             (!cur_range->min_value[0] && !cur_range->max_value[0]))
+    {
+      if (memcmp(cur_range->min_value, cur_range->max_value, field_length) == 0)
+      { /* cur_range specifies an equality condition. */
+        memcpy(key_ptr, cur_range->min_value, field_length);
+        key_ptr+= field_length;
+        *key_infix_len+= field_length;
+      }
+      else
+        return false;
     }
     else
       return false;
@@ -13439,9 +13445,13 @@ bool QUICK_GROUP_MIN_MAX_SELECT::add_range(SEL_ARG *sel_range)
     if (sel_range->maybe_null &&
         sel_range->min_value[0] && sel_range->max_value[0])
       range_flag|= NULL_RANGE; /* IS NULL condition */
-    else if (memcmp(sel_range->min_value, sel_range->max_value,
-                    min_max_arg_len) == 0)
-      range_flag|= EQ_RANGE;  /* equality condition */
+    else if (!sel_range->maybe_null ||
+             (!sel_range->min_value[0] && !sel_range->max_value[0]))
+    {
+      if(memcmp(sel_range->min_value, sel_range->max_value,
+                min_max_arg_len) == 0)
+        range_flag|= EQ_RANGE;  /* equality condition */
+    }
   }
   range= new QUICK_RANGE(sel_range->min_value, min_max_arg_len,
                          make_keypart_map(sel_range->part),
