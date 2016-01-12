@@ -15,6 +15,10 @@ SET @safe_character_set_server= @@character_set_server;
 SET @safe_collation_server= @@collation_server;
 SET @safe_character_set_client= @@character_set_client;
 SET @safe_character_set_results= @@character_set_results;
+--disable_query_log
+SET @safe_character_set_database= @@character_set_database;
+SET @safe_collation_database= @@collation_database;
+--enable_query_log
 SET character_set_server= @test_character_set;
 SET collation_server= @test_collation;
 CREATE DATABASE d1;
@@ -83,3 +87,7 @@ SET character_set_server= @safe_character_set_server;
 SET collation_server= @safe_collation_server;
 SET character_set_client= @safe_character_set_client;
 SET character_set_results= @safe_character_set_results;
+--disable_query_log
+SET character_set_database= @safe_character_set_database;
+SET collation_database= @safe_collation_database;
+--enable_query_log
