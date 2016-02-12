@@ -509,6 +509,11 @@ UNIV_INTERN ulint		srv_descriptors_memory CACHE_ALIGNED	= 0;
 UNIV_INTERN byte
 counters_pad_end[CACHE_LINE_SIZE] __attribute__((unused)) = {0};
 
+/* Column compressed counter. */
+UNIV_INTERN ulint	srv_column_compressed		= 0;
+/* Column decompressed counter. */
+UNIV_INTERN ulint	srv_column_decompressed		= 0;
+
 /* Set the following to 0 if you want InnoDB to write messages on
 stderr on startup/shutdown. */
 UNIV_INTERN ibool	srv_print_verbose_log		= TRUE;
@@ -1834,6 +1839,10 @@ srv_export_innodb_status(void)
 		= os_atomic_increment_lint(&srv_read_views_memory, 0);
 	export_vars.innodb_descriptors_memory
 		= os_atomic_increment_lint(&srv_descriptors_memory, 0);
+
+	export_vars.innodb_column_compressed = srv_column_compressed;
+
+	export_vars.innodb_column_decompressed = srv_column_decompressed;
 
 #ifdef UNIV_DEBUG
 	rw_lock_s_lock(&purge_sys->latch);
