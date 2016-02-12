@@ -7117,6 +7117,12 @@ ER_CANT_EXECUTE_WITH_BACKUP_LOCK
 	eng "Can't execute the query because you have a conflicting backup lock"
 	rus "Запрос не может быть выполнен из-за конфликтующей блокировки резервного копирования"
 
+ER_BLOB_KEY_WITH_COMPRESS
+  eng "Compressed BLOB/TEXT/VARCHAR/VARBINARY column '%-.192s' used in key list is not allowed"
+
+ER_DEFINED_COMPRESS_COLUMN
+  eng "Can not define column '%-.192s' in compressed format, silently change column_format to default"
+
 #
 #  End of 5.6 error messages.
 #

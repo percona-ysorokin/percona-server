@@ -957,6 +957,10 @@ static SHOW_VAR innodb_status_variables[]= {
   (char*) &export_vars.innodb_x_lock_spin_rounds,	  SHOW_LONGLONG},
   {"x_lock_spin_waits",
   (char*) &export_vars.innodb_x_lock_spin_waits,	  SHOW_LONGLONG},
+  {"column_compressed",
+  (char*) &export_vars.innodb_column_compressed,          SHOW_LONG},
+  {"column_decompressed",
+  (char*) &export_vars.innodb_column_decompressed,        SHOW_LONG},
   {NullS, NullS, SHOW_LONG}
 };
 
@@ -6725,7 +6729,8 @@ ha_innobase::store_key_val_for_row(
 			blob_data = row_mysql_read_blob_ref(&blob_len,
 				(byte*) (record
 				+ (ulint) get_field_offset(table, field)),
-					(ulint) field->pack_length());
+					(ulint) field->pack_length(),
+					prebuilt, field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED);
 
 			true_len = blob_len;
 
@@ -6980,6 +6985,8 @@ build_template_field(
 	templ->mbminlen = dict_col_get_mbminlen(col);
 	templ->mbmaxlen = dict_col_get_mbmaxlen(col);
 	templ->is_unsigned = col->prtype & DATA_UNSIGNED;
+	templ->compressed = (field->column_format()
+                             == COLUMN_FORMAT_TYPE_COMPRESSED);
 
 	if (!dict_index_is_clust(index)
 	    && templ->rec_field_no == ULINT_UNDEFINED) {
@@ -7733,9 +7740,9 @@ calc_row_difference(
 
 		switch (col_type) {
 
-		case DATA_BLOB:
-			o_ptr = row_mysql_read_blob_ref(&o_len, o_ptr, o_len);
-			n_ptr = row_mysql_read_blob_ref(&n_len, n_ptr, n_len);
+		case DATA_BLOB:/* Do not compress blob column while comparing*/
+			o_ptr = row_mysql_read_blob_ref(&o_len, o_ptr, o_len, prebuilt, 0);
+			n_ptr = row_mysql_read_blob_ref(&n_len, n_ptr, n_len, prebuilt, 0);
 
 			break;
 
@@ -7805,7 +7812,9 @@ calc_row_difference(
 					TRUE,
 					new_mysql_row_col,
 					col_pack_len,
-					dict_table_is_comp(prebuilt->table));
+					dict_table_is_comp(prebuilt->table),
+					prebuilt,
+					field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED);
 				dfield_copy(&ufield->new_val, &dfield);
 			} else {
 				dfield_set_null(&ufield->new_val);
@@ -12944,7 +12953,12 @@ ha_innobase::extra(
 		if (prebuilt->blob_heap) {
 			row_mysql_prebuilt_free_blob_heap(prebuilt);
 		}
-		break;
+
+		if (prebuilt->compress_heap) {
+			row_mysql_prebuilt_free_compress_heap(prebuilt);
+		}
+
+                break;
 	case HA_EXTRA_RESET_STATE:
 		reset_template();
 		thd_to_trx(ha_thd())->duplicates = 0;
@@ -12993,6 +13007,10 @@ ha_innobase::reset()
 {
 	if (prebuilt->blob_heap) {
 		row_mysql_prebuilt_free_blob_heap(prebuilt);
+	}
+
+	if (prebuilt->compress_heap) {
+		row_mysql_prebuilt_free_compress_heap(prebuilt);
 	}
 
 	reset_template();
@@ -18236,6 +18254,33 @@ static MYSQL_SYSVAR_BOOL(locking_fake_changes, srv_fake_changes_locks,
   "not take any locks at all.",
   NULL, NULL, TRUE);
 
+static MYSQL_SYSVAR_UINT(column_zlib_strategy, column_zip_zlib_strategy,
+  PLUGIN_VAR_OPCMDARG,
+  "similar to innodb_zlib_strategy, but only used by compressed column",
+  NULL, NULL, 0, 0, 4, 0);
+
+static MYSQL_SYSVAR_BOOL(column_zlib_wrap, column_zip_zlib_wrap,
+  PLUGIN_VAR_OPCMDARG,
+  "similar to innodb_zlib_wrap, but only used by compressed column",
+  NULL, NULL, TRUE);
+
+static MYSQL_SYSVAR_UINT(column_compression_level, column_zip_level,
+  PLUGIN_VAR_RQCMDARG,
+  "Compression level used for compress-format column.  0 is no compression"
+  ", 1 is fastest, 9 is best compression and default is 6.",
+  NULL, NULL, DEFAULT_COMPRESSION_LEVEL, 0, 9, 0);
+
+static MYSQL_SYSVAR_ULONG(column_zip_threshold, column_zip_threshold,
+  PLUGIN_VAR_RQCMDARG,
+  "Compress the column if the data length exceeds this value.",
+  NULL, NULL, 96, 1, ~0UL, 0);
+
+static MYSQL_SYSVAR_BOOL(column_zip_mem_use_heap, column_zip_mem_use_heap,
+  PLUGIN_VAR_OPCMDARG,
+  "alloc memory from prebuilt->compress_heap for zlib during compress/decompress "
+  "if true. Currently this opition is only used for testing purposes",
+  NULL, NULL, FALSE);
+
 static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(log_block_size),
   MYSQL_SYSVAR(additional_mem_pool_size),
@@ -18433,6 +18478,11 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(fake_changes),
   MYSQL_SYSVAR(locking_fake_changes),
   MYSQL_SYSVAR(tmpdir),
+  MYSQL_SYSVAR(column_compression_level),
+  MYSQL_SYSVAR(column_zlib_strategy),
+  MYSQL_SYSVAR(column_zlib_wrap),
+  MYSQL_SYSVAR(column_zip_threshold),
+  MYSQL_SYSVAR(column_zip_mem_use_heap),
   NULL
 };
 
