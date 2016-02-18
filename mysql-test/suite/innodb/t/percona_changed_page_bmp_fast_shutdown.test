@@ -1,0 +1,50 @@
+--let $common_restart_parameters=--innodb_track_changed_pages=TRUE --innodb_log_file_size=5M --skip-stack-trace --skip-core-file
+
+--let $MYSQLD_DATADIR= `select @@datadir`
+
+SHOW ENGINE INNODB STATUS;
+SELECT @@global.innodb_track_changed_pages;
+SELECT @@global.innodb_log_file_size;
+--list_files $MYSQLD_DATADIR ib_modified_log*
+
+--let $clean_changed_page_bitmaps=1
+--let $restart_parameters=restart:$common_restart_parameters
+--source include/restart_mysqld.inc
+SELECT @@global.innodb_track_changed_pages;
+SELECT @@global.innodb_log_file_size;
+--list_files $MYSQLD_DATADIR ib_modified_log*
+SHOW ENGINE INNODB STATUS;
+
+# Generate log data that is larger than the log capacity and has two tablespace ids.
+CREATE TABLE t1 (x INT) ENGINE=InnoDB;
+INSERT INTO t1 VALUES (1),(2),(3),(4),(5);
+INSERT INTO t1 VALUES (1),(2),(3),(4),(5);
+INSERT INTO t1 VALUES (1),(2),(3),(4),(5);
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+INSERT INTO t1 SELECT x FROM t1;
+CREATE TABLE t2 (x INT) ENGINE=InnoDB;
+INSERT INTO t2 VALUES (1),(2),(3),(4),(5);
+
+SET GLOBAL INNODB_FAST_SHUTDOWN=2;
+--echo 1st restart
+--let $clean_changed_page_bitmaps=
+--source include/restart_mysqld.inc
+SELECT @@global.innodb_track_changed_pages;
+SELECT @@global.innodb_log_file_size;
+--list_files $MYSQLD_DATADIR ib_modified_log*
+SHOW ENGINE INNODB STATUS;
+
+DROP TABLE t1, t2;

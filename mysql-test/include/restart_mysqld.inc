@@ -29,12 +29,23 @@ if ($mysqld_name)
   let $_expect_file_name= $MYSQLTEST_VARDIR/tmp/$mysqld_name.expect;
   # echo expect_file_name: $_expect_file_name;
 }
+
+if ($clean_changed_page_bitmaps)
+{
+  let $MYSQLD_DATADIR= `select @@datadir`;
+}
+
 --exec echo "wait" > $_expect_file_name
 
 # Send shutdown to the connected server.
 shutdown_server;
 
 --source include/wait_until_disconnected.inc
+
+if($clean_changed_page_bitmaps)
+{
+  remove_files_wildcard $MYSQLD_DATADIR ib_modified_log*;
+}
 
 # Write file to make mysql-test-run.pl start up the server again
 --exec echo "$restart_parameters" > $_expect_file_name
