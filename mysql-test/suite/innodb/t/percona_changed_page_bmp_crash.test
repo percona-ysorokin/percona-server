@@ -8,10 +8,12 @@
 --source include/not_valgrind.inc
 
 call mtr.add_suppression("last tracked LSN in");
+--let $common_restart_parameters=--innodb_track_changed_pages=TRUE --innodb_log_file_size=5M --skip-stack-trace --skip-core-file
 
 # Delete any existing bitmaps
+--let $clean_changed_page_bitmaps=1
+--let $restart_parameters=restart:$common_restart_parameters
 --source include/restart_mysqld.inc
-RESET CHANGED_PAGE_BITMAPS;
 
 --disable_warnings
 DROP TABLE IF EXISTS t1, t2;
@@ -49,6 +51,7 @@ INSERT INTO t2 VALUES (1),(2),(3),(4),(5);
 SET GLOBAL INNODB_FAST_SHUTDOWN=2;
 
 --echo 1st restart
+--let $clean_changed_page_bitmaps=
 --source include/restart_mysqld.inc
 
 # TODO: check the tracked LSN range continuity once this info is exposed through
@@ -63,7 +66,7 @@ list_files $MYSQLD_DATADIR ib_modified_log*;
 #
 
 --echo 2nd restart
---let $restart_parameters=restart:-#d,crash_before_bitmap_write
+--let $restart_parameters=restart:$common_restart_parameters -#d,crash_before_bitmap_write
 --source include/restart_mysqld.inc
 --exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
 --error 2013
