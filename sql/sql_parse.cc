@@ -335,6 +335,8 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_DROP_TABLE]=     CF_CHANGES_DATA | CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_LOAD]=           CF_CHANGES_DATA | CF_REEXECUTION_FRAGILE |
                                             CF_CAN_GENERATE_ROW_EVENTS;
+  sql_command_flags[SQLCOM_CREATE_COMPRESSION_DICTIONARY]= CF_CHANGES_DATA | CF_AUTO_COMMIT_TRANS;
+  sql_command_flags[SQLCOM_DROP_COMPRESSION_DICTIONARY]=   CF_CHANGES_DATA | CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_CREATE_DB]=      CF_CHANGES_DATA | CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_DROP_DB]=        CF_CHANGES_DATA | CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_ALTER_DB_UPGRADE]= CF_AUTO_COMMIT_TRANS;
@@ -573,6 +575,8 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_RENAME_TABLE]|=     CF_DISALLOW_IN_RO_TRANS;
   sql_command_flags[SQLCOM_CREATE_INDEX]|=     CF_DISALLOW_IN_RO_TRANS;
   sql_command_flags[SQLCOM_DROP_INDEX]|=       CF_DISALLOW_IN_RO_TRANS;
+  sql_command_flags[SQLCOM_CREATE_COMPRESSION_DICTIONARY]|= CF_DISALLOW_IN_RO_TRANS;
+  sql_command_flags[SQLCOM_DROP_COMPRESSION_DICTIONARY]|=   CF_DISALLOW_IN_RO_TRANS;
   sql_command_flags[SQLCOM_CREATE_DB]|=        CF_DISALLOW_IN_RO_TRANS;
   sql_command_flags[SQLCOM_DROP_DB]|=          CF_DISALLOW_IN_RO_TRANS;
   sql_command_flags[SQLCOM_ALTER_DB_UPGRADE]|= CF_DISALLOW_IN_RO_TRANS;
@@ -1116,7 +1120,11 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
     (lex->sql_command == SQLCOM_CREATE_DB) ||
     (lex->sql_command == SQLCOM_DROP_DB);
 
-  if (update_real_tables || create_or_drop_databases)
+  const my_bool create_or_drop_compression_dictionary =
+	  (lex->sql_command == SQLCOM_CREATE_COMPRESSION_DICTIONARY) ||
+	  (lex->sql_command == SQLCOM_DROP_COMPRESSION_DICTIONARY);
+
+  if (update_real_tables || create_or_drop_databases || create_or_drop_compression_dictionary)
   {
       /*
         An attempt was made to modify one or more non-temporary tables.
@@ -4317,6 +4325,22 @@ end_with_restore_list:
       my_ok(thd);
 
     break;
+  case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
+  {
+    push_warning_printf(thd, Sql_condition::WARN_LEVEL_NOTE,
+                        ER_NOT_ALLOWED_COMMAND, "Create compression dictionary %s('%s')",
+                        lex->ident.str, lex->default_value->str_value.ptr());
+    my_ok(thd);
+    break;
+  }
+  case SQLCOM_DROP_COMPRESSION_DICTIONARY:
+  {
+    push_warning_printf(thd, Sql_condition::WARN_LEVEL_NOTE,
+                        ER_NOT_ALLOWED_COMMAND, "Drop compression dictionary %s",
+                        lex->ident.str);
+    my_ok(thd);
+	break;
+  }
   case SQLCOM_CREATE_DB:
   {
     /*

@@ -472,6 +472,7 @@ UNIV_INTERN struct st_mysql_plugin i_s_xtradb_internal_hash_tables =
 };
 
 
+
 /***********************************************************************
 */
 static ST_FIELD_INFO	i_s_xtradb_rseg_fields_info[] =
@@ -596,6 +597,108 @@ UNIV_INTERN struct st_mysql_plugin	i_s_xtradb_rseg =
 	STRUCT_FLD(descr, "InnoDB rollback segment information"),
 	STRUCT_FLD(license, PLUGIN_LICENSE_GPL),
 	STRUCT_FLD(init, i_s_xtradb_rseg_init),
+	STRUCT_FLD(deinit, i_s_common_deinit),
+	STRUCT_FLD(version, INNODB_VERSION_SHORT),
+	STRUCT_FLD(status_vars, NULL),
+	STRUCT_FLD(system_vars, NULL),
+	STRUCT_FLD(__reserved1, NULL),
+	STRUCT_FLD(flags, 0UL),
+};
+
+
+/************************************************************************/
+static const uint max_zip_dict_name_length = 64U;
+static const uint max_zip_dict_zip_dict_length = 262144U;
+enum zip_dict_field_type
+{
+	zip_dict_field_id,
+	zip_dict_field_name,
+	zip_dict_field_zip_dict
+};
+
+static ST_FIELD_INFO xtradb_zip_dict_fields_info[] =
+{
+	{ STRUCT_FLD(field_name, "id"),
+	STRUCT_FLD(field_length, MY_INT64_NUM_DECIMAL_DIGITS),
+	STRUCT_FLD(field_type, MYSQL_TYPE_LONGLONG),
+	STRUCT_FLD(value, 0),
+	STRUCT_FLD(field_flags, MY_I_S_UNSIGNED),
+	STRUCT_FLD(old_name, ""),
+	STRUCT_FLD(open_method, SKIP_OPEN_TABLE) },
+
+	{ STRUCT_FLD(field_name, "name"),
+	STRUCT_FLD(field_length, max_zip_dict_name_length),
+	STRUCT_FLD(field_type, MYSQL_TYPE_STRING),
+	STRUCT_FLD(value, 0),
+	STRUCT_FLD(field_flags, 0),
+	STRUCT_FLD(old_name, ""),
+	STRUCT_FLD(open_method, SKIP_OPEN_TABLE) },
+
+	{ STRUCT_FLD(field_name, "zip_dict"),
+	STRUCT_FLD(field_length, max_zip_dict_zip_dict_length),
+	STRUCT_FLD(field_type, MYSQL_TYPE_STRING),
+	STRUCT_FLD(value, 0),
+	STRUCT_FLD(field_flags, 0),
+	STRUCT_FLD(old_name, ""),
+	STRUCT_FLD(open_method, SKIP_OPEN_TABLE) },
+
+	END_OF_ST_FIELD_INFO
+};
+
+static int xtradb_zip_dict_fill_table(
+  THD*		thd,	/* in: thread */
+  TABLE_LIST*	tables,	/* in/out: tables to fill */
+  Item*	/* in: condition (ignored) */
+)
+{
+	TABLE* table = (TABLE *)tables->table;
+	Field**	fields = table->field;
+
+	DBUG_ENTER("xtradb_zip_dict_fill_table");
+
+	/* deny access to non-superusers */
+	if (check_global_access(thd, PROCESS_ACL))
+	{
+		DBUG_RETURN(0);
+	}
+
+	RETURN_IF_INNODB_NOT_STARTED(tables->schema_table_name);
+
+	char buf[] = { 'd', '0', '\0' };
+	for (size_t i = 0; i < 2; ++i)
+	{
+		++buf[1];
+		OK(field_store_ulint(fields[zip_dict_field_id], i));
+		OK(field_store_string(fields[zip_dict_field_name], buf));
+		OK(field_store_string(fields[zip_dict_field_zip_dict], "abbccc"));
+
+		OK(schema_table_store_record(thd, table));
+	}
+
+	DBUG_RETURN(0);
+}
+
+static int i_s_xtradb_zip_dict_init(void* p)
+{
+	DBUG_ENTER("i_s_xtradb_zip_dict_init");
+
+	ST_SCHEMA_TABLE* schema = (ST_SCHEMA_TABLE*)p;
+
+	schema->fields_info = xtradb_zip_dict_fields_info;
+	schema->fill_table = xtradb_zip_dict_fill_table;
+
+	DBUG_RETURN(0);
+}
+
+UNIV_INTERN struct st_mysql_plugin	i_s_xtradb_zip_dict =
+{
+	STRUCT_FLD(type, MYSQL_INFORMATION_SCHEMA_PLUGIN),
+	STRUCT_FLD(info, &i_s_info),
+	STRUCT_FLD(name, "XTRADB_ZIP_DICT"),
+	STRUCT_FLD(author, PLUGIN_AUTHOR),
+	STRUCT_FLD(descr, "InnoDB compression dictionaries information"),
+	STRUCT_FLD(license, PLUGIN_LICENSE_GPL),
+	STRUCT_FLD(init, i_s_xtradb_zip_dict_init),
 	STRUCT_FLD(deinit, i_s_common_deinit),
 	STRUCT_FLD(version, INNODB_VERSION_SHORT),
 	STRUCT_FLD(status_vars, NULL),
