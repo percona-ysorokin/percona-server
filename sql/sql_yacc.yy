@@ -1134,6 +1134,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  COMPACT_SYM
 %token  COMPLETION_SYM
 %token  COMPRESSED_SYM
+%token  COMPRESSION_DICTIONARY_SYM
 %token  CONCURRENT
 %token  CONDITION_SYM                 /* SQL-2003-R, SQL-2008-R */
 %token  CONNECTION_SYM
@@ -2524,6 +2525,12 @@ create:
         | CREATE server_def
           {
             Lex->sql_command= SQLCOM_CREATE_SERVER;
+          }
+        | CREATE COMPRESSION_DICTIONARY_SYM ident '(' text_literal ')'
+          {
+            Lex->sql_command= SQLCOM_CREATE_COMPRESSION_DICTIONARY;
+            Lex->ident = $3;
+            Lex->default_value = $5;
           }
         ;
 
@@ -11988,6 +11995,11 @@ drop:
             Lex->server_options.server_name= $4.str;
             Lex->server_options.server_name_length= $4.length;
           }
+        | DROP COMPRESSION_DICTIONARY_SYM ident
+          {
+            Lex->sql_command = SQLCOM_DROP_COMPRESSION_DICTIONARY;
+            Lex->ident = $3;
+          }
         ;
 
 table_list:
@@ -14370,6 +14382,7 @@ keyword_sp:
         | COMPACT_SYM              {}
         | COMPLETION_SYM           {}
         | COMPRESSED_SYM           {}
+        | COMPRESSION_DICTIONARY_SYM {}
         | CONCURRENT               {}
         | CONNECTION_SYM           {}
         | CONSISTENT_SYM           {}
