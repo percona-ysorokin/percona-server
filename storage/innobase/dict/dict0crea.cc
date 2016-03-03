@@ -1790,6 +1790,108 @@ dict_create_or_check_sys_tablespace(void)
 	return(err);
 }
 
+/****************************************************************//**
+Creates the zip_dict system table inside InnoDB
+at server bootstrap or server start if it is not found or is
+not of the right form.
+@return	DB_SUCCESS or error code */
+UNIV_INTERN
+dberr_t
+dict_create_or_check_sys_zip_dict(void)
+/*=====================================*/
+{
+	trx_t*		trx;
+	my_bool		srv_file_per_table_backup;
+	dberr_t		err;
+	dberr_t		sys_err;
+
+	ut_a(srv_get_active_thread_type() == SRV_NONE);
+
+	/* Note: The master thread has not been started at this point. */
+
+	sys_err = dict_check_if_system_table_exists(
+		"SYS_ZIP_DICT", DICT_NUM_FIELDS__SYS_ZIP_DICT + 1, 1);
+
+	if (sys_err == DB_SUCCESS) {
+		return(DB_SUCCESS);
+	}
+
+	trx = trx_allocate_for_mysql();
+
+	trx_set_dict_operation(trx, TRX_DICT_OP_TABLE);
+
+	trx->op_info = "creating zip_dict sys table";
+
+	row_mysql_lock_data_dictionary(trx);
+
+	/* Check which incomplete table definition to drop. */
+
+	if (sys_err == DB_CORRUPTION) {
+		ib_logf(IB_LOG_LEVEL_WARN,
+			"Dropping incompletely created "
+			"SYS_ZIP_DICT table.");
+		row_drop_table_for_mysql("SYS_ZIP_DICT", trx, TRUE);
+	}
+
+	ib_logf(IB_LOG_LEVEL_INFO,
+		"Creating zip_dict system table.");
+
+	/* We always want SYSTEM tables to be created inside the system
+	tablespace. */
+	srv_file_per_table_backup = srv_file_per_table;
+	srv_file_per_table = 0;
+
+	err = que_eval_sql(
+		NULL,
+		"PROCEDURE CREATE_SYS_ZIP_DICT_PROC () IS\n"
+		"BEGIN\n"
+		"CREATE TABLE SYS_ZIP_DICT(\n"
+		" ID INT, NAME CHAR, DATA CHAR);\n"
+		"CREATE UNIQUE CLUSTERED INDEX SYS_ZIP_DICT_ID"
+		" ON SYS_ZIP_DICT (ID);\n"
+		"END;\n",
+		FALSE, trx);
+
+	if (err != DB_SUCCESS) {
+		ib_logf(IB_LOG_LEVEL_ERROR,
+			"Creation of SYS_ZIP_DICT"
+			"has failed with error %lu.  Tablespace is full. "
+			"Dropping incompletely created tables.",
+			(ulong) err);
+
+		ut_a(err == DB_OUT_OF_FILE_SPACE
+		     || err == DB_TOO_MANY_CONCURRENT_TRXS);
+
+		row_drop_table_for_mysql("SYS_ZIP_DICT", trx, TRUE);
+
+		if (err == DB_OUT_OF_FILE_SPACE) {
+			err = DB_MUST_GET_MORE_FILE_SPACE;
+		}
+	}
+
+	trx_commit_for_mysql(trx);
+
+	row_mysql_unlock_data_dictionary(trx);
+
+	trx_free_for_mysql(trx);
+
+	srv_file_per_table = srv_file_per_table_backup;
+
+	if (err == DB_SUCCESS) {
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"zip_dict system table created.");
+	}
+
+	/* Note: The master thread has not been started at this point. */
+	/* Confirm and move to the non-LRU part of the table LRU list. */
+
+	sys_err = dict_check_if_system_table_exists(
+		"SYS_ZIP_DICT", DICT_NUM_FIELDS__SYS_ZIP_DICT + 1, 1);
+	ut_a(sys_err == DB_SUCCESS);
+
+	return(err);
+}
+
 /********************************************************************//**
 Add a single tablespace definition to the data dictionary tables in the
 database.
@@ -1842,4 +1944,34 @@ dict_create_add_tablespace_to_dictionary(
 	trx->op_info = "";
 
 	return(error);
+}
+
+/********************************************************************//**
+Add a single compression dictionary definition to the data dictionary
+tables in the database.
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_add_zip_dict(
+/*=====================================*/
+	ulint       id,   /*!< in: tablespace id */
+	const char* name, /*!< in: tablespace name */
+	const char* data, /*!< in: tablespace data */
+	trx_t*		trx)  /*!< in/out: transaction */
+{
+	pars_info_t* info = pars_info_create();
+
+	pars_info_add_int4_literal(info, "id", id);
+	pars_info_add_str_literal(info, "name", name);
+	pars_info_add_str_literal(info, "data", data);
+
+	dberr_t error = que_eval_sql(info,
+			     "PROCEDURE P () IS\n"
+			     "BEGIN\n"
+			     "INSERT INTO SYS_ZIP_DICT VALUES"
+			     "(:id, :name, :data);\n"
+			     "END;\n",
+			     FALSE, trx);
+
+	return error;
 }

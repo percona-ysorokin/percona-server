@@ -6777,3 +6777,39 @@ dict_tf_to_row_format_string(
 	return(0);
 }
 #endif /* !UNIV_HOTBACKUP */
+
+/********************************************************************//**
+Insert a records into SYS_ZIP_DICT.
+@return	DB_SUCCESS if OK, dberr_t if the insert failed */
+UNIV_INTERN
+dberr_t
+dict_create_zip_dict(
+/*================================*/
+	const char*	name,	/*!< in: zip_dict name */
+	const char*	data)	/*!< in: zip_dict data */
+{
+	dberr_t		err = DB_SUCCESS;
+	trx_t*		trx;
+
+	ut_ad(name);
+	ut_ad(data);
+
+	rw_lock_x_lock(&dict_operation_lock);
+	dict_mutex_enter_for_mysql();
+
+	trx = trx_allocate_for_background();
+	trx->op_info = "insert zip_dict";
+	trx->dict_operation_lock_mode = RW_X_LATCH;
+	trx_start_for_ddl(trx, TRX_DICT_OP_INDEX);
+
+	err = dict_create_add_zip_dict(1, name, data, trx);
+
+	trx_commit_for_mysql(trx);
+	trx->dict_operation_lock_mode = 0;
+	trx_free_for_background(trx);
+
+	dict_mutex_exit_for_mysql();
+	rw_lock_x_unlock(&dict_operation_lock);
+
+	return(err);
+}

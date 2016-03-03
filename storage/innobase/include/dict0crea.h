@@ -151,6 +151,14 @@ not of the right form.
 UNIV_INTERN
 dberr_t
 dict_create_or_check_sys_tablespace(void);
+/****************************************************************//**
+Creates the zip_dict system table inside InnoDB
+at server bootstrap or server start if it is not found or is
+not of the right form.
+@return	DB_SUCCESS or error code */
+UNIV_INTERN
+dberr_t
+dict_create_or_check_sys_zip_dict(void);
 /*=====================================*/
 /********************************************************************//**
 Add a single tablespace definition to the data dictionary tables in the
@@ -167,6 +175,18 @@ dict_create_add_tablespace_to_dictionary(
 	trx_t*		trx,		/*!< in: transaction */
 	bool		commit);	/*!< in: if true then commit the
 					transaction */
+/********************************************************************//**
+Add a single compression dictionary definition to the data dictionary
+tables in the database.
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_add_zip_dict(
+/*=====================================*/
+	ulint       id,   /*!< in: tablespace id */
+	const char* name, /*!< in: tablespace name */
+	const char* data, /*!< in: tablespace data */
+	trx_t*		trx); /*!< in/out: transaction */
 /********************************************************************//**
 Add a foreign key definition to the data dictionary tables.
 @return	error code or DB_SUCCESS */

@@ -1845,6 +1845,16 @@ dict_table_set_corrupt_by_space(
 	ulint	space_id,
 	ibool	need_mutex);
 
+/********************************************************************//**
+Insert a records into SYS_ZIP_DICT.
+@return	DB_SUCCESS if OK, dberr_t if the insert failed */
+UNIV_INTERN
+dberr_t
+dict_create_zip_dict(
+/*================================*/
+	const char*	name,	/*!< in: zip_dict name */
+	const char*	data);	/*!< in: zip_dict data */
+
 #ifndef UNIV_NONINL
 #include "dict0dict.ic"
 #endif
