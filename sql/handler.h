@@ -983,6 +983,8 @@ struct handlerton
                                     const char *table_name,
                                     bool is_sql_layer_system_table);
 
+  bool (*create_zip_dict)(handlerton *hton, THD* thd, const char* name, const char* data);
+
    uint32 license; /* Flag for Engine License */
    void *data; /* Location for engines to keep personal structures */
 };

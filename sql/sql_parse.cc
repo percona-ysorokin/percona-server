@@ -71,6 +71,7 @@
 #include "sql_binlog.h"       // mysql_client_binlog_statement
 #include "sql_do.h"           // mysql_do
 #include "sql_help.h"         // mysqld_help
+#include "sql_zip_dict.h"     // mysqld_create_zip_dict
 #include "rpl_constants.h"    // Incident, INCIDENT_LOST_EVENTS
 #include "log_event.h"
 #include "rpl_slave.h"
@@ -4326,10 +4327,13 @@ end_with_restore_list:
     break;
   case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
   {
+	/*
     push_warning_printf(thd, Sql_condition::WARN_LEVEL_NOTE,
                         ER_NOT_ALLOWED_COMMAND, "Create compression dictionary %s('%s')",
                         lex->ident.str, lex->default_value->str_value.ptr());
-    my_ok(thd);
+	*/
+    if (!(res = mysql_create_zip_dict(thd, lex->ident.str, lex->default_value->str_value.ptr())))
+      my_ok(thd);
     break;
   }
   case SQLCOM_DROP_COMPRESSION_DICTIONARY:

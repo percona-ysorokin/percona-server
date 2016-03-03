@@ -1352,6 +1352,17 @@ normalize_table_name_low(
 	ibool           set_lower_case); /* in: TRUE if we want to set
 					 name to lower case */
 
+/*****************************************************************//**
+Creates a new compression dictionary. */
+static
+bool
+innobase_create_zip_dict(
+/*======================*/
+  handlerton*  hton,  /*!< in: innobase handlerton */
+  THD*  thd,          /*!< in: handle to the MySQL thread */
+  const char* name,   /*!< in: zip dictionary name */
+  const char* data);  /*!< in: zip dictionary data */
+
 /*************************************************************//**
 Checks if buffer pool is big enough to enable backoff algorithm.
 InnoDB empty free list algorithm backoff requires free pages
@@ -3412,6 +3423,8 @@ innobase_init(
 
 	innobase_hton->kill_connection = innobase_kill_connection;
 
+	innobase_hton->create_zip_dict = innobase_create_zip_dict;
+
 	ut_a(DATA_MYSQL_TRUE_VARCHAR == (ulint)MYSQL_TYPE_VARCHAR);
 
 #ifndef DBUG_OFF
@@ -4078,6 +4091,20 @@ innobase_purge_changed_page_bitmaps(
 	ulonglong lsn)	/*!< in: LSN to purge files up to */
 {
 	return (my_bool)log_online_purge_changed_page_bitmaps(lsn);
+}
+
+/*****************************************************************//**
+Creates a new compression dictionary. */
+static
+bool
+innobase_create_zip_dict(
+/*======================*/
+  handlerton*  hton,  /*!< in: innobase handlerton */
+  THD*  thd,          /*!< in: handle to the MySQL thread */
+  const char* name,   /*!< in: zip dictionary name */
+  const char* data)   /*!< in: zip dictionary data */
+{
+	return dict_create_zip_dict(name, data) == DB_SUCCESS;
 }
 
 /*****************************************************************//**

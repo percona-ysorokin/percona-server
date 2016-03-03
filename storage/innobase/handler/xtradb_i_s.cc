@@ -32,6 +32,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include <read0i_s.h>
 #include <trx0i_s.h>
 #include "srv0start.h"	/* for srv_was_started */
+#include <btr0pcur.h> /* btr_pcur_t */
 #include <btr0sea.h> /* btr_search_sys */
 #include <log0recv.h> /* recv_sys */
 #include <fil0fil.h>
@@ -616,7 +617,7 @@ enum zip_dict_field_type
 	zip_dict_field_zip_dict
 };
 
-static ST_FIELD_INFO xtradb_zip_dict_fields_info[] =
+static ST_FIELD_INFO xtradb_sys_zip_dict_fields_info[] =
 {
 	{ STRUCT_FLD(field_name, "id"),
 	STRUCT_FLD(field_length, MY_INT64_NUM_DECIMAL_DIGITS),
@@ -645,35 +646,98 @@ static ST_FIELD_INFO xtradb_zip_dict_fields_info[] =
 	END_OF_ST_FIELD_INFO
 };
 
-static int xtradb_zip_dict_fill_table(
-  THD*		thd,	/* in: thread */
-  TABLE_LIST*	tables,	/* in/out: tables to fill */
-  Item*	/* in: condition (ignored) */
-)
+/**********************************************************************//**
+Function to fill INFORMATION_SCHEMA.XTRADB_ZIP_DICT with information
+collected by scanning SYS_ZIP_DICT table.
+@return 0 on success */
+static
+int
+xtradb_i_s_dict_fill_sys_zip_dict(
+/*==========================*/
+	THD*		thd,		/*!< in: thread */
+	ulint		id,			/*!< in: dict ID */
+	const char*	name,		/*!< in: dict name */
+	const char*	data,		/*!< in: dict data */
+	TABLE*		table_to_fill)	/*!< in/out: fill this table */
 {
-	TABLE* table = (TABLE *)tables->table;
-	Field**	fields = table->field;
+	DBUG_ENTER("xtradb_i_s_dict_fill_sys_zip_dict");
 
-	DBUG_ENTER("xtradb_zip_dict_fill_table");
+	Field**	fields = table_to_fill->field;
 
-	/* deny access to non-superusers */
-	if (check_global_access(thd, PROCESS_ACL))
-	{
+	OK(field_store_ulint(fields[zip_dict_field_id], id));
+	OK(field_store_string(fields[zip_dict_field_name], name));
+	OK(field_store_string(fields[zip_dict_field_zip_dict], data));
+
+	OK(schema_table_store_record(thd, table_to_fill));
+
+	DBUG_RETURN(0);
+}
+/*******************************************************************//**
+Function to populate INFORMATION_SCHEMA.XTRADB_ZIP_DICT table.
+Loop through each record in SYS_ZIP_DICT, and extract the column
+information and fill the INFORMATION_SCHEMA.XTRADB_ZIP_DICT table.
+@return 0 on success */
+static
+int
+xtradb_i_s_sys_zip_dict_fill_table(
+/*===========================*/
+	THD*		thd,	/*!< in: thread */
+	TABLE_LIST*	tables,	/*!< in/out: tables to fill */
+	Item*		)	/*!< in: condition (not used) */
+{
+	btr_pcur_t	pcur;
+	const rec_t*	rec;
+	mem_heap_t*	heap;
+	mtr_t		mtr;
+
+	DBUG_ENTER("xtradb_i_s_sys_zip_dict_fill_table");
+	RETURN_IF_INNODB_NOT_STARTED(tables->schema_table_name);
+
+	/* deny access to user without PROCESS_ACL privilege */
+	if (check_global_access(thd, PROCESS_ACL)) {
 		DBUG_RETURN(0);
 	}
 
-	RETURN_IF_INNODB_NOT_STARTED(tables->schema_table_name);
+	heap = mem_heap_create(1000);
+	mutex_enter(&dict_sys->mutex);
+	mtr_start(&mtr);
 
-	char buf[] = { 'd', '0', '\0' };
-	for (size_t i = 0; i < 2; ++i)
-	{
-		++buf[1];
-		OK(field_store_ulint(fields[zip_dict_field_id], i));
-		OK(field_store_string(fields[zip_dict_field_name], buf));
-		OK(field_store_string(fields[zip_dict_field_zip_dict], "abbccc"));
+	rec = dict_startscan_system(&pcur, &mtr, SYS_ZIP_DICT);
 
-		OK(schema_table_store_record(thd, table));
+	while (rec) {
+		const char*	err_msg;
+		ulint		id;
+		const char*	name;
+		const char*	data;
+
+		/* Extract necessary information from a SYS_ZIP_DICT row */
+		err_msg = dict_process_sys_zip_dict(
+			heap, rec, &id, &name, &data);
+
+		mtr_commit(&mtr);
+		mutex_exit(&dict_sys->mutex);
+
+		if (!err_msg) {
+			xtradb_i_s_dict_fill_sys_zip_dict(
+				thd, id, name, data,
+				tables->table);
+		} else {
+			push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
+					    ER_CANT_FIND_SYSTEM_REC, "%s",
+					    err_msg);
+		}
+
+		mem_heap_empty(heap);
+
+		/* Get the next record */
+		mutex_enter(&dict_sys->mutex);
+		mtr_start(&mtr);
+		rec = dict_getnext_system(&pcur, &mtr);
 	}
+
+	mtr_commit(&mtr);
+	mutex_exit(&dict_sys->mutex);
+	mem_heap_free(heap);
 
 	DBUG_RETURN(0);
 }
@@ -684,8 +748,8 @@ static int i_s_xtradb_zip_dict_init(void* p)
 
 	ST_SCHEMA_TABLE* schema = (ST_SCHEMA_TABLE*)p;
 
-	schema->fields_info = xtradb_zip_dict_fields_info;
-	schema->fill_table = xtradb_zip_dict_fill_table;
+	schema->fields_info = xtradb_sys_zip_dict_fields_info;
+	schema->fill_table = xtradb_i_s_sys_zip_dict_fill_table;
 
 	DBUG_RETURN(0);
 }
