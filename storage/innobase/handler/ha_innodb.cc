@@ -1249,7 +1249,7 @@ normalize_table_name_low(
 /*****************************************************************//**
 Creates a new compression dictionary. */
 static
-bool
+handler_create_zip_dict_result
 innobase_create_zip_dict(
 /*======================*/
   handlerton*  hton,  /*!< in: innobase handlerton */
@@ -3920,7 +3920,7 @@ innobase_purge_changed_page_bitmaps(
 /*****************************************************************//**
 Creates a new compression dictionary. */
 static
-bool
+handler_create_zip_dict_result
 innobase_create_zip_dict(
 /*======================*/
   handlerton*  hton,  /*!< in: innobase handlerton */
@@ -3928,7 +3928,22 @@ innobase_create_zip_dict(
   const char* name,   /*!< in: zip dictionary name */
   const char* data)   /*!< in: zip dictionary data */
 {
-	return dict_create_zip_dict(name, data) == DB_SUCCESS;
+	handler_create_zip_dict_result result = HA_CREATE_ZIP_DICT_UNKNOWN_ERROR;
+
+	DBUG_ENTER("innobase_create_zip_dict");
+	DBUG_ASSERT(hton == innodb_hton_ptr);
+	switch(dict_create_zip_dict(name, data))
+	{
+		case DB_SUCCESS:
+			result = HA_CREATE_ZIP_DICT_OK;
+			break;
+		case DB_DUPLICATE_KEY:
+			result = HA_CREATE_ZIP_DICT_ALREADY_EXISTS;
+			break;
+		default:
+			result = HA_CREATE_ZIP_DICT_UNKNOWN_ERROR;
+	}
+	DBUG_RETURN(result);
 }
 
 /*****************************************************************//**

@@ -10,5 +10,10 @@ SELECT * FROM information_schema.xtradb_zip_dict;
 
 --source include/restart_mysqld.inc
 SELECT * FROM information_schema.xtradb_zip_dict;
-CREATE COMPRESSION_DICTIONARY foo ('xyyzzz');
+CREATE COMPRESSION_DICTIONARY bar ('xyyzzz');
 SELECT * FROM information_schema.xtradb_zip_dict;
+CREATE COMPRESSION_DICTIONARY baz ('qwweee');
+SELECT * FROM information_schema.xtradb_zip_dict;
+
+--error ER_COMPRESSION_DICTIONARY_EXISTS_ERROR
+CREATE COMPRESSION_DICTIONARY baz ('qwweee');

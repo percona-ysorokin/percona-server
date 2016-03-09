@@ -4333,7 +4333,7 @@ end_with_restore_list:
                         ER_NOT_ALLOWED_COMMAND, "Create compression dictionary %s('%s')",
                         lex->ident.str, lex->default_value->str_value.ptr());
 	*/
-    if (!(res = mysql_create_zip_dict(thd, lex->ident.str, lex->default_value->str_value.ptr())))
+    if ((res = mysql_create_zip_dict(thd, lex->ident.str, lex->default_value->str_value.ptr())) == 0)
       my_ok(thd);
     break;
   }

@@ -35,10 +35,19 @@ int mysql_create_zip_dict(THD* thd, const char* name, const char* data)
   }
 
   
-  if(!hton->create_zip_dict(hton, thd, name, data))
+  handler_create_zip_dict_result create_result;
+  if((create_result = hton->create_zip_dict(hton, thd, name, data)) != HA_CREATE_ZIP_DICT_OK)
   {
-    error = HA_ADMIN_FAILED;
-    my_error(error, MYF(0));
+	if(create_result == HA_CREATE_ZIP_DICT_ALREADY_EXISTS)
+	{
+	  error = ER_COMPRESSION_DICTIONARY_EXISTS_ERROR;
+	  my_error(error, MYF(0), name);
+	}
+	else
+	{
+	  error = ER_UNKNOWN_ERROR;
+	  my_error(error, MYF(0));
+	}
     DBUG_RETURN(error);
   }
 
