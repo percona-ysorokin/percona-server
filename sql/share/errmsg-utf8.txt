@@ -7123,6 +7123,9 @@ ER_BLOB_KEY_WITH_COMPRESS
 ER_DEFINED_COMPRESS_COLUMN
   eng "Can not define column '%-.192s' in compressed format, silently change column_format to default"
 
+ER_COMPRESSION_DICTIONARY_EXISTS_ERROR
+  eng "Compression dictionary '%-.192s' already exists"
+
 #
 #  End of 5.6 error messages.
 #

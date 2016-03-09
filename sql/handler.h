@@ -800,6 +800,13 @@ struct handler_iterator {
   void *buffer;
 };
 
+enum handler_create_zip_dict_result
+{
+  HA_CREATE_ZIP_DICT_OK,             /* zip_dict successfully created */
+  HA_CREATE_ZIP_DICT_ALREADY_EXISTS, /* zip dict with such name already exists */
+  HA_CREATE_ZIP_DICT_UNKNOWN_ERROR   /* unknown error during zip_dict creation */
+};
+
 class handler;
 /*
   handlerton is a singleton structure - one instance per storage engine -
@@ -983,7 +990,7 @@ struct handlerton
                                     const char *table_name,
                                     bool is_sql_layer_system_table);
 
-  bool (*create_zip_dict)(handlerton *hton, THD* thd, const char* name, const char* data);
+  handler_create_zip_dict_result (*create_zip_dict)(handlerton *hton, THD* thd, const char* name, const char* data);
 
    uint32 license; /* Flag for Engine License */
    void *data; /* Location for engines to keep personal structures */

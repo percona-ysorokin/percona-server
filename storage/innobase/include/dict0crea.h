@@ -183,9 +183,8 @@ UNIV_INTERN
 dberr_t
 dict_create_add_zip_dict(
 /*=====================================*/
-	ulint       id,   /*!< in: tablespace id */
-	const char* name, /*!< in: tablespace name */
-	const char* data, /*!< in: tablespace data */
+	const char* name, /*!< in: zip_dict name */
+	const char* data, /*!< in: zip_dict data */
 	trx_t*		trx); /*!< in/out: transaction */
 /********************************************************************//**
 Add a foreign key definition to the data dictionary tables.

@@ -1810,7 +1810,7 @@ dict_create_or_check_sys_zip_dict(void)
 	/* Note: The master thread has not been started at this point. */
 
 	sys_err = dict_check_if_system_table_exists(
-		"SYS_ZIP_DICT", DICT_NUM_FIELDS__SYS_ZIP_DICT + 1, 1);
+		"SYS_ZIP_DICT", DICT_NUM_FIELDS__SYS_ZIP_DICT + 1, 2);
 
 	if (sys_err == DB_SUCCESS) {
 		return(DB_SUCCESS);
@@ -1849,6 +1849,8 @@ dict_create_or_check_sys_zip_dict(void)
 		" ID INT, NAME CHAR, DATA CHAR);\n"
 		"CREATE UNIQUE CLUSTERED INDEX SYS_ZIP_DICT_ID"
 		" ON SYS_ZIP_DICT (ID);\n"
+		"CREATE UNIQUE INDEX SYS_ZIP_DICT_NAME"
+		" ON SYS_ZIP_DICT (NAME);\n"
 		"END;\n",
 		FALSE, trx);
 
@@ -1886,7 +1888,7 @@ dict_create_or_check_sys_zip_dict(void)
 	/* Confirm and move to the non-LRU part of the table LRU list. */
 
 	sys_err = dict_check_if_system_table_exists(
-		"SYS_ZIP_DICT", DICT_NUM_FIELDS__SYS_ZIP_DICT + 1, 1);
+		"SYS_ZIP_DICT", DICT_NUM_FIELDS__SYS_ZIP_DICT + 1, 2);
 	ut_a(sys_err == DB_SUCCESS);
 
 	return(err);
@@ -1954,22 +1956,31 @@ UNIV_INTERN
 dberr_t
 dict_create_add_zip_dict(
 /*=====================================*/
-	ulint       id,   /*!< in: tablespace id */
-	const char* name, /*!< in: tablespace name */
-	const char* data, /*!< in: tablespace data */
+	const char* name, /*!< in: zip_dict name */
+	const char* data, /*!< in: zip_dict data */
 	trx_t*		trx)  /*!< in/out: transaction */
 {
 	pars_info_t* info = pars_info_create();
 
-	pars_info_add_int4_literal(info, "id", id);
 	pars_info_add_str_literal(info, "name", name);
 	pars_info_add_str_literal(info, "data", data);
 
 	dberr_t error = que_eval_sql(info,
 			     "PROCEDURE P () IS\n"
+				 "max_id INT;\n"
+			     "DECLARE CURSOR cur IS\n"
+			     " SELECT ID FROM SYS_ZIP_DICT\n"
+			     " ORDER BY ID DESC;\n"
 			     "BEGIN\n"
-			     "INSERT INTO SYS_ZIP_DICT VALUES"
-			     "(:id, :name, :data);\n"
+				 "  max_id := 0;\n"
+				 "  OPEN cur;\n"
+				 "  FETCH cur INTO max_id;\n"
+				 "  IF (SQL % NOTFOUND) THEN\n"
+				 "    max_id := 0;\n"
+				 "  END IF;\n"
+				 "  CLOSE cur;\n"
+			     "  INSERT INTO SYS_ZIP_DICT VALUES"
+			     "    (max_id + 1, :name, :data);\n"
 			     "END;\n",
 			     FALSE, trx);
 
