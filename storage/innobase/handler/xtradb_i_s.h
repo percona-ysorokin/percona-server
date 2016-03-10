@@ -23,5 +23,6 @@ extern struct st_mysql_plugin	i_s_xtradb_read_view;
 extern struct st_mysql_plugin	i_s_xtradb_internal_hash_tables;
 extern struct st_mysql_plugin	i_s_xtradb_rseg;
 extern struct st_mysql_plugin	i_s_xtradb_zip_dict;
+extern struct st_mysql_plugin	i_s_xtradb_zip_dict_cols;
 
 #endif /* XTRADB_I_S_H */

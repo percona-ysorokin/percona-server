@@ -9712,6 +9712,7 @@ void Create_field::init_for_tmp_table(enum_field_types sql_type_arg,
   @param fld_interval_list     Interval list (if any.)
   @param fld_charset           Column charset.
   @param fld_geom_type         Column geometry type (if any.)
+  @param fld_zip_dict          Column compression dictionary.
 
   @retval
     FALSE on success.
@@ -9725,7 +9726,8 @@ bool Create_field::init(THD *thd, const char *fld_name,
                         Item *fld_default_value, Item *fld_on_update_value,
                         LEX_STRING *fld_comment, const char *fld_change,
                         List<String> *fld_interval_list,
-                        const CHARSET_INFO *fld_charset, uint fld_geom_type)
+                        const CHARSET_INFO *fld_charset, uint fld_geom_type,
+						const LEX_STRING *fld_zip_dict)
 {
   uint sign_len, allowed_type_modifier= 0;
   ulong max_field_charlength= MAX_FIELD_CHARLENGTH;
@@ -10084,7 +10086,7 @@ bool Create_field::init(THD *thd, const char *fld_name,
     my_error(ER_WRONG_FIELD_SPEC, MYF(0), fld_name);
     DBUG_RETURN(TRUE);
   }
-
+  zip_dict = *fld_zip_dict;
   DBUG_RETURN(FALSE); /* success */
 }
 

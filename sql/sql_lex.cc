@@ -504,6 +504,10 @@ void lex_start(THD *thd)
   lex->is_set_password_sql= false;
   lex->mark_broken(false);
   lex->set_statement= false;
+
+  lex->zip_dict_name.str= 0;
+  lex->zip_dict_name.length= 0;
+
   DBUG_VOID_RETURN;
 }
 

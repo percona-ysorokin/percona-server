@@ -187,6 +187,18 @@ dict_create_add_zip_dict(
 	const char* data, /*!< in: zip_dict data */
 	trx_t*		trx); /*!< in/out: transaction */
 /********************************************************************//**
+Add a single compression dictionary definition to the data dictionary
+tables in the database.
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_add_zip_dict_reference(
+/*=====================================*/
+	ulint		table_id,   /*!< in: table name */
+	ulint		column_pos, /*!< in: column position*/
+	const char* dict_name,  /*!< in: dict name */
+	trx_t*		trx);       /*!< in/out: transaction */
+/********************************************************************//**
 Add a foreign key definition to the data dictionary tables.
 @return	error code or DB_SUCCESS */
 UNIV_INTERN

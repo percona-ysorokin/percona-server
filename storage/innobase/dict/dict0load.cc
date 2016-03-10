@@ -57,7 +57,8 @@ static const char* SYSTEM_TABLE_NAME[] = {
 	"SYS_FOREIGN_COLS",
 	"SYS_TABLESPACES",
 	"SYS_DATAFILES",
-	"SYS_ZIP_DICT"
+	"SYS_ZIP_DICT",
+	"SYS_ZIP_DICT_COLS"
 };
 
 /* If this flag is TRUE, then we will load the cluster index's (and tables')
@@ -738,10 +739,10 @@ const char*
 dict_process_sys_zip_dict(
 /*=========================*/
 	mem_heap_t*	heap,		/*!< in/out: heap memory */
-	const rec_t*	rec,		/*!< in: current SYS_ZIP_DICT rec */
+	const rec_t*	rec,	/*!< in: current SYS_ZIP_DICT rec */
 	ulint*			id,		/*!< out: dict id */
-	const char**	name,		/*!< out: dict name */
-	const char**	data)		/*!< out: dict data */
+	const char**	name,	/*!< out: dict name */
+	const char**	data)	/*!< out: dict data */
 {
 	ulint		len;
 	const byte*	field;
@@ -796,6 +797,72 @@ err_len:
 	return(NULL);
 }
 
+/********************************************************************//**
+This function parses a SYS_ZIP_DICT_COLS record, extracts necessary
+information from the record and returns to caller.
+@return error message, or NULL on success */
+UNIV_INTERN
+const char*
+dict_process_sys_zip_dict_cols(
+/*=========================*/
+	mem_heap_t*	heap,			/*!< in/out: heap memory */
+	const rec_t*	rec,		/*!< in: current SYS_ZIP_DICT rec */
+	ulint*			table_id,	/*!< out: table id */
+	ulint*			column_pos,	/*!< out: column position */
+	ulint*			dict_id)	/*!< out: dict id */
+{
+	ulint		len;
+	const byte*	field;
+
+	/* Initialize the output values */
+	*table_id = ULINT_UNDEFINED;
+	*column_pos = ULINT_UNDEFINED;
+	*dict_id = ULINT_UNDEFINED;
+
+	if (rec_get_deleted_flag(rec, 0)) {
+		return("delete-marked record in SYS_ZIP_DICT_COLS");
+	}
+
+	if (rec_get_n_fields_old(rec) != DICT_NUM_FIELDS__SYS_ZIP_DICT_COLS) {
+		return("wrong number of columns in SYS_ZIP_DICT_COLS record");
+	}
+
+	field = rec_get_nth_field_old(
+		rec, DICT_FLD__SYS_ZIP_DICT_COLS__TABLE_ID, &len);
+	if (len != DICT_FLD_LEN_SPACE) {
+err_len:
+		return("incorrect column length in SYS_ZIP_DICT_COLS");
+	}
+	*table_id = mach_read_from_4(field);
+
+	field = rec_get_nth_field_old(
+		rec, DICT_FLD__SYS_ZIP_DICT_COLS__COLUMN_POS, &len);
+	if (len != DICT_FLD_LEN_SPACE) {
+		goto err_len;
+	}
+	*column_pos = mach_read_from_4(field);
+
+	rec_get_nth_field_offs_old(
+		rec, DICT_FLD__SYS_ZIP_DICT_COLS__DB_TRX_ID, &len);
+	if (len != DATA_TRX_ID_LEN && len != UNIV_SQL_NULL) {
+		goto err_len;
+	}
+
+	rec_get_nth_field_offs_old(
+		rec, DICT_FLD__SYS_ZIP_DICT_COLS__DB_ROLL_PTR, &len);
+	if (len != DATA_ROLL_PTR_LEN && len != UNIV_SQL_NULL) {
+		goto err_len;
+	}
+
+	field = rec_get_nth_field_old(
+		rec, DICT_FLD__SYS_ZIP_DICT_COLS__DICT_ID, &len);
+	if (len != DICT_FLD_LEN_SPACE) {
+		goto err_len;
+	}
+	*dict_id = mach_read_from_4(field);
+
+	return(NULL);
+}
 /********************************************************************//**
 Determine the flags of a table as stored in SYS_TABLES.TYPE and N_COLS.
 @return  ULINT_UNDEFINED if error, else a valid dict_table_t::flags. */
