@@ -7192,7 +7192,7 @@ bool add_field_to_list(THD *thd, LEX_STRING *field_name, enum_field_types type,
                        LEX_STRING *comment,
 		       char *change,
                        List<String> *interval_list, const CHARSET_INFO *cs,
-		       uint uint_geom_type)
+		       uint uint_geom_type, const LEX_STRING *zip_dict)
 {
   register Create_field *new_field;
   LEX  *lex= thd->lex;
@@ -7279,7 +7279,7 @@ bool add_field_to_list(THD *thd, LEX_STRING *field_name, enum_field_types type,
   if (!(new_field= new Create_field()) ||
       new_field->init(thd, field_name->str, type, length, decimals, type_modifier,
                       default_value, on_update_value, comment, change,
-                      interval_list, cs, uint_geom_type))
+                      interval_list, cs, uint_geom_type, zip_dict))
     DBUG_RETURN(1);
 
   lex->alter_info.create_list.push_back(new_field);

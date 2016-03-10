@@ -1,19 +1,37 @@
 --source include/have_innodb.inc
 
-SHOW CREATE TABLE information_schema.innodb_sys_tablespaces;
+SHOW CREATE TABLE information_schema.innodb_sys_tables;
+
 SELECT * FROM information_schema.xtradb_zip_dict;
 SHOW CREATE TABLE information_schema.xtradb_zip_dict;
 DESCRIBE information_schema.xtradb_zip_dict;
+
+SELECT * FROM information_schema.xtradb_zip_dict_cols;
+SHOW CREATE TABLE information_schema.xtradb_zip_dict_cols;
+DESCRIBE information_schema.xtradb_zip_dict_cols;
+
 CREATE COMPRESSION_DICTIONARY foo ('abbccc');
 DROP COMPRESSION_DICTIONARY foo;
 SELECT * FROM information_schema.xtradb_zip_dict;
+SELECT * FROM information_schema.xtradb_zip_dict_cols;
 
 --source include/restart_mysqld.inc
 SELECT * FROM information_schema.xtradb_zip_dict;
+SELECT * FROM information_schema.xtradb_zip_dict_cols;
+
 CREATE COMPRESSION_DICTIONARY bar ('xyyzzz');
 SELECT * FROM information_schema.xtradb_zip_dict;
+SELECT * FROM information_schema.xtradb_zip_dict_cols;
+
 CREATE COMPRESSION_DICTIONARY baz ('qwweee');
 SELECT * FROM information_schema.xtradb_zip_dict;
+SELECT * FROM information_schema.xtradb_zip_dict_cols;
 
 --error ER_COMPRESSION_DICTIONARY_EXISTS_ERROR
 CREATE COMPRESSION_DICTIONARY baz ('qwweee');
+CREATE TABLE t1(
+  id INT,
+  a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY foo
+) ENGINE=InnoDB;
+
+DROP TABLE t1;

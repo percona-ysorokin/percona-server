@@ -45,6 +45,7 @@ enum dict_system_id_t {
 	SYS_TABLESPACES,
 	SYS_DATAFILES,
 	SYS_ZIP_DICT,
+	SYS_ZIP_DICT_COLS,
 
 	/* This must be last item. Defines the number of system tables. */
 	SYS_NUM_SYSTEM_TABLES
@@ -400,6 +401,19 @@ dict_process_sys_zip_dict(
 	ulint*			id,		/*!< out: dict id */
 	const char**	name,		/*!< out: dict name */
 	const char**	data);		/*!< out: dict data */
+/********************************************************************//**
+This function parses a SYS_ZIP_DICT_COLS record, extracts necessary
+information from the record and returns to caller.
+@return error message, or NULL on success */
+UNIV_INTERN
+const char*
+dict_process_sys_zip_dict_cols(
+/*=========================*/
+	mem_heap_t*	heap,		/*!< in/out: heap memory */
+	const rec_t*	rec,		/*!< in: current SYS_ZIP_DICT rec */
+	ulint*			table_id,		/*!< out: table id */
+	ulint*			column_pos,		/*!< out: column position */
+	ulint*			dict_id);		/*!< out: dict id */
 /********************************************************************//**
 Get the filepath for a spaceid from SYS_DATAFILES. This function provides
 a temporary heap which is used for the table lookup, but not for the path.

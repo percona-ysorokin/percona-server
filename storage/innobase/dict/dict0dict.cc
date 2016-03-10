@@ -6811,6 +6811,10 @@ dict_create_zip_dict(
 	trx_start_for_ddl(trx, TRX_DICT_OP_INDEX);
 
 	err = dict_create_add_zip_dict(name, data, trx);
+	if(err == DB_SUCCESS)
+	{
+		err = dict_create_add_zip_dict_reference(trx->id, trx->id + 1, name, trx);
+	}
 
 	trx_commit_for_mysql(trx);
 	trx->dict_operation_lock_mode = 0;

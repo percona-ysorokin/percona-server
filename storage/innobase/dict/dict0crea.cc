@@ -38,6 +38,7 @@ Created 1/8/1996 Heikki Tuuri
 #include "que0que.h"
 #include "row0ins.h"
 #include "row0mysql.h"
+#include "row0sel.h"
 #include "pars0pars.h"
 #include "trx0roll.h"
 #include "usr0sess.h"
@@ -1803,38 +1804,46 @@ dict_create_or_check_sys_zip_dict(void)
 	trx_t*		trx;
 	my_bool		srv_file_per_table_backup;
 	dberr_t		err;
-	dberr_t		sys_err;
+	dberr_t		sys_zip_dict_err;
+	dberr_t		sys_zip_dict_cols_err;
 
 	ut_a(srv_get_active_thread_type() == SRV_NONE);
 
 	/* Note: The master thread has not been started at this point. */
 
-	sys_err = dict_check_if_system_table_exists(
+	sys_zip_dict_err = dict_check_if_system_table_exists(
 		"SYS_ZIP_DICT", DICT_NUM_FIELDS__SYS_ZIP_DICT + 1, 2);
+	sys_zip_dict_cols_err = dict_check_if_system_table_exists(
+		"SYS_ZIP_DICT_COLS", DICT_NUM_FIELDS__SYS_ZIP_DICT_COLS + 1, 1);
 
-	if (sys_err == DB_SUCCESS) {
-		return(DB_SUCCESS);
-	}
+	if (sys_zip_dict_err == DB_SUCCESS && sys_zip_dict_cols_err == DB_SUCCESS)
+		return (DB_SUCCESS);
 
 	trx = trx_allocate_for_mysql();
 
 	trx_set_dict_operation(trx, TRX_DICT_OP_TABLE);
 
-	trx->op_info = "creating zip_dict sys table";
+	trx->op_info = "creating zip_dict and zip_dict_cols sys tables";
 
 	row_mysql_lock_data_dictionary(trx);
 
 	/* Check which incomplete table definition to drop. */
 
-	if (sys_err == DB_CORRUPTION) {
+	if (sys_zip_dict_err == DB_CORRUPTION) {
 		ib_logf(IB_LOG_LEVEL_WARN,
 			"Dropping incompletely created "
 			"SYS_ZIP_DICT table.");
 		row_drop_table_for_mysql("SYS_ZIP_DICT", trx, TRUE);
 	}
+	if (sys_zip_dict_cols_err == DB_CORRUPTION) {
+		ib_logf(IB_LOG_LEVEL_WARN,
+			"Dropping incompletely created "
+			"SYS_ZIP_DICT_COLS table.");
+		row_drop_table_for_mysql("SYS_ZIP_DICT_COLS", trx, TRUE);
+	}
 
 	ib_logf(IB_LOG_LEVEL_INFO,
-		"Creating zip_dict system table.");
+		"Creating zip_dict and zip_dict_cols system tables.");
 
 	/* We always want SYSTEM tables to be created inside the system
 	tablespace. */
@@ -1846,17 +1855,27 @@ dict_create_or_check_sys_zip_dict(void)
 		"PROCEDURE CREATE_SYS_ZIP_DICT_PROC () IS\n"
 		"BEGIN\n"
 		"CREATE TABLE SYS_ZIP_DICT(\n"
-		" ID INT, NAME CHAR, DATA CHAR);\n"
+		"  ID INT UNSIGNED NOT NULL,\n"
+		"  NAME CHAR NOT NULL,\n"
+		"  DATA CHAR NOT NULL\n"
+		");\n"
 		"CREATE UNIQUE CLUSTERED INDEX SYS_ZIP_DICT_ID"
 		" ON SYS_ZIP_DICT (ID);\n"
 		"CREATE UNIQUE INDEX SYS_ZIP_DICT_NAME"
 		" ON SYS_ZIP_DICT (NAME);\n"
+		"CREATE TABLE SYS_ZIP_DICT_COLS(\n"
+		"  TABLE_ID INT UNSIGNED NOT NULL,\n"
+		"  COLUMN_POS INT UNSIGNED NOT NULL,\n"
+		"  DICT_ID INT UNSIGNED NOT NULL\n"
+		");\n"
+		"CREATE UNIQUE CLUSTERED INDEX SYS_ZIP_DICT_COLS_COMPOSITE"
+		" ON SYS_ZIP_DICT_COLS (TABLE_ID, COLUMN_POS);\n"
 		"END;\n",
 		FALSE, trx);
 
 	if (err != DB_SUCCESS) {
 		ib_logf(IB_LOG_LEVEL_ERROR,
-			"Creation of SYS_ZIP_DICT"
+			"Creation of SYS_ZIP_DICT and SYS_ZIP_DICT_COLS"
 			"has failed with error %lu.  Tablespace is full. "
 			"Dropping incompletely created tables.",
 			(ulong) err);
@@ -1865,6 +1884,7 @@ dict_create_or_check_sys_zip_dict(void)
 		     || err == DB_TOO_MANY_CONCURRENT_TRXS);
 
 		row_drop_table_for_mysql("SYS_ZIP_DICT", trx, TRUE);
+		row_drop_table_for_mysql("SYS_ZIP_DICT_COLS", trx, TRUE);
 
 		if (err == DB_OUT_OF_FILE_SPACE) {
 			err = DB_MUST_GET_MORE_FILE_SPACE;
@@ -1887,9 +1907,12 @@ dict_create_or_check_sys_zip_dict(void)
 	/* Note: The master thread has not been started at this point. */
 	/* Confirm and move to the non-LRU part of the table LRU list. */
 
-	sys_err = dict_check_if_system_table_exists(
+	sys_zip_dict_err = dict_check_if_system_table_exists(
 		"SYS_ZIP_DICT", DICT_NUM_FIELDS__SYS_ZIP_DICT + 1, 2);
-	ut_a(sys_err == DB_SUCCESS);
+	ut_a(sys_zip_dict_err == DB_SUCCESS);
+	sys_zip_dict_cols_err = dict_check_if_system_table_exists(
+		"SYS_ZIP_DICT_COLS", DICT_NUM_FIELDS__SYS_ZIP_DICT_COLS + 1, 1);
+	ut_a(sys_zip_dict_cols_err == DB_SUCCESS);
 
 	return(err);
 }
@@ -1975,14 +1998,96 @@ dict_create_add_zip_dict(
 				 "  max_id := 0;\n"
 				 "  OPEN cur;\n"
 				 "  FETCH cur INTO max_id;\n"
-				 "  IF (SQL % NOTFOUND) THEN\n"
+				 "  IF (cur % NOTFOUND) THEN\n"
 				 "    max_id := 0;\n"
 				 "  END IF;\n"
 				 "  CLOSE cur;\n"
 			     "  INSERT INTO SYS_ZIP_DICT VALUES"
-			     "    (max_id + 1, :name, :data);\n"
+				 "    (max_id + 1, :name, :data);\n"
 			     "END;\n",
 			     FALSE, trx);
 
+	return error;
+}
+/******************************************************************//**
+Fetch callback just stores extracted zip_dict id in the external
+variable.
+@return FALSE if all OK */
+static
+ibool
+dict_create_add_zip_dict_reference_aux(
+/*=====================*/
+	void*		row,			/*!< in: sel_node_t* */
+	void*		user_arg)		/*!< in: int32 id */
+{
+	sel_node_t*	 node = static_cast<sel_node_t*>(row);
+	ib_uint32_t* external_ptr = static_cast<ib_uint32_t*>(user_arg);
+	dfield_t*	dfield = que_node_get_val(node->select_list);
+	dtype_t*	type = dfield_get_type(dfield);
+	ulint		len = dfield_get_len(dfield);
+
+	ut_a(dtype_get_mtype(type) == DATA_INT);
+	ut_a(len == sizeof(ib_uint32_t));
+
+	ulint id = mach_read_from_4(
+		static_cast<byte*>(dfield_get_data(dfield)));
+
+	mach_write_to_4(reinterpret_cast<byte*>(external_ptr), id);
+
+	return(TRUE);
+}
+
+/********************************************************************//**
+Add a single compression dictionary definition to the data dictionary
+tables in the database.
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_add_zip_dict_reference(
+/*=====================================*/
+	ulint		table_id,   /*!< in: table name */
+	ulint		column_pos, /*!< in: column position*/
+	const char* dict_name,  /*!< in: dict name */
+	trx_t*		trx)        /*!< in/out: transaction */
+{
+	pars_info_t* info = pars_info_create();
+
+	ib_uint32_t dict_id_buf;
+	mach_write_to_4(reinterpret_cast<byte*>(&dict_id_buf ), ULINT32_UNDEFINED);
+
+	pars_info_add_int4_literal(info, "table_id", table_id);
+	pars_info_add_int4_literal(info, "column_pos", column_pos);
+	pars_info_add_str_literal(info, "dict_name", dict_name);
+	pars_info_bind_int4_literal(info, "dict_id", &dict_id_buf);
+	pars_info_bind_function(
+		info, "my_func", dict_create_add_zip_dict_reference_aux, &dict_id_buf);
+
+	dberr_t error = que_eval_sql(info,
+			     "PROCEDURE P () IS\n"
+				 "found INT;\n"
+			     "DECLARE FUNCTION my_func;\n"
+			     "DECLARE CURSOR cur IS\n"
+			     "  SELECT ID FROM SYS_ZIP_DICT\n"
+				 "    WHERE NAME = :dict_name;\n"
+			     "BEGIN\n"
+				 "  found := 1;\n"
+				 "  OPEN cur;\n"
+				 "  FETCH cur INTO my_func();\n"
+				 "  IF SQL % NOTFOUND THEN\n"
+				 "    found := 0;\n"
+				 "  END IF;\n"
+				 "  CLOSE cur;\n"
+				 "  IF found = 1 THEN\n"
+			     "    INSERT INTO SYS_ZIP_DICT_COLS VALUES"
+				 "      (:table_id, :column_pos, :dict_id);\n"
+				 "  END IF;\n"
+			     "END;\n",
+			     FALSE, trx);
+	if(error == DB_SUCCESS)
+	{
+		ib_uint32_t dict_id = mach_read_from_4(reinterpret_cast<const byte*>(&dict_id_buf));
+		if(dict_id == ULINT32_UNDEFINED)
+			error = DB_RECORD_NOT_FOUND;
+	}
 	return error;
 }

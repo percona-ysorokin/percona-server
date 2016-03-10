@@ -1718,6 +1718,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         NCHAR_STRING opt_component key_cache_name
         sp_opt_label BIN_NUM label_ident TEXT_STRING_filesystem ident_or_empty
         opt_constraint constraint opt_ident TEXT_STRING_sys_nonewline
+        opt_with_compression_dictionary
 
 %type <lex_str_ptr>
         opt_table_alias
@@ -6436,7 +6437,7 @@ field_spec:
                                   lex->default_value, lex->on_update_value, 
                                   &lex->comment,
                                   lex->change,&lex->interval_list,lex->charset,
-                                  lex->uint_geom_type))
+                                  lex->uint_geom_type, &lex->zip_dict_name))
               MYSQL_YYABORT;
           }
         ;
@@ -6822,11 +6823,12 @@ attribute:
             Lex->type|=
               (COLUMN_FORMAT_TYPE_DYNAMIC << FIELD_FLAGS_COLUMN_FORMAT);
           }
-        | COLUMN_FORMAT_SYM COMPRESSED_SYM
+        | COLUMN_FORMAT_SYM COMPRESSED_SYM opt_with_compression_dictionary
           {
             Lex->type&= ~(FIELD_FLAGS_COLUMN_FORMAT_MASK);
             Lex->type|=
               (COLUMN_FORMAT_TYPE_COMPRESSED << FIELD_FLAGS_COLUMN_FORMAT);
+            Lex->zip_dict_name = $3;
           }
         | STORAGE_SYM DEFAULT
           {
@@ -6845,6 +6847,10 @@ attribute:
           }
         ;
 
+opt_with_compression_dictionary:
+          /* empty */ { $$= null_lex_str; }
+        | WITH COMPRESSION_DICTIONARY_SYM ident { $$= $3; }
+        ;
 
 type_with_opt_collate:
         type opt_collate
@@ -7925,7 +7931,7 @@ alter_list_item:
                                   lex->default_value, lex->on_update_value,
                                   &lex->comment,
                                   $3.str, &lex->interval_list, lex->charset,
-                                  lex->uint_geom_type))
+                                  lex->uint_geom_type, &lex->zip_dict_name))
               MYSQL_YYABORT;
           }
           opt_place
