@@ -1295,6 +1295,7 @@ public:
   {
     created= false;
   }
+  bool has_compressed_columns_with_dictionaries() const;
 };
 
 

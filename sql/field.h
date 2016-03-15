@@ -538,6 +538,7 @@ public:
 
    */
   bool is_created_from_null_item;
+  LEX_STRING zip_dict; // associated compression dictionary
 
   Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
         uchar null_bit_arg, utype unireg_check_arg,
