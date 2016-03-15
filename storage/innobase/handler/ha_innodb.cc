@@ -10550,6 +10550,44 @@ ha_innobase::create(
 		dict_table_get_all_fts_indexes(innobase_table, fts->indexes);
 	}
 
+	/*
+	Adding compression dictionary <-> compressed table column links
+	to the SYS_ZIP_DICT_COLS table.
+	*/
+	if(form->has_compressed_columns_with_dictionaries())
+	{
+		innobase_table = dict_table_open_on_name(
+			norm_name, TRUE, FALSE, DICT_ERR_IGNORE_NONE);
+
+		ut_a(innobase_table);
+		dberr_t zip_dict_err = DB_SUCCESS;
+		Field **field_ptr = form->field;
+		while(zip_dict_err == DB_SUCCESS && *field_ptr != 0)
+		{
+			if((*field_ptr)->zip_dict.length != 0)
+			{
+				zip_dict_err = dict_create_add_zip_dict_reference(innobase_table->id, (*field_ptr)->field_index, (*field_ptr)->zip_dict.str, trx);
+			}
+			++field_ptr;
+		}
+		dict_table_close(innobase_table, TRUE, FALSE);
+		switch(zip_dict_err)
+		{
+			case DB_SUCCESS:
+				break;
+			case DB_RECORD_NOT_FOUND:
+				error = -1;
+				my_error(ER_COMPRESSION_DICTIONARY_DOES_NOT_EXIST_ERROR, MYF(0), (*field_ptr)->zip_dict.str);
+				break;
+			default:
+				error = -1;
+				my_error(ER_UNKNOWN_ERROR, MYF(0));
+		}
+		if (error) {
+			goto cleanup;
+		}
+	}
+
 	stmt = innobase_get_stmt(thd, &stmt_len);
 
 	if (stmt) {

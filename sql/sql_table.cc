@@ -8803,7 +8803,7 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
   {
     if (ha_create_table(thd, alter_ctx.get_tmp_path(),
                         alter_ctx.new_db, alter_ctx.tmp_name,
-                        create_info, false))
+                        create_info, &alter_info->create_list, false))
       goto err_new_table_cleanup;
 
     /* Mark that we have created table in storage engine. */

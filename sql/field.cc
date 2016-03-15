@@ -1362,6 +1362,7 @@ Field::Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
   comment.str= (char*) "";
   comment.length=0;
   field_index= 0;
+  zip_dict = null_lex_str;
 }
 
 

@@ -6461,6 +6461,17 @@ bool TABLE::check_read_removal(uint index)
   DBUG_RETURN(file->start_read_removal());
 }
 
+bool TABLE::has_compressed_columns_with_dictionaries() const
+{
+  DBUG_ENTER("has_compressed_columns_with_dictionaries");
+  DBUG_ASSERT(field != 0);
+
+  Field **field_ptr = field;
+  while(*field_ptr != 0 && (*field_ptr)->zip_dict.length == 0)
+    ++field_ptr;
+
+  DBUG_RETURN(*field_ptr != 0);
+}
 
 /**
   Test if the order list consists of simple field expressions

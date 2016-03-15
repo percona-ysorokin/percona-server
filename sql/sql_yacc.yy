@@ -6428,6 +6428,7 @@ field_spec:
             lex->default_value= lex->on_update_value= 0;
             lex->comment=null_lex_str;
             lex->charset=NULL;
+            lex->zip_dict_name=null_lex_str;
           }
           type opt_attribute
           {
@@ -7921,6 +7922,7 @@ alter_list_item:
             lex->comment=null_lex_str;
             lex->charset= NULL;
             lex->alter_info.flags|= Alter_info::ALTER_CHANGE_COLUMN;
+            lex->zip_dict_name=null_lex_str;
           }
           type opt_attribute
           {
