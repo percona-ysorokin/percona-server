@@ -1527,7 +1527,8 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
       packet->append(STRING_WITH_LEN(" /*!50606 COLUMN_FORMAT DYNAMIC */"));
       break;
     case COLUMN_FORMAT_TYPE_COMPRESSED:
-      packet->append(STRING_WITH_LEN(" /*!50616 COLUMN_FORMAT COMPRESSED */"));
+      /* TODO: (ZIP_DICT) change 50629 to the actual release version */
+      packet->append(STRING_WITH_LEN(" /*!50629 COLUMN_FORMAT COMPRESSED */"));
       break;
     default:
       DBUG_ASSERT(0);

@@ -95,6 +95,7 @@ Created 2/16/1996 Heikki Tuuri
 # include "os0sync.h"
 # include "zlib.h"
 # include "ut0crc32.h"
+# include "zip0cache.h"
 
 /** Log sequence number immediately after startup */
 UNIV_INTERN lsn_t	srv_start_lsn;
@@ -2945,6 +2946,8 @@ files_checked:
 		fts_optimize_init();
 	}
 
+	zip::compression_dictionary_cache::init_instance();
+
 	srv_was_started = TRUE;
 
 	return(DB_SUCCESS);
@@ -2999,6 +3002,8 @@ innobase_shutdown_for_mysql(void)
 
 		return(DB_SUCCESS);
 	}
+
+	zip::compression_dictionary_cache::destroy_instance();
 
 	if (!srv_read_only_mode) {
 		/* Shutdown the FTS optimize sub system. */

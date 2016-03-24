@@ -99,6 +99,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #endif /* UNIV_DEBUG */
 #include "fts0priv.h"
 #include "page0zip.h"
+#include "zip0cache.h"
 
 enum_tx_isolation thd_get_trx_isolation(const THD* thd);
 
@@ -1252,10 +1253,11 @@ static
 handler_create_zip_dict_result
 innobase_create_zip_dict(
 /*======================*/
-  handlerton*  hton,  /*!< in: innobase handlerton */
-  THD*  thd,          /*!< in: handle to the MySQL thread */
-  const char* name,   /*!< in: zip dictionary name */
-  const char* data);  /*!< in: zip dictionary data */
+  handlerton*  hton, /*!< in: innobase handlerton */
+  THD*  thd,         /*!< in: handle to the MySQL thread */
+  const char* name,  /*!< in: zip dictionary name */
+  const char* data,  /*!< in: zip dictionary data */
+  ulint data_len);   /*!< in: zip dictionary data length */
 
 /*************************************************************//**
 Removes old archived transaction log files.
@@ -3923,16 +3925,17 @@ static
 handler_create_zip_dict_result
 innobase_create_zip_dict(
 /*======================*/
-  handlerton*  hton,  /*!< in: innobase handlerton */
-  THD*  thd,          /*!< in: handle to the MySQL thread */
-  const char* name,   /*!< in: zip dictionary name */
-  const char* data)   /*!< in: zip dictionary data */
+  handlerton*  hton, /*!< in: innobase handlerton */
+  THD*  thd,         /*!< in: handle to the MySQL thread */
+  const char* name,  /*!< in: zip dictionary name */
+  const char* data,  /*!< in: zip dictionary data */
+  ulint data_len)    /*!< in: zip dictionary data length */
 {
 	handler_create_zip_dict_result result = HA_CREATE_ZIP_DICT_UNKNOWN_ERROR;
 
 	DBUG_ENTER("innobase_create_zip_dict");
 	DBUG_ASSERT(hton == innodb_hton_ptr);
-	switch(dict_create_zip_dict(name, data))
+	switch(dict_create_zip_dict(name, data, data_len))
 	{
 		case DB_SUCCESS:
 			result = HA_CREATE_ZIP_DICT_OK;
@@ -5630,6 +5633,7 @@ table_opened:
 
 	innobase_copy_frm_flags_from_table_share(ib_table, table->s);
 
+	update_zip_dict_data(ib_table);
 	dict_stats_init(ib_table);
 
 	MONITOR_INC(MONITOR_TABLE_OPEN);
@@ -6596,7 +6600,8 @@ ha_innobase::store_key_val_for_row(
 				(byte*) (record
 				+ (ulint) get_field_offset(table, field)),
 					(ulint) field->pack_length(),
-					prebuilt, field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED);
+					field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED,
+					(const byte*)field->zip_dict.str, field->zip_dict.length, prebuilt);
 
 			true_len = blob_len;
 
@@ -6853,6 +6858,7 @@ build_template_field(
 	templ->is_unsigned = col->prtype & DATA_UNSIGNED;
 	templ->compressed = (field->column_format()
                              == COLUMN_FORMAT_TYPE_COMPRESSED);
+	templ->zip_dict = field->zip_dict;
 
 	if (!dict_index_is_clust(index)
 	    && templ->rec_field_no == ULINT_UNDEFINED) {
@@ -7607,8 +7613,8 @@ calc_row_difference(
 		switch (col_type) {
 
 		case DATA_BLOB:/* Do not compress blob column while comparing*/
-			o_ptr = row_mysql_read_blob_ref(&o_len, o_ptr, o_len, prebuilt, 0);
-			n_ptr = row_mysql_read_blob_ref(&n_len, n_ptr, n_len, prebuilt, 0);
+			o_ptr = row_mysql_read_blob_ref(&o_len, o_ptr, o_len, false, 0, 0, prebuilt);
+			n_ptr = row_mysql_read_blob_ref(&n_len, n_ptr, n_len, false, 0, 0, prebuilt);
 
 			break;
 
@@ -7679,8 +7685,10 @@ calc_row_difference(
 					new_mysql_row_col,
 					col_pack_len,
 					dict_table_is_comp(prebuilt->table),
-					prebuilt,
-					field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED);
+					field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED,
+					(const byte*)field->zip_dict.str,
+					field->zip_dict.length,
+					prebuilt);
 				dfield_copy(&ufield->new_val, &dfield);
 			} else {
 				dfield_set_null(&ufield->new_val);
@@ -8474,6 +8482,40 @@ ha_innobase::innobase_get_index(
 	}
 
 	DBUG_RETURN(index);
+}
+
+/********************************************************************//**
+Updates compression dictionary data in table share.
+@return	true on success */
+UNIV_INTERN
+bool
+ha_innobase::update_zip_dict_data(
+  dict_table_t* ib_table) /*!< in: InnoDB table */
+{
+	DBUG_ENTER("update_zip_dict_data");
+	ut_ad(!mutex_own(&dict_sys->mutex));
+
+  Field* field;
+  for(uint i = 0; i < table->s->fields; ++i)
+  {
+    field = table->field[i];
+    if(field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED)
+    {
+      zip::compression_dictionary_cache::key k(ib_table->id, i);
+      const zip::compression_dictionary_cache::item& item = zip::compression_dictionary_cache::instance()[k];
+      if(item.get_state() == zip::compression_dictionary_cache::item_state_exists)
+      {
+        const zip::compression_dictionary_cache::blob_type& dictionary_blob = item.get_blob();
+        field->zip_dict.str = const_cast<char*>(dictionary_blob.c_str());
+        field->zip_dict.length = dictionary_blob.size();
+      }
+      else
+      {
+        field->zip_dict = null_lex_str;
+      }
+    }
+  }
+	DBUG_RETURN(true);
 }
 
 /********************************************************************//**
@@ -10566,7 +10608,8 @@ ha_innobase::create(
 		{
 			if((*field_ptr)->zip_dict.length != 0)
 			{
-				zip_dict_err = dict_create_add_zip_dict_reference(innobase_table->id, (*field_ptr)->field_index, (*field_ptr)->zip_dict.str, trx);
+				zip_dict_err = dict_create_add_zip_dict_reference(innobase_table->id,
+					(*field_ptr)->field_index, (*field_ptr)->zip_dict.str, trx);
 			}
 			++field_ptr;
 		}
@@ -10577,6 +10620,7 @@ ha_innobase::create(
 				break;
 			case DB_RECORD_NOT_FOUND:
 				error = -1;
+				--field_ptr;
 				my_error(ER_COMPRESSION_DICTIONARY_DOES_NOT_EXIST_ERROR, MYF(0), (*field_ptr)->zip_dict.str);
 				break;
 			default:

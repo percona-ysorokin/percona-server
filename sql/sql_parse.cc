@@ -1121,7 +1121,7 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
     (lex->sql_command == SQLCOM_CREATE_DB) ||
     (lex->sql_command == SQLCOM_DROP_DB);
 
-  const my_bool create_or_drop_compression_dictionary =
+  const bool create_or_drop_compression_dictionary =
 	  (lex->sql_command == SQLCOM_CREATE_COMPRESSION_DICTIONARY) ||
 	  (lex->sql_command == SQLCOM_DROP_COMPRESSION_DICTIONARY);
 
@@ -4333,7 +4333,8 @@ end_with_restore_list:
                         ER_NOT_ALLOWED_COMMAND, "Create compression dictionary %s('%s')",
                         lex->ident.str, lex->default_value->str_value.ptr());
 	*/
-    if ((res = mysql_create_zip_dict(thd, lex->ident.str, lex->default_value->str_value.ptr())) == 0)
+    if ((res = mysql_create_zip_dict(thd, lex->ident.str,
+          lex->default_value->str_value.ptr(), lex->default_value->str_value.length())) == 0)
       my_ok(thd);
     break;
   }

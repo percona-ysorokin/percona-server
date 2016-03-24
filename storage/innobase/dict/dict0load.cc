@@ -752,17 +752,17 @@ dict_process_sys_zip_dict(
 	*name = NULL;
 	*data = NULL;
 
-	if (rec_get_deleted_flag(rec, 0)) {
+	if (UNIV_UNLIKELY(rec_get_deleted_flag(rec, 0))) {
 		return("delete-marked record in SYS_ZIP_DICT");
 	}
 
-	if (rec_get_n_fields_old(rec) != DICT_NUM_FIELDS__SYS_ZIP_DICT) {
+	if (UNIV_UNLIKELY(rec_get_n_fields_old(rec) != DICT_NUM_FIELDS__SYS_ZIP_DICT)) {
 		return("wrong number of columns in SYS_ZIP_DICT record");
 	}
 
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_ZIP_DICT__ID, &len);
-	if (len != DICT_FLD_LEN_SPACE) {
+	if (UNIV_UNLIKELY(len != DICT_FLD_LEN_SPACE)) {
 err_len:
 		return("incorrect column length in SYS_ZIP_DICT");
 	}
@@ -770,26 +770,26 @@ err_len:
 
 	rec_get_nth_field_offs_old(
 		rec, DICT_FLD__SYS_ZIP_DICT__DB_TRX_ID, &len);
-	if (len != DATA_TRX_ID_LEN && len != UNIV_SQL_NULL) {
+	if (UNIV_UNLIKELY(len != DATA_TRX_ID_LEN && len != UNIV_SQL_NULL)) {
 		goto err_len;
 	}
 
 	rec_get_nth_field_offs_old(
 		rec, DICT_FLD__SYS_ZIP_DICT__DB_ROLL_PTR, &len);
-	if (len != DATA_ROLL_PTR_LEN && len != UNIV_SQL_NULL) {
+	if (UNIV_UNLIKELY(len != DATA_ROLL_PTR_LEN && len != UNIV_SQL_NULL)) {
 		goto err_len;
 	}
 
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_ZIP_DICT__NAME, &len);
-	if (len == 0 || len == UNIV_SQL_NULL) {
+	if (UNIV_UNLIKELY(len == 0 || len == UNIV_SQL_NULL)) {
 		goto err_len;
 	}
 	*name = mem_heap_strdupl(heap, (char*) field, len);
 
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_ZIP_DICT__DATA, &len);
-	if (len == 0 || len == UNIV_SQL_NULL) {
+	if (UNIV_UNLIKELY(len == 0 || len == UNIV_SQL_NULL)) {
 		goto err_len;
 	}
 	*data = mem_heap_strdupl(heap, (char*) field, len);
@@ -819,17 +819,17 @@ dict_process_sys_zip_dict_cols(
 	*column_pos = ULINT_UNDEFINED;
 	*dict_id = ULINT_UNDEFINED;
 
-	if (rec_get_deleted_flag(rec, 0)) {
+	if (UNIV_UNLIKELY(rec_get_deleted_flag(rec, 0))) {
 		return("delete-marked record in SYS_ZIP_DICT_COLS");
 	}
 
-	if (rec_get_n_fields_old(rec) != DICT_NUM_FIELDS__SYS_ZIP_DICT_COLS) {
+	if (UNIV_UNLIKELY(rec_get_n_fields_old(rec) != DICT_NUM_FIELDS__SYS_ZIP_DICT_COLS)) {
 		return("wrong number of columns in SYS_ZIP_DICT_COLS record");
 	}
 
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_ZIP_DICT_COLS__TABLE_ID, &len);
-	if (len != DICT_FLD_LEN_SPACE) {
+	if (UNIV_UNLIKELY(len != DICT_FLD_LEN_SPACE)) {
 err_len:
 		return("incorrect column length in SYS_ZIP_DICT_COLS");
 	}
@@ -837,26 +837,26 @@ err_len:
 
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_ZIP_DICT_COLS__COLUMN_POS, &len);
-	if (len != DICT_FLD_LEN_SPACE) {
+	if (UNIV_UNLIKELY(len != DICT_FLD_LEN_SPACE)) {
 		goto err_len;
 	}
 	*column_pos = mach_read_from_4(field);
 
 	rec_get_nth_field_offs_old(
 		rec, DICT_FLD__SYS_ZIP_DICT_COLS__DB_TRX_ID, &len);
-	if (len != DATA_TRX_ID_LEN && len != UNIV_SQL_NULL) {
+	if (UNIV_UNLIKELY(len != DATA_TRX_ID_LEN && len != UNIV_SQL_NULL)) {
 		goto err_len;
 	}
 
 	rec_get_nth_field_offs_old(
 		rec, DICT_FLD__SYS_ZIP_DICT_COLS__DB_ROLL_PTR, &len);
-	if (len != DATA_ROLL_PTR_LEN && len != UNIV_SQL_NULL) {
+	if (UNIV_UNLIKELY(len != DATA_ROLL_PTR_LEN && len != UNIV_SQL_NULL)) {
 		goto err_len;
 	}
 
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_ZIP_DICT_COLS__DICT_ID, &len);
-	if (len != DICT_FLD_LEN_SPACE) {
+	if (UNIV_UNLIKELY(len != DICT_FLD_LEN_SPACE)) {
 		goto err_len;
 	}
 	*dict_id = mach_read_from_4(field);

@@ -16,8 +16,11 @@
 #ifndef SQL_ZIP_DICT_INCLUDED
 #define SQL_ZIP_DICT_INCLUDED
 
+#include "my_global.h"
+
 class THD;
 
-int mysql_create_zip_dict(THD* thd, const char* name, const char* data);
+int mysql_create_zip_dict(THD* thd, const char* name, const char* data,
+  ulong data_len);
 
 #endif /* SQL_ZIP_DICT_INCLUDED */

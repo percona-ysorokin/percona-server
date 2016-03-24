@@ -1,0 +1,144 @@
+--source include/have_innodb.inc
+
+--let $number_of_steps=17
+
+CREATE COMPRESSION_DICTIONARY day_month ('januaryfebruarymarchaprilmayjunejulyaugustseptemberoctobernovemberdecembersundaymondaytuesdaywednesdaythursdayfridaysaturday');
+
+CREATE TABLE t1(
+  id INT,
+  a BLOB
+) ENGINE=InnoDB;
+
+CREATE TABLE t2(
+  id INT,
+  a BLOB COLUMN_FORMAT COMPRESSED
+) ENGINE=InnoDB;
+
+CREATE TABLE t3(
+  id INT,
+  a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY day_month
+) ENGINE=InnoDB;
+
+SELECT * FROM information_schema.xtradb_zip_dict;
+SELECT * FROM information_schema.xtradb_zip_dict_cols;
+
+SET @json_value =
+  '[\n'
+  '{\n'
+  '  "january"   = 1,\n'
+  '  "february"  = 2,\n'
+  '  "march"     = 3,\n'
+  '  "april"     = 4,\n'
+  '  "may"       = 5,\n'
+  '  "june"      = 6,\n'
+  '  "july"      = 7,\n'
+  '  "august"    = 8,\n'
+  '  "september" = 9,\n'
+  '  "october"   = 10,\n'
+  '  "november"  = 11,\n'
+  '  "december"  = 12,\n'
+  '  "sunday"    = 1,\n'
+  '  "monday"    = 2,\n'
+  '  "tuesday"   = 3,\n'
+  '  "wednesday" = 4,\n'
+  '  "thursday"  = 5,\n'
+  '  "friday"    = 6,\n'
+  '  "saturday"  = 7\n'
+  '},\n'
+  '{\n'
+  '  "january"   = 101,\n'
+  '  "february"  = 102,\n'
+  '  "march"     = 103,\n'
+  '  "april"     = 104,\n'
+  '  "may"       = 105,\n'
+  '  "june"      = 106,\n'
+  '  "july"      = 107,\n'
+  '  "august"    = 108,\n'
+  '  "september" = 109,\n'
+  '  "october"   = 110,\n'
+  '  "november"  = 111,\n'
+  '  "december"  = 112,\n'
+  '  "sunday"    = 101,\n'
+  '  "monday"    = 102,\n'
+  '  "tuesday"   = 103,\n'
+  '  "wednesday" = 104,\n'
+  '  "thursday"  = 105,\n'
+  '  "friday"    = 106,\n'
+  '  "saturday"  = 107\n'
+  '},\n'
+  '{\n'
+  '  "january"   = 201,\n'
+  '  "february"  = 202,\n'
+  '  "march"     = 203,\n'
+  '  "april"     = 204,\n'
+  '  "may"       = 205,\n'
+  '  "june"      = 206,\n'
+  '  "july"      = 207,\n'
+  '  "august"    = 208,\n'
+  '  "september" = 209,\n'
+  '  "october"   = 210,\n'
+  '  "november"  = 211,\n'
+  '  "december"  = 212,\n'
+  '  "sunday"    = 201,\n'
+  '  "monday"    = 202,\n'
+  '  "tuesday"   = 203,\n'
+  '  "wednesday" = 204,\n'
+  '  "thursday"  = 205,\n'
+  '  "friday"    = 206,\n'
+  '  "saturday"  = 207\n'
+  '},\n'
+  '{\n'
+  '  "january"   = 301,\n'
+  '  "february"  = 302,\n'
+  '  "march"     = 303,\n'
+  '  "april"     = 304,\n'
+  '  "may"       = 305,\n'
+  '  "june"      = 306,\n'
+  '  "july"      = 307,\n'
+  '  "august"    = 308,\n'
+  '  "september" = 309,\n'
+  '  "october"   = 310,\n'
+  '  "november"  = 311,\n'
+  '  "december"  = 312,\n'
+  '  "sunday"    = 301,\n'
+  '  "monday"    = 302,\n'
+  '  "tuesday"   = 303,\n'
+  '  "wednesday" = 304,\n'
+  '  "thursday"  = 305,\n'
+  '  "friday"    = 306,\n'
+  '  "saturday"  = 307\n'
+  '}\n'
+  ']\n'
+;
+
+INSERT INTO t1 VALUES(0, @json_value);
+SELECT * FROM t1;
+
+INSERT INTO t2 VALUES(0, @json_value);
+SELECT * FROM t2;
+
+INSERT INTO t3 VALUES(0, @json_value);
+SELECT * FROM t3;
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t1 SELECT * FROM t1;
+  --dec $i
+}
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t2 SELECT * FROM t2;
+  --dec $i
+}
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t3 SELECT * FROM t3;
+  --dec $i
+}
+
+#DROP TABLE t1, t2, t3;

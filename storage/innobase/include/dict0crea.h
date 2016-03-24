@@ -185,6 +185,7 @@ dict_create_add_zip_dict(
 /*=====================================*/
 	const char* name, /*!< in: zip_dict name */
 	const char* data, /*!< in: zip_dict data */
+	ulint data_len,   /*!< in: zip_dict data length */
 	trx_t*		trx); /*!< in/out: transaction */
 /********************************************************************//**
 Add a single compression dictionary definition to the data dictionary
@@ -209,6 +210,29 @@ dict_create_add_foreign_to_dictionary(
 	const dict_foreign_t*	foreign,/*!< in: foreign key */
 	trx_t*			trx)	/*!< in/out: dictionary transaction */
 	__attribute__((nonnull, warn_unused_result));
+/********************************************************************//**
+Get a single compression dictionary id for the given (table id, column pos)
+pair.
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_get_zip_dict_id_by_reference(
+/*=====================================*/
+	ulint  table_id,   /*!< in: table name */
+	ulint  column_pos, /*!< in: column position*/
+	ulint* dict_id,    /*!< out: column position*/
+	trx_t* trx);       /*!< in/out: transaction */
+/********************************************************************//**
+Get compression dictionary data for the given id.
+Allocates memory in data->str on success. Must be freed with mem_free().
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_get_zip_dict_data_by_id(
+/*=====================================*/
+  ulint       dict_id, /*!< in: table name */
+  LEX_STRING* data,    /*!< out: dictionary data */
+  trx_t*      trx);    /*!< in/out: transaction */
 
 /* Table create node structure */
 struct tab_node_t{
