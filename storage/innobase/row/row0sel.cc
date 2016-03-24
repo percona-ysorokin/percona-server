@@ -2462,7 +2462,7 @@ row_sel_convert_mysql_key_to_innobase(
 					dfield, buf,
 					FALSE, /* MySQL key value format col */
 					key_ptr + data_offset, data_len,
-					dict_table_is_comp(index->table), NULL, 0);
+					dict_table_is_comp(index->table), false, 0, 0 ,0);
 			ut_a(buf <= original_buf + buf_len);
 		}
 
@@ -2635,9 +2635,11 @@ row_sel_field_store_in_mysql_format_func(
 		field_end = dest + templ->mysql_col_len;
 
 		if (templ->mysql_type == DATA_MYSQL_TRUE_VARCHAR) {
-                        /* If this is a compressed column, decompress it first*/
-                        if (templ->compressed)
-                                data = row_decompress_column(data, &len, prebuilt);
+			/* If this is a compressed column, decompress it first*/
+			if (templ->compressed)
+			data = row_decompress_column(data, &len,
+				(const byte*)templ->zip_dict.str,
+				templ->zip_dict.length, prebuilt);
 
 			/* This is a >= 5.0.3 type true VARCHAR. Store the
 			length of the data to the first byte or the first
@@ -2689,7 +2691,8 @@ row_sel_field_store_in_mysql_format_func(
 		already copied to the buffer in row_sel_store_mysql_rec */
 
 		row_mysql_store_blob_ref(dest, templ->mysql_col_len, data,
-					 len, prebuilt, templ->compressed);
+					 len, templ->compressed,
+					 (const byte*)templ->zip_dict.str, templ->zip_dict.length, prebuilt);
 		break;
 
 	case DATA_MYSQL:

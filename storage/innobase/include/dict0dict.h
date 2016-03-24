@@ -1852,8 +1852,31 @@ UNIV_INTERN
 dberr_t
 dict_create_zip_dict(
 /*================================*/
-	const char*	name,	/*!< in: zip_dict name */
-	const char*	data);	/*!< in: zip_dict data */
+	const char*	name, /*!< in: zip_dict name */
+	const char*	data, /*!< in: zip_dict data */
+	ulint data_len);  /*!< in: zip_dict data length */
+
+/********************************************************************//**
+Get single compression dictionary id for the given
+(table id, column pos) pair.
+@return	DB_SUCCESS if OK, DB_RECORD_NOT_FOUND if not found */
+UNIV_INTERN
+dberr_t
+dict_get_dictionary_id_by_key(
+/*================================*/
+	ulint	table_id,   /*!< in: table id */
+	ulint column_pos, /*!< in: column position */
+	ulint* dict_id);  /*!< out: zip_dict id */
+/********************************************************************//**
+Get compression dictionary data for the given id.
+Allocates memory in data->str on success. Must be freed with mem_free().
+@return	DB_SUCCESS if OK, DB_RECORD_NOT_FOUND if not found */
+UNIV_INTERN
+dberr_t
+dict_get_dictionary_data_by_id(
+/*================================*/
+  ulint       dict_id, /*!< in: table name */
+  LEX_STRING* data);   /*!< out: dictionary data */
 
 #ifndef UNIV_NONINL
 #include "dict0dict.ic"

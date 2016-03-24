@@ -348,6 +348,8 @@ row_compress_column(
         const byte* data,       /*!< in: data in mysql(uncompressed) format */
         ulint* len,             /*!< in: data length; out: length of compressed data*/
         ulint lenlen,           /*!< in: bytes used to store the lenght of data*/
+        const byte* dict_data,  /*!< in: optional dictionary data used for compression */
+        ulint dict_data_len,    /*!< in: optional dictionary data length */
         row_prebuilt_t* prebuilt)/*!< in: use prebuilt->compress_heap only here*/
 {
         int err = 0;
@@ -386,6 +388,12 @@ row_compress_column(
         err = deflateInit2(&c_stream, column_zip_level,
                            Z_DEFLATED, window_bits, DEF_MEM_LEVEL, column_zip_zlib_strategy);
         ut_a(err == Z_OK);
+
+        if(dict_data != 0 && dict_data_len != 0)
+        {
+                err = deflateSetDictionary(&c_stream, dict_data, dict_data_len);
+                ut_a(err == Z_OK);
+        }
 
         err = deflate(&c_stream, Z_FINISH);
         if (err != Z_STREAM_END) {
@@ -451,6 +459,8 @@ const byte*
 row_decompress_column(
         const byte* data,       /*!< in: data in innodb(compressed) format */
         ulint* len,             /*!< in: data length; out: length of decompressed data*/
+        const byte* dict_data,  /*!< in: optional dictionary data used for decompression */
+        ulint dict_data_len,    /*!< in: optional dictionary data length */
         row_prebuilt_t* prebuilt) /*!< in: use prebuilt->compress_heap only here*/
 {
         ulint buf_len = 0;
@@ -522,6 +532,15 @@ row_decompress_column(
         ut_a(err == Z_OK);
 
         err = inflate(&d_stream, Z_FINISH);
+        if(err == Z_NEED_DICT)
+        {
+                if(dict_data != 0 && dict_data_len != 0)
+                {
+                        err = inflateSetDictionary(&d_stream, dict_data, dict_data_len);
+                        ut_a(err == Z_OK);
+                }
+                err = inflate(&d_stream, Z_FINISH);
+        }
 
         if (err != Z_STREAM_END) {
                 inflateEnd(&d_stream);
@@ -581,8 +600,10 @@ row_mysql_store_blob_ref(
 				is SQL NULL this should be 0; remember
 				also to set the NULL bit in the MySQL record
 				header! */
-	row_prebuilt_t* prebuilt, /*<! in: use prebuilt->compress_heap only here*/
-	my_bool need_decompress) /*<! in: compressed column formate*/
+	bool need_decompression,  /*!< in: if the data need to be compressed*/
+	const byte* dict_data,    /*!< in: optional compression dictionary data */
+	ulint dict_data_len,      /*!< in: optional compression dictionary data length */
+	row_prebuilt_t* prebuilt) /*<! in: use prebuilt->compress_heap only here*/
 {
 	/* MySQL might assume the field is set to zero except the length and
 	the pointer fields */
@@ -600,8 +621,8 @@ row_mysql_store_blob_ref(
 
 	const byte *ptr = NULL;
 
-	if (need_decompress)
-		ptr = row_decompress_column((const byte*)data, &len, prebuilt);
+	if (need_decompression)
+		ptr = row_decompress_column((const byte*)data, &len, dict_data, dict_data_len, prebuilt);
 
 	if (ptr)
 		memcpy(dest + col_len - 8, &ptr, sizeof ptr);
@@ -623,8 +644,10 @@ row_mysql_read_blob_ref(
 					MySQL format */
 	ulint		col_len,	/*!< in: BLOB reference length
 					(not BLOB length) */
-	row_prebuilt_t* prebuilt,       /*!< in: use prebuilt->compress_heap only here*/
-	my_bool need_compress)          /*!< compressed column format*/
+	bool need_compression,    /*!< in: if the data need to be compressed*/
+	const byte* dict_data,    /*!< in: optional compression dictionary data */
+	ulint dict_data_len,      /*!< in: optional compression dictionary data length */
+	row_prebuilt_t* prebuilt) /*!< in: use prebuilt->compress_heap only here */
 {
 	byte*	data = NULL;
 	byte*   ptr = NULL;
@@ -633,8 +656,8 @@ row_mysql_read_blob_ref(
 
 	memcpy(&data, ref + col_len - 8, sizeof data);
 
-	if (need_compress) {
-		ptr = row_compress_column(data, len, col_len - 8, prebuilt);
+	if (need_compression) {
+		ptr = row_compress_column(data, len, col_len - 8, dict_data, dict_data_len, prebuilt);
 		if (ptr)
 			data = ptr;
 	}
@@ -722,8 +745,10 @@ row_mysql_store_col_in_innobase_format(
 					payload data; if the column is a true
 					VARCHAR then this is irrelevant */
 	ulint		comp,		/*!< in: nonzero=compact format */
-	row_prebuilt_t* prebuilt,
-	my_bool  compressed)
+	bool need_compression,    /*!< in: if the data need to be compressed*/
+	const byte* dict_data,    /*!< in: optional compression dictionary data */
+	ulint dict_data_len,      /*!< in: optional compression dictionary data length */
+	row_prebuilt_t* prebuilt) /*!< in: use prebuilt->compress_heap only here */
 {
 	const byte*	ptr	= mysql_data;
 	const dtype_t*	dtype;
@@ -778,8 +803,8 @@ row_mysql_store_col_in_innobase_format(
 
                         const byte* tmp_ptr = row_mysql_read_true_varchar(&col_len, mysql_data,
 							  lenlen);
-                        if (compressed)
-                                ptr = row_compress_column(tmp_ptr, &col_len, lenlen, prebuilt);
+                        if (need_compression)
+                                ptr = row_compress_column(tmp_ptr, &col_len, lenlen, dict_data, dict_data_len, prebuilt);
                         else
                                 ptr = tmp_ptr;
 		} else {
@@ -863,7 +888,8 @@ row_mysql_store_col_in_innobase_format(
 		}
 	} else if (type == DATA_BLOB && row_format_col) {
 
-		ptr = row_mysql_read_blob_ref(&col_len, mysql_data, col_len, prebuilt, compressed);
+		ptr = row_mysql_read_blob_ref(&col_len, mysql_data, col_len,
+				need_compression, dict_data, dict_data_len, prebuilt);
 	}
 
 	dfield_set_data(dfield, ptr, col_len);
@@ -921,7 +947,8 @@ row_mysql_convert_row_to_innobase(
 			TRUE, /* MySQL row format data */
 			mysql_rec + templ->mysql_col_offset,
 			templ->mysql_col_len,
-			dict_table_is_comp(prebuilt->table), prebuilt, templ->compressed);
+			dict_table_is_comp(prebuilt->table), templ->compressed,
+					(const byte*)templ->zip_dict.str, templ->zip_dict.length, prebuilt);
 next_column:
 		;
 	}

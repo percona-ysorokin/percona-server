@@ -18,8 +18,33 @@ this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "zip0cache.h"
 
+#include "dict0dict.h"
+
 namespace zip
 {
+  /*static*/
+  compression_dictionary_cache::instance_ptr compression_dictionary_cache::instance_;
+  /*static*/
+  void compression_dictionary_cache::init_instance()
+  {
+    ut_ad(instance_.get() == 0);
+    instance_.reset(new compression_dictionary_cache);
+  }
+  /*static*/
+  void compression_dictionary_cache::destroy_instance()
+  {
+    ut_ad(instance_.get() != 0);
+    instance_.reset(0);
+  }
+
+  /*static*/
+  const compression_dictionary_cache& compression_dictionary_cache::instance()
+  {
+    ut_ad(instance_.get() != 0);
+    return *instance_;
+  }
+
+
   const compression_dictionary_cache::item& compression_dictionary_cache::operator [] (const compression_dictionary_cache::key& k) const
   {
     // The list of the possible cases:
@@ -38,7 +63,7 @@ namespace zip
     {
       // acquire shared lock on items mutex and try to find an item in the cache
       // for the given (table_id, column_id) combination
-      mysql::shared_lock<mysql::rwlock> guard(items_mutex_);
+      mysql::shared_lock<mysql::innobase_shared_mutex> guard(items_mutex_);
       items_fnd = items_.equal_range(k);
       if(items_fnd.first == items_fnd.second)
       {
@@ -70,7 +95,7 @@ namespace zip
         {
           // acquire shared lock on dictionary_records mutex and try to find a record
           // in the dictionary_record container by id 
-          mysql::shared_lock<mysql::rwlock> guard(dictionary_records_mutex_);
+          mysql::shared_lock<mysql::innobase_shared_mutex> guard(dictionary_records_mutex_);
           dictionary_records_fnd = dictionary_records_.equal_range(dictionary_id);
           if (dictionary_records_fnd.first == dictionary_records_fnd.second)
           {
@@ -86,12 +111,12 @@ namespace zip
           blob_type blob;
           // here, out of the lock, try to get dictionary blob by id from the
           // SYS_ZIP_DICT InnoDB system table
-          assert(get_dictionary_blob_by_id(dictionary_id, blob));
+          ut_ad(get_dictionary_blob_by_id(dictionary_id, blob));
 
           {
             // acquire exclusive lock on dictionary_records mutex and try add a
             // new element there using previously found position as a hint
-            mysql::unique_lock<mysql::rwlock> guard(dictionary_records_mutex_);
+            mysql::unique_lock<mysql::innobase_shared_mutex> guard(dictionary_records_mutex_);
             dictionary_records_fnd.first = dictionary_records_.insert(/* hint */ dictionary_records_fnd.second, std::make_pair(dictionary_id, dictionary_record()));
             if(dictionary_records_fnd.first->second.ref_counter == dictionary_record::ref_counter_special_value)
             {
@@ -108,7 +133,7 @@ namespace zip
               // if because of locking granularity two concurrent threads are inserting
               // elements to the "dictionary_records", make sure that dictionary blob
               // is the same in this case.
-              assert(dictionary_records_fnd.first->second.blob == blob);
+              ut_ad(dictionary_records_fnd.first->second.blob == blob);
             }
           }
         }
@@ -124,7 +149,7 @@ namespace zip
 
         // acquire exclusive lock on items mutex and try to add a new
         // element there using previously found position as a hint
-        mysql::unique_lock<mysql::rwlock> guard(items_mutex_);
+        mysql::unique_lock<mysql::innobase_shared_mutex> guard(items_mutex_);
         items_fnd.first = items_.insert(/* hint */ items_fnd.second, std::make_pair(k, item()));
         if(items_fnd.first->second.get_state() == item_state_not_checked)
         {
@@ -144,7 +169,7 @@ namespace zip
           // elements to the "items", make sure that the state is the same and if it
           // is not "item_state_does_not_exist", the referred dictionary id is also
           // the same
-          assert(items_fnd.first->second.get_state() == state && (state == item_state_does_not_exist || items_fnd.first->second.dictionary_ref_->first == dictionary_id));
+          ut_ad(items_fnd.first->second.get_state() == state && (state == item_state_does_not_exist || items_fnd.first->second.dictionary_ref_->first == dictionary_id));
         }
         
         // assigning result for 2.* cases
@@ -157,14 +182,43 @@ namespace zip
   /*static*/
   bool compression_dictionary_cache::get_dictionary_id_by_key(const compression_dictionary_cache::key& k, compression_dictionary_cache::dictionary_id_type& id)
   {
-    id = 0;
-    return true;
+    bool res = false;
+    ulint dict_id = 0;
+    switch(dict_get_dictionary_id_by_key(k.table_id, k.column_id, &dict_id))
+    {
+      case DB_SUCCESS:
+        res = true;
+        id = dict_id;
+        break;
+      case DB_RECORD_NOT_FOUND:
+        res = false;
+        break;
+      default:
+        ut_error;
+    }
+    return res;
   }
 
   /*static*/
   bool compression_dictionary_cache::get_dictionary_blob_by_id(compression_dictionary_cache::dictionary_id_type id, compression_dictionary_cache::blob_type& blob)
   {
-    return true;
+    bool res = false;
+    LEX_STRING data = { 0, 0 };
+    switch(dict_get_dictionary_data_by_id(id, &data))
+    {
+      case DB_SUCCESS:
+        res = true;
+        blob.assign(data.str, data.length);
+        break;
+      case DB_RECORD_NOT_FOUND:
+        res = false;
+        break;
+      default:
+        ut_error;
+    }
+    if(data.str != 0)
+      mem_free(data.str);
+    return res;
   }
 
 } // namespace zip

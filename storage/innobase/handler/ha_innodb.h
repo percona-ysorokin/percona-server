@@ -95,6 +95,7 @@ class ha_innobase: public handler
 	dberr_t innobase_get_autoinc(ulonglong* value);
 	void innobase_initialize_autoinc();
 	dict_index_t* innobase_get_index(uint keynr);
+	bool update_zip_dict_data(dict_table_t* ib_table);
 
 	/* Init values for the class: */
  public:

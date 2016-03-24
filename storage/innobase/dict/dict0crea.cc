@@ -1981,38 +1981,44 @@ dict_create_add_zip_dict(
 /*=====================================*/
 	const char* name, /*!< in: zip_dict name */
 	const char* data, /*!< in: zip_dict data */
+	ulint data_len,   /*!< in: zip_dict data length */
 	trx_t*		trx)  /*!< in/out: transaction */
 {
+	ut_ad(name);
+	ut_ad(data);
+	ut_ad(data_len != 0);
+
 	pars_info_t* info = pars_info_create();
 
 	pars_info_add_str_literal(info, "name", name);
-	pars_info_add_str_literal(info, "data", data);
+	pars_info_add_literal(info, "data", data, data_len,
+		DATA_VARCHAR, DATA_ENGLISH);
 
 	dberr_t error = que_eval_sql(info,
-			     "PROCEDURE P () IS\n"
-				 "max_id INT;\n"
-			     "DECLARE CURSOR cur IS\n"
-			     " SELECT ID FROM SYS_ZIP_DICT\n"
-			     " ORDER BY ID DESC;\n"
-			     "BEGIN\n"
-				 "  max_id := 0;\n"
-				 "  OPEN cur;\n"
-				 "  FETCH cur INTO max_id;\n"
-				 "  IF (cur % NOTFOUND) THEN\n"
-				 "    max_id := 0;\n"
-				 "  END IF;\n"
-				 "  CLOSE cur;\n"
-			     "  INSERT INTO SYS_ZIP_DICT VALUES"
-				 "    (max_id + 1, :name, :data);\n"
-			     "END;\n",
-			     FALSE, trx);
+		"PROCEDURE P () IS\n"
+		"max_id INT;\n"
+		"DECLARE CURSOR cur IS\n"
+		" SELECT ID FROM SYS_ZIP_DICT\n"
+		" ORDER BY ID DESC;\n"
+		"BEGIN\n"
+		"  max_id := 0;\n"
+		"  OPEN cur;\n"
+		"  FETCH cur INTO max_id;\n"
+		"  IF (cur % NOTFOUND) THEN\n"
+		"    max_id := 0;\n"
+		"  END IF;\n"
+		"  CLOSE cur;\n"
+		"  INSERT INTO SYS_ZIP_DICT VALUES"
+		"    (max_id + 1, :name, :data);\n"
+		"END;\n",
+		FALSE, trx);
 
 	return error;
 }
 /******************************************************************//**
-Fetch callback just stores extracted zip_dict id in the external
-variable.
-@return FALSE if all OK */
+Fetch callback, just stores extracted zip_dict id in the external
+variable (using mach_write_to_* functions).
+@return TRUE if all OK */
 static
 ibool
 dict_create_add_zip_dict_reference_aux(
@@ -2050,6 +2056,8 @@ dict_create_add_zip_dict_reference(
 	const char* dict_name,  /*!< in: dict name */
 	trx_t*		trx)        /*!< in/out: transaction */
 {
+	ut_ad(dict_name);
+
 	pars_info_t* info = pars_info_create();
 
 	ib_uint32_t dict_id_buf;
@@ -2088,6 +2096,154 @@ dict_create_add_zip_dict_reference(
 		ib_uint32_t dict_id = mach_read_from_4(reinterpret_cast<const byte*>(&dict_id_buf));
 		if(dict_id == ULINT32_UNDEFINED)
 			error = DB_RECORD_NOT_FOUND;
+	}
+	return error;
+}
+
+/******************************************************************//**
+Fetch callback, just stores extracted zip_dict id in the external
+variable.
+@return TRUE if all OK */
+static
+ibool
+dict_create_get_zip_dict_id_by_reference_aux(
+/*=====================*/
+	void*		row,			/*!< in: sel_node_t* */
+	void*		user_arg)		/*!< in: int32 id */
+{
+	sel_node_t*	 node = static_cast<sel_node_t*>(row);
+	ib_uint32_t* external_ptr = static_cast<ib_uint32_t*>(user_arg);
+	dfield_t*	dfield = que_node_get_val(node->select_list);
+	dtype_t*	type = dfield_get_type(dfield);
+	ulint		len = dfield_get_len(dfield);
+
+	ut_a(dtype_get_mtype(type) == DATA_INT);
+	ut_a(len == sizeof(ib_uint32_t));
+
+	*external_ptr = mach_read_from_4(
+		static_cast<byte*>(dfield_get_data(dfield)));
+
+	return(TRUE);
+}
+
+
+/********************************************************************//**
+Get a single compression dictionary id for the given (table id, column pos)
+pair.
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_get_zip_dict_id_by_reference(
+/*=====================================*/
+	ulint  table_id,   /*!< in: table name */
+	ulint  column_pos, /*!< in: column position*/
+	ulint* dict_id,    /*!< out: column position*/
+	trx_t* trx)        /*!< in/out: transaction */
+{
+	ut_ad(dict_id);
+
+	pars_info_t* info = pars_info_create();
+
+	ib_uint32_t local_dict_id = ULINT32_UNDEFINED;
+
+	pars_info_add_int4_literal(info, "table_id", table_id);
+	pars_info_add_int4_literal(info, "column_pos", column_pos);
+	pars_info_bind_function(
+		info, "my_func", dict_create_get_zip_dict_id_by_reference_aux, &local_dict_id);
+
+	dberr_t error = que_eval_sql(info,
+      "PROCEDURE P () IS\n"
+      "DECLARE FUNCTION my_func;\n"
+      "DECLARE CURSOR cur IS\n"
+      "  SELECT DICT_ID FROM SYS_ZIP_DICT_COLS\n"
+      "    WHERE TABLE_ID = :table_id AND\n"
+      "          COLUMN_POS = :column_pos;\n"
+      "BEGIN\n"
+      "  OPEN cur;\n"
+      "  FETCH cur INTO my_func();\n"
+      "  CLOSE cur;\n"
+      "END;\n",
+      FALSE, trx);
+	if(error == DB_SUCCESS)
+	{
+		if(local_dict_id == ULINT32_UNDEFINED)
+			error = DB_RECORD_NOT_FOUND;
+    else
+      *dict_id = local_dict_id;
+	}
+	return error;
+}
+
+/******************************************************************//**
+Fetch callback, just stores extracted zip_dict data in the external
+variable.
+@return always returns TRUE */
+static
+ibool
+dict_create_get_zip_dict_data_by_id_aux(
+/*===================*/
+	void*		row,			/*!< in: sel_node_t* */
+	void*		user_arg)		/*!< in: pointer to ib_vector_t */
+{
+	sel_node_t*	node = static_cast<sel_node_t*>(row);
+	LEX_STRING*	value = static_cast<LEX_STRING*>(user_arg);
+
+	dfield_t*	dfield = que_node_get_val(node->select_list);
+	dtype_t*	type = dfield_get_type(dfield);
+	ulint		len = dfield_get_len(dfield);
+	void*		data = dfield_get_data(dfield);
+
+	ut_a(dtype_get_mtype(type) == DATA_VARCHAR);
+
+	if (len != UNIV_SQL_NULL) {
+    value->str = (char*)mem_alloc(len);
+		memcpy(value->str, data, len);
+		value->str[len] = '\0';
+		value->length = len;
+	}
+
+	return TRUE;
+}
+
+/********************************************************************//**
+Get compression dictionary data for the given id.
+Allocates memory in data->str on success. Must be freed with mem_free().
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_get_zip_dict_data_by_id(
+/*=====================================*/
+  ulint       dict_id, /*!< in: table name */
+  LEX_STRING* data,    /*!< out: dictionary data */
+  trx_t*      trx)     /*!< in/out: transaction */
+{
+	ut_ad(data);
+
+  LEX_STRING local_data = { 0, 0 };
+	pars_info_t* info = pars_info_create();
+
+	pars_info_add_int4_literal(info, "id", dict_id);
+	pars_info_bind_function(
+		info, "my_func", dict_create_get_zip_dict_data_by_id_aux, &local_data);
+
+	dberr_t error = que_eval_sql(info,
+      "PROCEDURE P () IS\n"
+      "DECLARE FUNCTION my_func;\n"
+      "DECLARE CURSOR cur IS\n"
+      "  SELECT DATA FROM SYS_ZIP_DICT\n"
+      "    WHERE ID = :id;\n"
+      "BEGIN\n"
+      "  OPEN cur;\n"
+      "  FETCH cur INTO my_func();\n"
+      "  CLOSE cur;\n"
+      "END;\n",
+      FALSE, trx);
+	if(error == DB_SUCCESS)
+	{
+		if(local_data.str == 0)
+      error = DB_RECORD_NOT_FOUND;
+    else
+      *data = local_data;
 	}
 	return error;
 }

@@ -19,11 +19,13 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #ifndef ZIP_CACHE_H
 #define ZIP_CACHE_H
 
+#include <memory>
 #include <string>
 #include <map>
 
 #include "univ.i"
-#include "my_sys.h"
+#include "mem0mem.h"
+#include "sync0rw.h"
 
 
 namespace mysql
@@ -53,12 +55,12 @@ namespace mysql
     };
   } // namespace mysql::detail
 
-  // generic my_malloc_allocator for objects of class T
+  // generic innobase_allocator for objects of class T
   template<typename T>
-  class my_malloc_allocator: public detail::allocator_base<T>
+  class innobase_allocator: public detail::allocator_base<T>
   {	
     public:
-      typedef my_malloc_allocator<T> other;
+      typedef innobase_allocator<T> other;
 
       typedef detail::allocator_base<T> base_type;
       typedef typename base_type::value_type value_type;
@@ -78,7 +80,7 @@ namespace mysql
       template<typename Other>
       struct rebind
       {	
-        typedef my_malloc_allocator<Other> other;
+        typedef innobase_allocator<Other> other;
       };
 
       // return address of mutable value
@@ -94,27 +96,27 @@ namespace mysql
       }
 
       // construct default allocator (do nothing)
-      my_malloc_allocator()
+      innobase_allocator()
       {}
 
       // construct by copying (do nothing)
-      my_malloc_allocator(const my_malloc_allocator<T>&)
+      innobase_allocator(const innobase_allocator<T>&)
       {}
 
       // assignment operator (do nothing)
-      my_malloc_allocator<T>& operator = (const my_malloc_allocator<T>&)
+      innobase_allocator<T>& operator = (const innobase_allocator<T>&)
       {
         return *this;
       }
 
       // construct from a related allocator (do nothing)
       template<typename Other>
-      my_malloc_allocator(const my_malloc_allocator<Other>&)
+      innobase_allocator(const innobase_allocator<Other>&)
       {}
 
       // assign from a related allocator (do nothing)
       template<typename Other>
-      my_malloc_allocator<T>& operator = (const my_malloc_allocator<Other>&)
+      innobase_allocator<T>& operator = (const innobase_allocator<Other>&)
       {
         return *this;
       }
@@ -125,7 +127,7 @@ namespace mysql
         void_pointer ptr = 0;
 
         if (count != 0 && count <= max_size())
-          ptr = my_malloc(count * sizeof(T), MYF(0));
+          ptr = mem_alloc(count * sizeof(T));
 
         return static_cast<pointer>(ptr);
       }
@@ -133,7 +135,7 @@ namespace mysql
       // deallocate object at ptr, ignore size
       void deallocate(pointer ptr, size_type)
       {
-        my_free(ptr);
+        mem_free(ptr);
       }
 
       // default construct object at ptr
@@ -163,10 +165,10 @@ namespace mysql
 
   // generic allocator for type void
   template<>
-  class my_malloc_allocator<void>
+  class innobase_allocator<void>
   {
     public:
-      typedef my_malloc_allocator<void> other;
+      typedef innobase_allocator<void> other;
 
       typedef void value_type;
 
@@ -179,31 +181,31 @@ namespace mysql
       template<typename Other>
       struct rebind
       {
-        typedef my_malloc_allocator<Other> other;
+        typedef innobase_allocator<Other> other;
       };
 
       // construct default allocator (do nothing)
-      my_malloc_allocator()
+      innobase_allocator()
       {}
 
       // construct by copying (do nothing)
-      my_malloc_allocator(const my_malloc_allocator<void>&)
+      innobase_allocator(const innobase_allocator<void>&)
       {}
 
       // assignment operator (do nothing)
-      my_malloc_allocator<void>& operator = (const my_malloc_allocator<void>&)
+      innobase_allocator<void>& operator = (const innobase_allocator<void>&)
       {
         return *this;
       }
 
       // construct from related allocator (do nothing)
       template<typename Other>
-      my_malloc_allocator(const my_malloc_allocator<Other>&)
+      innobase_allocator(const innobase_allocator<Other>&)
       {}
 
       // assign from a related allocator (do nothing)
       template<typename Other>
-      my_malloc_allocator<void>& operator=(const my_malloc_allocator<Other>&)
+      innobase_allocator<void>& operator=(const innobase_allocator<Other>&)
       {
         return *this;
       }
@@ -212,7 +214,7 @@ namespace mysql
   // test for allocator equality
   template<typename T, typename Other>
   inline
-  bool operator == (const my_malloc_allocator<T>&, const my_malloc_allocator<Other>&)
+  bool operator == (const innobase_allocator<T>&, const innobase_allocator<Other>&)
   {
     return true;
   }
@@ -220,13 +222,13 @@ namespace mysql
   // test for allocator inequality
   template<typename T, typename Other>
   inline
-  bool operator != (const my_malloc_allocator<T>& x, const my_malloc_allocator<Other>& y)
+  bool operator != (const innobase_allocator<T>& x, const innobase_allocator<Other>& y)
   {
     return !(x == y);
   }
 
-  // Read-write lock based on rw_lock_t
-  class rwlock
+  // Read-write lock based on InnoBase rw_lock_t
+  class innobase_shared_mutex
   {
     template<typename Mutex>
     friend class shared_lock;
@@ -235,19 +237,19 @@ namespace mysql
 
     //noncopyable
     private:
-      rwlock(const rwlock&);
-      rwlock& operator = (const rwlock&);
+      innobase_shared_mutex(const innobase_shared_mutex&);
+      innobase_shared_mutex& operator = (const innobase_shared_mutex&);
 
     public:
-      rwlock():
+      innobase_shared_mutex():
         impl_()
       {
-        my_rwlock_init(&impl_, NULL);
+        rw_lock_create(PFS_NOT_INSTRUMENTED, &impl_, SYNC_NO_ORDER_CHECK);
       }
 
-      ~rwlock()
+      ~innobase_shared_mutex()
       {
-        rwlock_destroy(&impl_);
+        rw_lock_free(&impl_);
       }
 
     private:
@@ -255,22 +257,22 @@ namespace mysql
 
       void lock()
       {
-        rw_wrlock(&impl_);
+        rw_lock_x_lock(&impl_);
       }
 
       void unlock()
       {
-        rw_unlock(&impl_);
+        rw_lock_x_unlock(&impl_);
       }
 
       void lock_shared()
       {
-        rw_rdlock(&impl_);
+        rw_lock_s_lock(&impl_);
       }
 
       void unlock_shared()
       {
-        rw_unlock(&impl_);
+        rw_lock_s_unlock(&impl_);
       }
   };
 
@@ -336,8 +338,8 @@ namespace zip
       compression_dictionary_cache& operator = (const compression_dictionary_cache&);
 
     public:
-      // like std::string but with my_malloc_allocator allocator
-      typedef std::basic_string<char, std::char_traits<char>, mysql::my_malloc_allocator<char> > blob_type;
+      // like std::string but with innobase_allocator allocator
+      typedef std::basic_string<char, std::char_traits<char>, mysql::innobase_allocator<char> > blob_type;
 
     private:
       typedef ib_uint32_t ref_counter_type;
@@ -356,7 +358,7 @@ namespace zip
         ref_counter_type ref_counter;
         blob_type blob;
       };
-      typedef mysql::my_malloc_allocator<std::pair<const dictionary_id_type, dictionary_record> > dictionary_record_map_allocator;
+      typedef mysql::innobase_allocator<std::pair<const dictionary_id_type, dictionary_record> > dictionary_record_map_allocator;
       typedef std::map<dictionary_id_type, dictionary_record, std::less<dictionary_id_type>, dictionary_record_map_allocator> dictionary_record_container;
 
     public:
@@ -435,6 +437,13 @@ namespace zip
       };
 
     public:
+      static void init_instance();
+      static void destroy_instance();
+      static const compression_dictionary_cache& instance();
+
+      const item& operator [] (const key& k) const;
+
+    private:
       compression_dictionary_cache():
         dictionary_records_mutex_(),
         dictionary_records_(),
@@ -442,14 +451,14 @@ namespace zip
         items_()
       {}
 
-      const item& operator [] (const key& k) const;
+      typedef std::auto_ptr<compression_dictionary_cache> instance_ptr;
+      static instance_ptr instance_;
 
-    private:
-      mutable mysql::rwlock dictionary_records_mutex_;
+      mutable mysql::innobase_shared_mutex dictionary_records_mutex_;
       mutable dictionary_record_container dictionary_records_;
       
-      typedef std::map<key, item, std::less<key>, mysql::my_malloc_allocator<std::pair<const key, item> > > item_container;
-      mutable mysql::rwlock items_mutex_;
+      typedef std::map<key, item, std::less<key>, mysql::innobase_allocator<std::pair<const key, item> > > item_container;
+      mutable mysql::innobase_shared_mutex items_mutex_;
       mutable item_container items_;
 
       static bool get_dictionary_id_by_key(const key& k, dictionary_id_type& id);

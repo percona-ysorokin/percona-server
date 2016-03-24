@@ -19,7 +19,7 @@
 #include "sql_table.h"                          // write_bin_log
 #include "sql_class.h"                          // THD
 
-int mysql_create_zip_dict(THD* thd, const char* name, const char* data)
+int mysql_create_zip_dict(THD* thd, const char* name, const char* data, ulong data_len)
 {
   int error= HA_ADMIN_NOT_IMPLEMENTED;
 
@@ -36,7 +36,7 @@ int mysql_create_zip_dict(THD* thd, const char* name, const char* data)
 
   
   handler_create_zip_dict_result create_result;
-  if((create_result = hton->create_zip_dict(hton, thd, name, data)) != HA_CREATE_ZIP_DICT_OK)
+  if((create_result = hton->create_zip_dict(hton, thd, name, data, data_len)) != HA_CREATE_ZIP_DICT_OK)
   {
 	if(create_result == HA_CREATE_ZIP_DICT_ALREADY_EXISTS)
 	{

@@ -1,31 +1,28 @@
 --source include/have_innodb.inc
 
-CREATE COMPRESSION_DICTIONARY foo ('abbccc');
-CREATE COMPRESSION_DICTIONARY bar ('alphabetagammadeltaepsilonzetaetathetaiotakappalambdamunuxiomicronpirhosigmatauupsilonphichipsiomega');
+--let $number_of_steps=17
+
+CREATE COMPRESSION_DICTIONARY greek ('alphabetagammadeltaepsilonzetaetathetaiotakappalambdamunuxiomicronpirhosigmatauupsilonphichipsiomega');
 
 CREATE TABLE t1(
   id INT,
-  a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY bar,
-  b INT,
-  c BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY foo,
-  d INT
+  a BLOB
 ) ENGINE=InnoDB;
+
 CREATE TABLE t2(
   id INT,
-  a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY bar,
-  b INT,
-  c BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY bar,
-  d INT
-);
+  a BLOB COLUMN_FORMAT COMPRESSED
+) ENGINE=InnoDB;
+
 CREATE TABLE t3(
-  id INT
-);
+  id INT,
+  a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY greek
+) ENGINE=InnoDB;
 
 SELECT * FROM information_schema.xtradb_zip_dict;
 SELECT * FROM information_schema.xtradb_zip_dict_cols;
 
-INSERT INTO t2 VALUES(
-  1,
+SET @json_value =
   '{\n'
   '  "alpha"   = 1,\n'
   '  "beta"    = 2,\n'
@@ -51,11 +48,37 @@ INSERT INTO t2 VALUES(
   '  "chi"     = 22,\n'
   '  "psi"     = 23,\n'
   '  "omega"   = 24\n'
-  '}\n',
-  0,
-  NULL,
-  0
-);
+  '}\n'
+;
+
+INSERT INTO t1 VALUES(0, @json_value);
+SELECT * FROM t1;
+
+INSERT INTO t2 VALUES(0, @json_value);
 SELECT * FROM t2;
 
-DROP TABLE t1, t2, t3;
+INSERT INTO t3 VALUES(0, @json_value);
+SELECT * FROM t3;
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t1 SELECT * FROM t1;
+  --dec $i
+}
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t2 SELECT * FROM t2;
+  --dec $i
+}
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t3 SELECT * FROM t3;
+  --dec $i
+}
+
+#DROP TABLE t1, t2, t3;

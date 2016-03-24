@@ -2349,7 +2349,8 @@ innobase_build_col_map_add(
 
 	row_mysql_store_col_in_innobase_format(
 		dfield, buf, TRUE, field->ptr, size, comp,
-		prebuilt, field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED);
+		field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED,
+		(const byte*)field->zip_dict.str, field->zip_dict.length, prebuilt);
 }
 
 /** Construct the translation table for reordering, dropping or

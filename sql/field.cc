@@ -9728,7 +9728,7 @@ bool Create_field::init(THD *thd, const char *fld_name,
                         LEX_STRING *fld_comment, const char *fld_change,
                         List<String> *fld_interval_list,
                         const CHARSET_INFO *fld_charset, uint fld_geom_type,
-						const LEX_STRING *fld_zip_dict)
+                        const LEX_STRING *fld_zip_dict)
 {
   uint sign_len, allowed_type_modifier= 0;
   ulong max_field_charlength= MAX_FIELD_CHARLENGTH;
@@ -10389,7 +10389,12 @@ Create_field::Create_field(Field *old_field,Field *orig_field) :
   key_length(old_field->key_length()),
   unireg_check(old_field->unireg_check),
   charset(old_field->charset()),		// May be NULL ptr
-  field(old_field)
+  field(old_field),
+  /*
+  TODO: (ZIP_DICT) extract zip_dict name from old_field
+  (needed for CREATE TABLE ... LIKE ...)
+  */
+  zip_dict(null_lex_str)
 {
 
   switch (sql_type) {

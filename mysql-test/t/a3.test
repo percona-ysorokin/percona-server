@@ -1,0 +1,79 @@
+--source include/have_innodb.inc
+
+--let $number_of_steps=17
+
+CREATE COMPRESSION_DICTIONARY day_month ('januaryfebruarymarchaprilmayjunejulyaugustseptemberoctobernovemberdecembersundaymondaytuesdaywednesdaythursdayfridaysaturday');
+
+CREATE TABLE t1(
+  id INT,
+  a BLOB
+) ENGINE=InnoDB;
+
+CREATE TABLE t2(
+  id INT,
+  a BLOB COLUMN_FORMAT COMPRESSED
+) ENGINE=InnoDB;
+
+CREATE TABLE t3(
+  id INT,
+  a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY day_month
+) ENGINE=InnoDB;
+
+SELECT * FROM information_schema.xtradb_zip_dict;
+SELECT * FROM information_schema.xtradb_zip_dict_cols;
+
+SET @json_value =
+  '{\n'
+  '  "january"   = 1,\n'
+  '  "february"  = 2,\n'
+  '  "march"     = 3,\n'
+  '  "april"     = 4,\n'
+  '  "may"       = 5,\n'
+  '  "june"      = 6,\n'
+  '  "july"      = 7,\n'
+  '  "august"    = 8,\n'
+  '  "september" = 9,\n'
+  '  "october"   = 10,\n'
+  '  "november"  = 11,\n'
+  '  "december"  = 12,\n'
+  '  "sunday"    = 1,\n'
+  '  "monday"    = 2,\n'
+  '  "tuesday"   = 3,\n'
+  '  "wednesday" = 4,\n'
+  '  "thursday"  = 5,\n'
+  '  "friday"    = 6,\n'
+  '  "saturday"  = 7\n'
+  '}\n'
+;
+
+INSERT INTO t1 VALUES(0, @json_value);
+SELECT * FROM t1;
+
+INSERT INTO t2 VALUES(0, @json_value);
+SELECT * FROM t2;
+
+INSERT INTO t3 VALUES(0, @json_value);
+SELECT * FROM t3;
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t1 SELECT * FROM t1;
+  --dec $i
+}
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t2 SELECT * FROM t2;
+  --dec $i
+}
+
+--let $i=$number_of_steps
+while($i)
+{
+  INSERT INTO t3 SELECT * FROM t3;
+  --dec $i
+}
+
+#DROP TABLE t1, t2, t3;
