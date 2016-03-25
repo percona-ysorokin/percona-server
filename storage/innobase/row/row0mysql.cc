@@ -66,7 +66,6 @@ Created 9/17/2000 Heikki Tuuri
 #include "my_sys.h"
 #include "ha_prototypes.h"
 #include "zlib.h"
-#include "zutil.h"
 #include <algorithm>
 
 /** Provide optional 4.x backwards compatibility for 5.0 and above */
@@ -386,7 +385,7 @@ row_compress_column(
         column_zip_set_alloc(&c_stream, prebuilt->compress_heap);
 
         err = deflateInit2(&c_stream, column_zip_level,
-                           Z_DEFLATED, window_bits, DEF_MEM_LEVEL, column_zip_zlib_strategy);
+                           Z_DEFLATED, window_bits, MAX_MEM_LEVEL, column_zip_zlib_strategy);
         ut_a(err == Z_OK);
 
         if(dict_data != 0 && dict_data_len != 0)
