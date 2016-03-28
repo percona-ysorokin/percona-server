@@ -1,0 +1,217 @@
+--source include/have_innodb.inc
+
+# only blob/text/varchar/varbinary are supported
+CREATE TABLE t1 (a INT COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t1;
+CREATE TABLE t2 (a VARCHAR(100) COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t2;
+CREATE TABLE t3 (a BLOB COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t3;
+CREATE TABLE t4 (a TEXT COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t4;
+CREATE TABLE t5 (a TEXT BINARY COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t5;
+CREATE TABLE t6(a TEXT CHARACTER SET gbk COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t6;
+CREATE TABLE t7(a TEXT BINARY CHARACTER SET gbk COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t7;
+CREATE TABLE t8 (a VARBINARY(1000) COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t8;
+CREATE TABLE t9 (a VARCHAR(1000) COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t9;
+
+# test index creation
+# compressed columns are not allowed to defined as a part or a key
+DROP TABLE t1;
+--error ER_BLOB_KEY_WITH_COMPRESS
+CREATE TABLE t1(a BLOB COLUMN_FORMAT COMPRESSED, KEY(a(10)));
+
+CREATE TABLE t1(a BLOB COLUMN_FORMAT COMPRESSED);
+--error ER_BLOB_KEY_WITH_COMPRESS
+ALTER TABLE t3 ADD KEY(a(10));
+
+DROP TABLE t1;
+CREATE TABLE t1 (a BLOB) ENGINE=InnoDB;
+# it's ok if a blob column is not compressed
+ALTER TABLE t1 ADD KEY(a(10));
+
+# test modifying column format
+DROP TABLE t1;
+CREATE TABLE t1 (a BLOB) ENGINE=InnoDB;
+INSERT INTO t1 VALUES (REPEAT('abc',5));
+INSERT INTO t1 VALUES (REPEAT('abc',100));
+SELECT * FROM t1;
+ALTER TABLE t1 MODIFY COLUMN a BLOB COLUMN_FORMAT COMPRESSED;
+SELECT * FROM t1;
+SHOW CREATE TABLE t1;
+CHECKSUM TABLE t1;
+ALTER TABLE t1 MODIFY COLUMN a VARCHAR(10000) COLUMN_FORMAT COMPRESSED;
+SHOW CREATE TABLE t1;
+ALTER TABLE t1 MODIFY COLUMN a VARCHAR(10000);
+ALTER TABLE t1 MODIFY COLUMN a BLOB COLUMN_FORMAT COMPRESSED;
+CHECKSUM TABLE t1;
+
+# test adding column with default value
+DROP TABLE t1;
+CREATE TABLE t1 (a INT AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB;
+INSERT INTO t1 VALUES (NULL);
+ALTER TABLE t1 ADD COLUMN b TEXT COLUMN_FORMAT COMPRESSED;
+INSERT INTO t1 (a) VALUES (NULL);
+ALTER TABLE t1 ADD COLUMN c VARCHAR(1000) COLUMN_FORMAT COMPRESSED;
+INSERT INTO t1 (a,b,c) VALUES (NULL, "hello!", "world!");
+ALTER TABLE t1 ADD COLUMN d VARCHAR(10000) COLUMN_FORMAT COMPRESSED DEFAULT "hello, world! see you!";
+INSERT INTO t1 (a,b,c) VALUES (NULL, "hello", "world!");
+SELECT * FROM t1;
+
+# test new option: innodb_column_compression_level
+SHOW VARIABLES LIKE 'innodb_column_compression_level';
+SET @old_innodb_column_compression_level = @@global.innodb_column_compression_level;
+
+DROP TABLE t1;
+CREATE TABLE t1 (a BLOB COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SET GLOBAL innodb_column_compression_level = -1;
+SELECT @@global.innodb_column_compression_level;
+INSERT INTO t1 VALUES(REPEAT('abcd', 200));
+
+SET GLOBAL innodb_column_compression_level = 5;
+SELECT @@global.innodb_column_compression_level;
+INSERT INTO t1 VALUES(REPEAT('abcd', 200));
+
+SET GLOBAL innodb_column_compression_level = 9;
+SELECT @@global.innodb_column_compression_level;
+INSERT INTO t1 VALUES(REPEAT('abcd', 200));
+
+SET GLOBAL innodb_column_compression_level = 10;
+SELECT @@global.innodb_column_compression_level;
+
+SELECT MAX(LENGTH(a)) FROM t1;
+
+#test new option: innodb_column_zlib_strategy
+SHOW VARIABLES LIKE 'innodb_column_zlib_strategy';
+SET @old_innodb_column_zlib_strategy = @@global.innodb_column_zlib_strategy;
+
+TRUNCATE TABLE t1;
+INSERT INTO t1 VALUES(REPEAT('abcd', 10));
+SET GLOBAL innodb_column_zlib_strategy = -1;
+SELECT @@global.innodb_column_zlib_strategy;
+INSERT INTO t1 VALUES(REPEAT('abcd', 10));
+
+SET GLOBAL innodb_column_zlib_strategy = 0;
+SELECT @@global.innodb_column_zlib_strategy;
+INSERT INTO t1 VALUES(REPEAT('abcd', 200));
+
+SET GLOBAL innodb_column_zlib_strategy = 1;
+SELECT @@global.innodb_column_zlib_strategy;
+INSERT INTO t1 VALUES(REPEAT('abcd', 200));
+
+SET GLOBAL innodb_column_zlib_strategy = 2;
+SELECT @@global.innodb_column_zlib_strategy;
+INSERT INTO t1 VALUES(REPEAT('abcd', 200));
+
+SET GLOBAL innodb_column_zlib_strategy = 3;
+SELECT @@global.innodb_column_zlib_strategy;
+INSERT INTO t1 VALUES(REPEAT('abcd', 200));
+
+SET GLOBAL innodb_column_zlib_strategy = 4;
+SELECT @@global.innodb_column_zlib_strategy;
+INSERT INTO t1 VALUES(REPEAT('abcd', 200));
+
+SET GLOBAL innodb_column_zlib_strategy = 5;
+SELECT @@global.innodb_column_zlib_strategy;
+
+SELECT MAX(LENGTH(a)) FROM t1;
+
+#test new option: innodb_column_zlib_wrap
+SHOW VARIABLES LIKE 'innodb_column_zlib_wrap';
+SET @old_innodb_column_zlib_wrap = @@global.innodb_column_zlib_wrap;
+
+TRUNCATE TABLE t1;
+SET GLOBAL innodb_column_zlib_wrap = 0;
+SELECT @@global.innodb_column_zlib_wrap;
+INSERT INTO t1 VALUES (REPEAT('abcd', 10));
+INSERT INTO t1 VALUES (REPEAT('abcd',1000));
+
+SET GLOBAL innodb_column_zlib_wrap = 1;
+SELECT @@global.innodb_column_zlib_wrap;
+INSERT INTO t1 VALUES (REPEAT('abcd', 10));
+INSERT INTO t1 VALUES (REPEAT('abcd',1000));
+
+SELECT MAX(LENGTH(a)) FROM t1;
+
+#test new option: innodb_column_zip_threshold
+SHOW VARIABLES LIKE 'innodb_column_zip_threshold';
+SET @old_innodb_column_zip_threshold = @@global.innodb_column_zip_threshold;
+
+TRUNCATE TABLE t1;
+SET GLOBAL innodb_column_zip_threshold = 0;
+SELECT @@global.innodb_column_zip_threshold;
+INSERT INTO t1 VALUES (REPEAT('abc',10));
+
+SET GLOBAL innodb_column_zip_threshold = 96;
+SELECT @@global.innodb_column_zip_threshold;
+INSERT INTO t1 VALUES (REPEAT('abc',40));
+
+SET GLOBAL innodb_column_zip_threshold = 1000;
+SELECT @@global.innodb_column_zip_threshold;
+INSERT INTO t1 VALUES (REPEAT('abc',1000));
+
+SELECT MAX(LENGTH(a)) from t1;
+
+#test new status variable:
+#     Innodb_column_compress
+#     Innodb_column_decompress
+SELECT VARIABLE_VALUE INTO @initial_column_compresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_compressed';
+SELECT VARIABLE_VALUE INTO @initial_column_decompresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_decompressed';
+
+SELECT VARIABLE_VALUE - @initial_column_compresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_compressed';
+SELECT VARIABLE_VALUE - @initial_column_decompresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_decompressed';
+
+DROP TABLE t1;
+CREATE TABLE t1 (a INT AUTO_INCREMENT PRIMARY KEY, b INT, c INT, d BLOB COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t1;
+INSERT INTO t1 SELECT NULL, 100, 100, REPEAT('abc',100);
+INSERT INTO t1 SELECT NULL, 100, 100, REPEAT('abc',100) FROM t1;
+INSERT INTO t1 SELECT NULL, 100, 100, REPEAT('abc',100) FROM t1 a, t1 b;
+INSERT INTO t1 SELECT NULL, 100, 100, REPEAT('abc',100) FROM t1 a, t1 b;
+INSERT INTO t1 SELECT NULL, 100, 100, REPEAT('abc',100) FROM t1 a, t1 b;
+SELECT VARIABLE_VALUE - @initial_column_compresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_compressed';
+SELECT VARIABLE_VALUE - @initial_column_decompresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_decompressed';
+SELECT COUNT(*) FROM t1;
+SELECT VARIABLE_VALUE - @initial_column_compresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_compressed';
+SELECT VARIABLE_VALUE - @initial_column_decompresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_decompressed';
+
+SELECT a,b,c FROM t1 LIMIT 10;
+SELECT VARIABLE_VALUE - @initial_column_compresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_compressed';
+SELECT VARIABLE_VALUE - @initial_column_decompresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_decompressed';
+
+SELECT MAX(LENGTH(d)) FROM t1;
+SELECT VARIABLE_VALUE - @initial_column_compresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_compressed';
+SELECT VARIABLE_VALUE - @initial_column_decompresssed FROM information_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_column_decompressed';
+
+#test checksum
+DROP TABLE t2;
+CREATE TABLE t2 LIKE t1;
+INSERT INTO t2 SELECT * FROM t1;
+ALTER TABLE t2 MODIFY COLUMN d BLOB;
+SHOW CREATE TABLE t2;
+
+CHECKSUM TABLE t1, t2;
+
+#cleanup
+SET GLOBAL innodb_column_compression_level = @old_innodb_column_compression_level;
+SET GLOBAL innodb_column_zlib_wrap = @old_innodb_column_zlib_wrap;
+SET GLOBAL innodb_column_zlib_strategy = @old_innodb_column_zlib_strategy;
+SET GLOBAL innodb_column_zip_threshold = @old_innodb_column_zip_threshold;
+DROP TABLE t1, t2, t3, t4, t5, t6, t7, t8, t9;
