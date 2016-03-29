@@ -1,0 +1,55 @@
+--source include/have_innodb.inc
+
+# check if dictionary data supplied to "CREATE COMPRESSION_DICTIONARY ..."
+# statements is the same as in the information_schema (NUL characters
+# must not be ignored and must not be treaded as string terminators)
+
+CREATE COMPRESSION_DICTIONARY d1('');
+CREATE COMPRESSION_DICTIONARY d2(_ucs2'');
+CREATE COMPRESSION_DICTIONARY d3('aaaaaaaabbbbbbbbccccccccdddddddd');
+CREATE COMPRESSION_DICTIONARY d4(_ucs2'aaaaaaaabbbbbbbbccccccccdddddddd');
+
+CREATE COMPRESSION_DICTIONARY d5(' ');
+CREATE COMPRESSION_DICTIONARY d6('\0');
+CREATE COMPRESSION_DICTIONARY d7('\0aaaaaaaabbbbbbbbccccccccdddddddd');
+
+# we use MD5() function here to get rid of NUL characters in the output
+SELECT id, name, MD5(zip_dict), LENGTH(zip_dict)
+  FROM information_schema.xtradb_zip_dict
+  ORDER BY id;
+
+# creating a compression dictionary with a name already taken is an error
+--error ER_COMPRESSION_DICTIONARY_EXISTS_ERROR
+CREATE COMPRESSION_DICTIONARY d1('data');
+
+--let $dict_name=d1
+--let $table_name=t1
+
+# getting compression dictionary id for d1
+eval SELECT id INTO @dict_id FROM information_schema.xtradb_zip_dict
+  WHERE name = '$dict_name';
+
+# creating a new table t1 with 2 compressed columns (with and without dictionary)
+eval CREATE TABLE $table_name(
+  id INT,
+  a BLOB COLUMN_FORMAT COMPRESSED,
+  b BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY $dict_name
+) ENGINE=InnoDB;
+
+# getting table id for t1
+eval SELECT table_id INTO @table_id FROM information_schema.innodb_sys_tables
+  WHERE name=CONCAT(DATABASE(), '/', '$table_name');
+
+# the number of column<->dict_id links for t1 must be exactly one
+SELECT COUNT(*) = 1 AS only_one_dictionary_reference FROM information_schema.xtradb_zip_dict_cols
+  WHERE table_id = @table_id;
+
+SELECT dict_id = @dict_id AS dict_ids_must_match FROM information_schema.xtradb_zip_dict_cols
+  WHERE table_id = @table_id AND column_pos = 2;
+
+# check if it is OK to refer to an empty dictionary
+SET @long_string_value = REPEAT('a', 128);
+INSERT INTO t1 VALUES(1, @long_string_value, @long_string_value);
+SELECT a = @long_string_value AS a_match, b = @long_string_value AS b_match FROM t1 WHERE id = 1;
+
+DROP TABLE t1;
