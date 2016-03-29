@@ -738,11 +738,12 @@ UNIV_INTERN
 const char*
 dict_process_sys_zip_dict(
 /*=========================*/
-	mem_heap_t*	heap,		/*!< in/out: heap memory */
-	const rec_t*	rec,	/*!< in: current SYS_ZIP_DICT rec */
-	ulint*			id,		/*!< out: dict id */
-	const char**	name,	/*!< out: dict name */
-	const char**	data)	/*!< out: dict data */
+	mem_heap_t*  heap,     /*!< in/out: heap memory */
+	const rec_t* rec,      /*!< in: current SYS_ZIP_DICT rec */
+	ulint*       id,       /*!< out: dict id */
+	const char** name,     /*!< out: dict name */
+	const char** data,     /*!< out: dict data */
+	ulint*       data_len) /*!< out: dict data length */
 {
 	ulint		len;
 	const byte*	field;
@@ -751,6 +752,7 @@ dict_process_sys_zip_dict(
 	*id = ULINT_UNDEFINED;
 	*name = NULL;
 	*data = NULL;
+	*data_len = 0;
 
 	if (UNIV_UNLIKELY(rec_get_deleted_flag(rec, 0))) {
 		return("delete-marked record in SYS_ZIP_DICT");
@@ -789,9 +791,10 @@ err_len:
 
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_ZIP_DICT__DATA, &len);
-	if (UNIV_UNLIKELY(len == 0 || len == UNIV_SQL_NULL)) {
+	if (UNIV_UNLIKELY(len == UNIV_SQL_NULL)) {
 		goto err_len;
 	}
+	*data_len = len;
 	*data = mem_heap_strdupl(heap, (char*) field, len);
 
 	return(NULL);

@@ -396,11 +396,12 @@ UNIV_INTERN
 const char*
 dict_process_sys_zip_dict(
 /*=========================*/
-	mem_heap_t*	heap,		/*!< in/out: heap memory */
-	const rec_t*	rec,		/*!< in: current SYS_ZIP_DICT rec */
-	ulint*			id,		/*!< out: dict id */
-	const char**	name,		/*!< out: dict name */
-	const char**	data);		/*!< out: dict data */
+	mem_heap_t*  heap,      /*!< in/out: heap memory */
+	const rec_t* rec,       /*!< in: current SYS_ZIP_DICT rec */
+	ulint*       id,        /*!< out: dict id */
+	const char** name,      /*!< out: dict name */
+	const char** data,      /*!< out: dict data */
+	ulint*       data_len); /*!< out: dict data length */
 /********************************************************************//**
 This function parses a SYS_ZIP_DICT_COLS record, extracts necessary
 information from the record and returns to caller.

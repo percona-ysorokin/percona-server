@@ -6813,7 +6813,17 @@ dict_create_zip_dict(
 
 	err = dict_create_add_zip_dict(name, data, data_len, trx);
 
-	trx_commit_for_mysql(trx);
+	if(err == DB_SUCCESS)
+	{
+		trx_commit_for_mysql(trx);
+	}
+	else
+	{
+		trx->op_info = "rollback of internal trx on zip_dict table";
+		trx_rollback_to_savepoint(trx, NULL);
+		ut_a(trx->error_state == DB_SUCCESS);
+	}
+	trx->op_info = "";
 	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 
@@ -6848,7 +6858,17 @@ dict_get_dictionary_id_by_key(
 
 	err = dict_create_get_zip_dict_id_by_reference(table_id, column_pos, dict_id, trx);
 
-	trx_commit_for_mysql(trx);
+	if(err == DB_SUCCESS)
+	{
+		trx_commit_for_mysql(trx);
+	}
+	else
+	{
+		trx->op_info = "rollback of internal trx on zip_dict_cols table";
+		trx_rollback_to_savepoint(trx, NULL);
+		ut_a(trx->error_state == DB_SUCCESS);
+	}
+	trx->op_info = "";
 	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 

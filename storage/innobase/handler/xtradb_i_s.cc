@@ -131,6 +131,30 @@ field_store_string(
 
 	return(ret);
 }
+/*******************************************************************//**
+Auxiliary function to store (char*, len) value in MYSQL_TYPE_STRING
+field.
+@return	0 on success */
+static
+int
+field_store_bounded_string(
+/*===============*/
+	Field*      field,   /*!< in/out: target field for storage */
+	const char* str,     /*!< in: pointer to a utf-8 string, or NULL */
+	uint        str_len) /*!< in: string length */
+{
+	int	ret;
+
+	if (str != NULL) {
+		ret = field->store(str, str_len, system_charset_info);
+		field->set_notnull();
+	} else {
+		ret = 0; /* success */
+		field->set_null();
+	}
+
+	return(ret);
+}
 
 static
 int
@@ -654,11 +678,12 @@ static
 int
 xtradb_i_s_dict_fill_sys_zip_dict(
 /*==========================*/
-	THD*		thd,		/*!< in: thread */
-	ulint		id,			/*!< in: dict ID */
-	const char*	name,		/*!< in: dict name */
-	const char*	data,		/*!< in: dict data */
-	TABLE*		table_to_fill)	/*!< in/out: fill this table */
+	THD*        thd,           /*!< in: thread */
+	ulint       id,            /*!< in: dict ID */
+	const char* name,          /*!< in: dict name */
+	const char* data,          /*!< in: dict data */
+	ulint       data_len,      /*!< in: dict data length */
+	TABLE*      table_to_fill) /*!< in/out: fill this table */
 {
 	DBUG_ENTER("xtradb_i_s_dict_fill_sys_zip_dict");
 
@@ -666,7 +691,8 @@ xtradb_i_s_dict_fill_sys_zip_dict(
 
 	OK(field_store_ulint(fields[zip_dict_field_id], id));
 	OK(field_store_string(fields[zip_dict_field_name], name));
-	OK(field_store_string(fields[zip_dict_field_zip_dict], data));
+	OK(field_store_bounded_string(fields[zip_dict_field_zip_dict], data,
+		data_len));
 
 	OK(schema_table_store_record(thd, table_to_fill));
 
@@ -706,20 +732,21 @@ xtradb_i_s_sys_zip_dict_fill_table(
 
 	while (rec) {
 		const char*	err_msg;
-		ulint		id;
-		const char*	name;
-		const char*	data;
+		ulint       id;
+		const char* name;
+		const char* data;
+		ulint       data_len;
 
 		/* Extract necessary information from a SYS_ZIP_DICT row */
 		err_msg = dict_process_sys_zip_dict(
-			heap, rec, &id, &name, &data);
+			heap, rec, &id, &name, &data, &data_len);
 
 		mtr_commit(&mtr);
 		mutex_exit(&dict_sys->mutex);
 
 		if (!err_msg) {
 			xtradb_i_s_dict_fill_sys_zip_dict(
-				thd, id, name, data,
+				thd, id, name, data, data_len,
 				tables->table);
 		} else {
 			push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,

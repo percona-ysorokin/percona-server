@@ -1986,7 +1986,6 @@ dict_create_add_zip_dict(
 {
 	ut_ad(name);
 	ut_ad(data);
-	ut_ad(data_len != 0);
 
 	pars_info_t* info = pars_info_create();
 

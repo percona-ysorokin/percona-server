@@ -1,0 +1,43 @@
+CREATE COMPRESSION_DICTIONARY d1('');
+CREATE COMPRESSION_DICTIONARY d2(_ucs2'');
+CREATE COMPRESSION_DICTIONARY d3('aaaaaaaabbbbbbbbccccccccdddddddd');
+CREATE COMPRESSION_DICTIONARY d4(_ucs2'aaaaaaaabbbbbbbbccccccccdddddddd');
+CREATE COMPRESSION_DICTIONARY d5(' ');
+CREATE COMPRESSION_DICTIONARY d6('\0');
+CREATE COMPRESSION_DICTIONARY d7('\0aaaaaaaabbbbbbbbccccccccdddddddd');
+SELECT id, name, MD5(zip_dict), LENGTH(zip_dict)
+FROM information_schema.xtradb_zip_dict
+ORDER BY id;
+id	name	MD5(zip_dict)	LENGTH(zip_dict)
+1	d1	d41d8cd98f00b204e9800998ecf8427e	0
+2	d2	d41d8cd98f00b204e9800998ecf8427e	0
+3	d3	72dbd0ddead281f6bc7e550413de30d5	32
+4	d4	72dbd0ddead281f6bc7e550413de30d5	32
+5	d5	7215ee9c7d9dc229d2921a40e899ec5f	1
+6	d6	93b885adfe0da089cdf634904fd59f71	1
+7	d7	506cecad13db0f743abd3e9005013428	33
+CREATE COMPRESSION_DICTIONARY d1('data');
+ERROR HY000: Compression dictionary 'd1' already exists
+SELECT id INTO @dict_id FROM information_schema.xtradb_zip_dict
+WHERE name = 'd1';
+CREATE TABLE t1(
+id INT,
+a BLOB COLUMN_FORMAT COMPRESSED,
+b BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1
+) ENGINE=InnoDB;
+SELECT table_id INTO @table_id FROM information_schema.innodb_sys_tables
+WHERE name=CONCAT(DATABASE(), '/', 't1');
+SELECT COUNT(*) = 1 AS only_one_dictionary_reference FROM information_schema.xtradb_zip_dict_cols
+WHERE table_id = @table_id;
+only_one_dictionary_reference
+1
+SELECT dict_id = @dict_id AS dict_ids_must_match FROM information_schema.xtradb_zip_dict_cols
+WHERE table_id = @table_id AND column_pos = 2;
+dict_ids_must_match
+1
+SET @long_string_value = REPEAT('a', 128);
+INSERT INTO t1 VALUES(1, @long_string_value, @long_string_value);
+SELECT a = @long_string_value AS a_match, b = @long_string_value AS b_match FROM t1 WHERE id = 1;
+a_match	b_match
+1	1
+DROP TABLE t1;
