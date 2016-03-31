@@ -111,7 +111,7 @@ namespace zip
           blob_type blob;
           // here, out of the lock, try to get dictionary blob by id from the
           // SYS_ZIP_DICT InnoDB system table
-          ut_ad(get_dictionary_blob_by_id(dictionary_id, blob));
+          ut_a(get_dictionary_blob_by_id(dictionary_id, blob));
 
           {
             // acquire exclusive lock on dictionary_records mutex and try add a
