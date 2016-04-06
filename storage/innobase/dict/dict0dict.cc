@@ -6785,8 +6785,9 @@ UNIV_INTERN
 dberr_t
 dict_create_zip_dict(
 /*================================*/
-	const char*	name, /*!< in: zip_dict name */
-	const char*	data, /*!< in: zip_dict data */
+	const char* name, /*!< in: zip_dict name */
+	ulint name_len,   /*!< in: zip_dict name length*/
+	const char* data, /*!< in: zip_dict data */
 	ulint data_len)   /*!< in: zip_dict data length */
 {
 	dberr_t		err = DB_SUCCESS;
@@ -6803,7 +6804,7 @@ dict_create_zip_dict(
 	trx->dict_operation_lock_mode = RW_X_LATCH;
 	trx_start_if_not_started(trx);
 
-	err = dict_create_add_zip_dict(name, data, data_len, trx);
+	err = dict_create_add_zip_dict(name, name_len, data, data_len, trx);
 
 	if(err == DB_SUCCESS)
 	{

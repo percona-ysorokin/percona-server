@@ -7128,6 +7128,13 @@ ER_COMPRESSION_DICTIONARY_EXISTS_ERROR
 
 ER_COMPRESSION_DICTIONARY_DOES_NOT_EXIST_ERROR
   eng "Compression dictionary '%-.192s' does not exist"
+
+ER_COMPRESSION_DICTIONARY_NAME_TOO_LONG
+  eng "Compression dictionary name '%-.192s' is too long (max length = %lu)"
+
+ER_COMPRESSION_DICTIONARY_DATA_TOO_LONG
+  eng "Data for compression dictionary '%-.192s' is too long (max length = %lu)"
+
 #
 #  End of 5.6 error messages.
 #

@@ -36,6 +36,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include <btr0sea.h> /* btr_search_sys */
 #include <log0recv.h> /* recv_sys */
 #include <fil0fil.h>
+#include <dict0crea.h> /* for ZIP_DICT_MAX_* constants */
 
 /* for XTRADB_RSEG table */
 #include "trx0trx.h" /* for TRX_QUE_STATE_STR_MAX_LEN */
@@ -132,21 +133,21 @@ field_store_string(
 	return(ret);
 }
 /*******************************************************************//**
-Auxiliary function to store (char*, len) value in MYSQL_TYPE_STRING
+Auxiliary function to store (char*, len) value in MYSQL_TYPE_BLOB
 field.
 @return	0 on success */
 static
 int
-field_store_bounded_string(
+field_store_blob(
 /*===============*/
-	Field*      field,   /*!< in/out: target field for storage */
-	const char* str,     /*!< in: pointer to a utf-8 string, or NULL */
-	uint        str_len) /*!< in: string length */
+	Field*      field,    /*!< in/out: target field for storage */
+	const char* data,     /*!< in: pointer to data, or NULL */
+	uint        data_len) /*!< in: data length */
 {
 	int	ret;
 
-	if (str != NULL) {
-		ret = field->store(str, str_len, system_charset_info);
+	if (data != NULL) {
+		ret = field->store(data, data_len, system_charset_info);
 		field->set_notnull();
 	} else {
 		ret = 0; /* success */
@@ -632,8 +633,6 @@ UNIV_INTERN struct st_mysql_plugin	i_s_xtradb_rseg =
 
 
 /************************************************************************/
-static const uint max_zip_dict_name_length = 64U;
-static const uint max_zip_dict_zip_dict_length = 262144U;
 enum zip_dict_field_type
 {
 	zip_dict_field_id,
@@ -652,7 +651,7 @@ static ST_FIELD_INFO xtradb_sys_zip_dict_fields_info[] =
 	STRUCT_FLD(open_method, SKIP_OPEN_TABLE) },
 
 	{ STRUCT_FLD(field_name, "name"),
-	STRUCT_FLD(field_length, max_zip_dict_name_length),
+	STRUCT_FLD(field_length, ZIP_DICT_MAX_NAME_LENGTH),
 	STRUCT_FLD(field_type, MYSQL_TYPE_STRING),
 	STRUCT_FLD(value, 0),
 	STRUCT_FLD(field_flags, 0),
@@ -660,8 +659,8 @@ static ST_FIELD_INFO xtradb_sys_zip_dict_fields_info[] =
 	STRUCT_FLD(open_method, SKIP_OPEN_TABLE) },
 
 	{ STRUCT_FLD(field_name, "zip_dict"),
-	STRUCT_FLD(field_length, max_zip_dict_zip_dict_length),
-	STRUCT_FLD(field_type, MYSQL_TYPE_STRING),
+	STRUCT_FLD(field_length, ZIP_DICT_MAX_DATA_LENGTH),
+	STRUCT_FLD(field_type, MYSQL_TYPE_BLOB),
 	STRUCT_FLD(value, 0),
 	STRUCT_FLD(field_flags, 0),
 	STRUCT_FLD(old_name, ""),
@@ -691,7 +690,7 @@ xtradb_i_s_dict_fill_sys_zip_dict(
 
 	OK(field_store_ulint(fields[zip_dict_field_id], id));
 	OK(field_store_string(fields[zip_dict_field_name], name));
-	OK(field_store_bounded_string(fields[zip_dict_field_zip_dict], data,
+	OK(field_store_blob(fields[zip_dict_field_zip_dict], data,
 		data_len));
 
 	OK(schema_table_store_record(thd, table_to_fill));
@@ -729,6 +728,7 @@ xtradb_i_s_sys_zip_dict_fill_table(
 	mtr_start(&mtr);
 
 	rec = dict_startscan_system(&pcur, &mtr, SYS_ZIP_DICT);
+	ulint zip_size = dict_table_zip_size(pcur.btr_cur.index->table);
 
 	while (rec) {
 		const char*	err_msg;
@@ -739,7 +739,7 @@ xtradb_i_s_sys_zip_dict_fill_table(
 
 		/* Extract necessary information from a SYS_ZIP_DICT row */
 		err_msg = dict_process_sys_zip_dict(
-			heap, rec, &id, &name, &data, &data_len);
+			heap, zip_size, rec, &id, &name, &data, &data_len);
 
 		mtr_commit(&mtr);
 		mutex_exit(&dict_sys->mutex);

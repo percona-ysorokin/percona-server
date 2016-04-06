@@ -1852,8 +1852,9 @@ UNIV_INTERN
 dberr_t
 dict_create_zip_dict(
 /*================================*/
-	const char*	name, /*!< in: zip_dict name */
-	const char*	data, /*!< in: zip_dict data */
+	const char* name, /*!< in: zip_dict name */
+	ulint name_len,   /*!< in: zip_dict name length*/
+	const char* data, /*!< in: zip_dict data */
 	ulint data_len);  /*!< in: zip_dict data length */
 
 /********************************************************************//**

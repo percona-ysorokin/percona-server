@@ -20,7 +20,7 @@
 
 class THD;
 
-int mysql_create_zip_dict(THD* thd, const char* name, const char* data,
-  ulong data_len);
+int mysql_create_zip_dict(THD* thd, const char* name, ulong name_len,
+  const char* data, ulong data_len);
 
 #endif /* SQL_ZIP_DICT_INCLUDED */

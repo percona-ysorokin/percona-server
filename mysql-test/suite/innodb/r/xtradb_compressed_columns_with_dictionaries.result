@@ -5,6 +5,12 @@ CREATE COMPRESSION_DICTIONARY d4(_ucs2'aaaaaaaabbbbbbbbccccccccdddddddd');
 CREATE COMPRESSION_DICTIONARY d5(' ');
 CREATE COMPRESSION_DICTIONARY d6('\0');
 CREATE COMPRESSION_DICTIONARY d7('\0aaaaaaaabbbbbbbbccccccccdddddddd');
+SET @long_dictionary_name = REPEAT('d', 64);
+CREATE COMPRESSION_DICTIONARY dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd('abcd');
+CREATE COMPRESSION_DICTIONARY ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd('abcd');
+ERROR HY000: Compression dictionary name 'ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' is too long (max length = 64)
+SET @long_dictionary_data = REPEAT('ab', 32506 / 2);
+ERROR HY000: Data for compression dictionary 'd9' is too long (max length = 32506)
 SELECT id, name, MD5(zip_dict), LENGTH(zip_dict)
 FROM information_schema.xtradb_zip_dict
 ORDER BY id;
@@ -16,6 +22,18 @@ id	name	MD5(zip_dict)	LENGTH(zip_dict)
 5	d5	7215ee9c7d9dc229d2921a40e899ec5f	1
 6	d6	93b885adfe0da089cdf634904fd59f71	1
 7	d7	506cecad13db0f743abd3e9005013428	33
+8	dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd	e2fc714c4727ee9395f324cd2e7f331f	4
+9	d8	bf0065e1594c247ded0d765c0af28dca	32506
+SELECT zip_dict = 'abcd' AS short_zip_dict_data_must_match
+FROM information_schema.xtradb_zip_dict
+WHERE name = @long_dictionary_name;
+short_zip_dict_data_must_match
+1
+SELECT zip_dict = @long_dictionary_data AS long_zip_dict_data_must_match
+FROM information_schema.xtradb_zip_dict
+WHERE name = 'd8';
+long_zip_dict_data_must_match
+1
 CREATE COMPRESSION_DICTIONARY d1('data');
 ERROR HY000: Compression dictionary 'd1' already exists
 SELECT id INTO @dict_id FROM information_schema.xtradb_zip_dict

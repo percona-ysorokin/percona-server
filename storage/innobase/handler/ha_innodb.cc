@@ -1256,8 +1256,9 @@ innobase_create_zip_dict(
   handlerton*  hton, /*!< in: innobase handlerton */
   THD*  thd,         /*!< in: handle to the MySQL thread */
   const char* name,  /*!< in: zip dictionary name */
+  ulint* name_len,   /*!< inout: zip dictionary name length */
   const char* data,  /*!< in: zip dictionary data */
-  ulint data_len);   /*!< in: zip dictionary data length */
+  ulint* data_len);  /*!< inout: zip dictionary data length */
 
 /*************************************************************//**
 Removes old archived transaction log files.
@@ -3925,17 +3926,31 @@ static
 handler_create_zip_dict_result
 innobase_create_zip_dict(
 /*======================*/
-  handlerton*  hton, /*!< in: innobase handlerton */
-  THD*  thd,         /*!< in: handle to the MySQL thread */
-  const char* name,  /*!< in: zip dictionary name */
-  const char* data,  /*!< in: zip dictionary data */
-  ulint data_len)    /*!< in: zip dictionary data length */
+  handlerton* hton,     /*!< in: innobase handlerton */
+  THD*        thd,      /*!< in: handle to the MySQL thread */
+  const char* name,     /*!< in: zip dictionary name */
+  ulint*      name_len, /*!< inout: zip dictionary name length */
+  const char* data,     /*!< in: zip dictionary data */
+  ulint*      data_len) /*!< inout: zip dictionary data length */
 {
 	handler_create_zip_dict_result result = HA_CREATE_ZIP_DICT_UNKNOWN_ERROR;
 
 	DBUG_ENTER("innobase_create_zip_dict");
 	DBUG_ASSERT(hton == innodb_hton_ptr);
-	switch(dict_create_zip_dict(name, data, data_len))
+
+	if(UNIV_UNLIKELY(*name_len > ZIP_DICT_MAX_NAME_LENGTH))
+	{
+		*name_len = ZIP_DICT_MAX_NAME_LENGTH;
+		DBUG_RETURN(HA_CREATE_ZIP_DICT_NAME_TOO_LONG);
+	}
+
+	if(UNIV_UNLIKELY(*data_len > ZIP_DICT_MAX_DATA_LENGTH))
+	{
+		*data_len = ZIP_DICT_MAX_DATA_LENGTH;
+		DBUG_RETURN(HA_CREATE_ZIP_DICT_DATA_TOO_LONG);
+	}
+
+	switch(dict_create_zip_dict(name, *name_len, data, *data_len))
 	{
 		case DB_SUCCESS:
 			result = HA_CREATE_ZIP_DICT_OK;
