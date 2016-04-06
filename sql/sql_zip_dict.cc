@@ -19,7 +19,7 @@
 #include "sql_table.h"                          // write_bin_log
 #include "sql_class.h"                          // THD
 
-int mysql_create_zip_dict(THD* thd, const char* name, const char* data, ulong data_len)
+int mysql_create_zip_dict(THD* thd, const char* name, ulong name_len, const char* data, ulong data_len)
 {
   int error= HA_ADMIN_NOT_IMPLEMENTED;
 
@@ -34,20 +34,30 @@ int mysql_create_zip_dict(THD* thd, const char* name, const char* data, ulong da
     DBUG_RETURN(error);
   }
 
-  
-  handler_create_zip_dict_result create_result;
-  if((create_result = hton->create_zip_dict(hton, thd, name, data, data_len)) != HA_CREATE_ZIP_DICT_OK)
+  ulong local_name_len = name_len;
+  ulong local_data_len = data_len;
+  handler_create_zip_dict_result create_result =
+    hton->create_zip_dict(hton, thd, name, &local_name_len, data, &local_data_len);
+  if(create_result != HA_CREATE_ZIP_DICT_OK)
   {
-	if(create_result == HA_CREATE_ZIP_DICT_ALREADY_EXISTS)
-	{
-	  error = ER_COMPRESSION_DICTIONARY_EXISTS_ERROR;
-	  my_error(error, MYF(0), name);
-	}
-	else
-	{
-	  error = ER_UNKNOWN_ERROR;
-	  my_error(error, MYF(0));
-	}
+    switch(create_result)
+    {
+      case HA_CREATE_ZIP_DICT_NAME_TOO_LONG:
+        error = ER_COMPRESSION_DICTIONARY_NAME_TOO_LONG;
+        my_error(error, MYF(0), name, local_name_len);
+        break;
+      case HA_CREATE_ZIP_DICT_DATA_TOO_LONG:
+        error = ER_COMPRESSION_DICTIONARY_DATA_TOO_LONG;
+        my_error(error, MYF(0), name, local_data_len);
+        break;
+      case HA_CREATE_ZIP_DICT_ALREADY_EXISTS:
+        error = ER_COMPRESSION_DICTIONARY_EXISTS_ERROR;
+        my_error(error, MYF(0), name);
+        break;
+      default:
+        error = ER_UNKNOWN_ERROR;
+        my_error(error, MYF(0));
+    }
     DBUG_RETURN(error);
   }
 

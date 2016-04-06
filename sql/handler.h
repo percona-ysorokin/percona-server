@@ -804,6 +804,8 @@ enum handler_create_zip_dict_result
 {
   HA_CREATE_ZIP_DICT_OK,             /* zip_dict successfully created */
   HA_CREATE_ZIP_DICT_ALREADY_EXISTS, /* zip dict with such name already exists */
+  HA_CREATE_ZIP_DICT_NAME_TOO_LONG,  /* zip dict name is too long */
+  HA_CREATE_ZIP_DICT_DATA_TOO_LONG,  /* zip dict data is too long */
   HA_CREATE_ZIP_DICT_UNKNOWN_ERROR   /* unknown error during zip_dict creation */
 };
 
@@ -991,7 +993,7 @@ struct handlerton
                                     bool is_sql_layer_system_table);
 
   handler_create_zip_dict_result (*create_zip_dict)(handlerton *hton, THD* thd,
-    const char* name, const char* data, ulong data_len);
+    const char* name, ulong* name_len, const char* data, ulong* data_len);
 
    uint32 license; /* Flag for Engine License */
    void *data; /* Location for engines to keep personal structures */

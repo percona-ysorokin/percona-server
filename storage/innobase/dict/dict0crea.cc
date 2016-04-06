@@ -1856,8 +1856,8 @@ dict_create_or_check_sys_zip_dict(void)
 		"BEGIN\n"
 		"CREATE TABLE SYS_ZIP_DICT(\n"
 		"  ID INT UNSIGNED NOT NULL,\n"
-		"  NAME CHAR NOT NULL,\n"
-		"  DATA CHAR NOT NULL\n"
+		"  NAME CHAR(" STRINGIFY_ARG(ZIP_DICT_MAX_NAME_LENGTH) ") NOT NULL,\n"
+		"  DATA BLOB NOT NULL\n"
 		");\n"
 		"CREATE UNIQUE CLUSTERED INDEX SYS_ZIP_DICT_ID"
 		" ON SYS_ZIP_DICT (ID);\n"
@@ -1901,7 +1901,7 @@ dict_create_or_check_sys_zip_dict(void)
 
 	if (err == DB_SUCCESS) {
 		ib_logf(IB_LOG_LEVEL_INFO,
-			"zip_dict system table created.");
+			"zip_dict and zip_dict_cols system tables created.");
 	}
 
 	/* Note: The master thread has not been started at this point. */
@@ -1979,19 +1979,21 @@ UNIV_INTERN
 dberr_t
 dict_create_add_zip_dict(
 /*=====================================*/
-	const char* name, /*!< in: zip_dict name */
-	const char* data, /*!< in: zip_dict data */
-	ulint data_len,   /*!< in: zip_dict data length */
-	trx_t*		trx)  /*!< in/out: transaction */
+	const char* name,     /*!< in: zip_dict name */
+	ulint       name_len, /*!< in: zip_dict name length*/
+	const char* data,     /*!< in: zip_dict data */
+	ulint       data_len, /*!< in: zip_dict data length */
+	trx_t*      trx)      /*!< in/out: transaction */
 {
 	ut_ad(name);
 	ut_ad(data);
 
 	pars_info_t* info = pars_info_create();
 
-	pars_info_add_str_literal(info, "name", name);
-	pars_info_add_literal(info, "data", data, data_len,
+	pars_info_add_literal(info, "name", name, name_len,
 		DATA_VARCHAR, DATA_ENGLISH);
+	pars_info_add_literal(info, "data", data, data_len,
+		DATA_BLOB, DATA_BINARY_TYPE | DATA_NOT_NULL);
 
 	dberr_t error = que_eval_sql(info,
 		"PROCEDURE P () IS\n"
@@ -2192,12 +2194,11 @@ dict_create_get_zip_dict_data_by_id_aux(
 	ulint		len = dfield_get_len(dfield);
 	void*		data = dfield_get_data(dfield);
 
-	ut_a(dtype_get_mtype(type) == DATA_VARCHAR);
+	ut_a(dtype_get_mtype(type) == DATA_BLOB);
 
 	if (len != UNIV_SQL_NULL) {
-    value->str = (char*)mem_alloc(len);
+		value->str = (char*)mem_alloc(len);
 		memcpy(value->str, data, len);
-		value->str[len] = '\0';
 		value->length = len;
 	}
 

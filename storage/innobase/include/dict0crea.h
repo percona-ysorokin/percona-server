@@ -151,6 +151,11 @@ not of the right form.
 UNIV_INTERN
 dberr_t
 dict_create_or_check_sys_tablespace(void);
+
+#define ZIP_DICT_MAX_NAME_LENGTH 64
+/* Max window size (2^15) minus 262 */
+#define ZIP_DICT_MAX_DATA_LENGTH 32506
+
 /****************************************************************//**
 Creates the zip_dict system table inside InnoDB
 at server bootstrap or server start if it is not found or is
@@ -184,6 +189,7 @@ dberr_t
 dict_create_add_zip_dict(
 /*=====================================*/
 	const char* name, /*!< in: zip_dict name */
+	ulint name_len,   /*!< in: zip_dict name length*/
 	const char* data, /*!< in: zip_dict data */
 	ulint data_len,   /*!< in: zip_dict data length */
 	trx_t*		trx); /*!< in/out: transaction */

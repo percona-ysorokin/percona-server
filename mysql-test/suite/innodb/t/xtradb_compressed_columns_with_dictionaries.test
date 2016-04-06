@@ -13,10 +13,41 @@ CREATE COMPRESSION_DICTIONARY d5(' ');
 CREATE COMPRESSION_DICTIONARY d6('\0');
 CREATE COMPRESSION_DICTIONARY d7('\0aaaaaaaabbbbbbbbccccccccdddddddd');
 
+# max dictionary name length is 64 characters - check if an
+# error is reported if this number is exceeded
+SET @long_dictionary_name = REPEAT('d', 64);
+--let $long_dictionary_name=`SELECT @long_dictionary_name`
+--eval CREATE COMPRESSION_DICTIONARY $long_dictionary_name('abcd')
+
+--error ER_COMPRESSION_DICTIONARY_NAME_TOO_LONG
+--eval CREATE COMPRESSION_DICTIONARY d$long_dictionary_name('abcd')
+
+# max dictionary data size is 32506 bytes - check if an error
+# is reported if this number is exceeded
+SET @long_dictionary_data = REPEAT('ab', 32506 / 2);
+--let $long_dictionary_data=`SELECT @long_dictionary_data`
+--disable_query_log
+--eval CREATE COMPRESSION_DICTIONARY d8('$long_dictionary_data')
+--enable_query_log
+
+--disable_query_log
+--error ER_COMPRESSION_DICTIONARY_DATA_TOO_LONG
+--eval CREATE COMPRESSION_DICTIONARY d9('b$long_dictionary_data')
+--enable_query_log
+
 # we use MD5() function here to get rid of NUL characters in the output
 SELECT id, name, MD5(zip_dict), LENGTH(zip_dict)
   FROM information_schema.xtradb_zip_dict
   ORDER BY id;
+
+# check if dictionary data stored in SYS_ZIP_DICT can be extracted
+# without corruption
+SELECT zip_dict = 'abcd' AS short_zip_dict_data_must_match
+  FROM information_schema.xtradb_zip_dict
+  WHERE name = @long_dictionary_name;
+SELECT zip_dict = @long_dictionary_data AS long_zip_dict_data_must_match
+  FROM information_schema.xtradb_zip_dict
+  WHERE name = 'd8';
 
 # creating a compression dictionary with a name already taken is an error
 --error ER_COMPRESSION_DICTIONARY_EXISTS_ERROR

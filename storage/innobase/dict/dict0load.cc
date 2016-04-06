@@ -739,6 +739,7 @@ const char*
 dict_process_sys_zip_dict(
 /*=========================*/
 	mem_heap_t*  heap,     /*!< in/out: heap memory */
+	ulint        zip_size, /*!< in: nonzero=compressed BLOB page size */
 	const rec_t* rec,      /*!< in: current SYS_ZIP_DICT rec */
 	ulint*       id,       /*!< out: dict id */
 	const char** name,     /*!< out: dict name */
@@ -765,8 +766,7 @@ dict_process_sys_zip_dict(
 	field = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_ZIP_DICT__ID, &len);
 	if (UNIV_UNLIKELY(len != DICT_FLD_LEN_SPACE)) {
-err_len:
-		return("incorrect column length in SYS_ZIP_DICT");
+		goto err_len;
 	}
 	*id = mach_read_from_4(field);
 
@@ -794,10 +794,30 @@ err_len:
 	if (UNIV_UNLIKELY(len == UNIV_SQL_NULL)) {
 		goto err_len;
 	}
-	*data_len = len;
-	*data = mem_heap_strdupl(heap, (char*) field, len);
+
+	if(rec_get_1byte_offs_flag(rec) == 0 && rec_2_is_field_extern(rec, DICT_FLD__SYS_ZIP_DICT__DATA))
+	{
+		ut_a(len >= BTR_EXTERN_FIELD_REF_SIZE);
+
+		if (UNIV_UNLIKELY
+		    (!memcmp(field + len - BTR_EXTERN_FIELD_REF_SIZE,
+			     field_ref_zero, BTR_EXTERN_FIELD_REF_SIZE)))
+		{
+			goto err_len;
+		}
+		*data = (char*)btr_copy_externally_stored_field(data_len, field,
+							zip_size, len, heap);
+	}
+	else
+	{
+		*data_len = len;
+		*data = (char*)mem_heap_dup(heap, field, len);
+	}
 
 	return(NULL);
+
+err_len:
+	return("incorrect column length in SYS_ZIP_DICT");
 }
 
 /********************************************************************//**

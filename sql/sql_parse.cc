@@ -4327,12 +4327,7 @@ end_with_restore_list:
     break;
   case SQLCOM_CREATE_COMPRESSION_DICTIONARY:
   {
-	/*
-    push_warning_printf(thd, Sql_condition::WARN_LEVEL_NOTE,
-                        ER_NOT_ALLOWED_COMMAND, "Create compression dictionary %s('%s')",
-                        lex->ident.str, lex->default_value->str_value.ptr());
-	*/
-    if ((res = mysql_create_zip_dict(thd, lex->ident.str,
+    if ((res = mysql_create_zip_dict(thd, lex->ident.str, lex->ident.length,
           lex->default_value->str_value.ptr(), lex->default_value->str_value.length())) == 0)
       my_ok(thd);
     break;
