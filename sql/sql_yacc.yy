@@ -1792,6 +1792,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         signal_allowed_expr
         simple_target_specification
         condition_number
+        create_compression_dictionary_allowed_expr
 
 %type <item_num>
         NUM_literal
@@ -2527,11 +2528,35 @@ create:
           {
             Lex->sql_command= SQLCOM_CREATE_SERVER;
           }
-        | CREATE COMPRESSION_DICTIONARY_SYM ident '(' text_literal ')'
+        | CREATE COMPRESSION_DICTIONARY_SYM ident '(' create_compression_dictionary_allowed_expr ')'
           {
             Lex->sql_command= SQLCOM_CREATE_COMPRESSION_DICTIONARY;
             Lex->ident = $3;
             Lex->default_value = $5;
+          }
+        ;
+/*
+  Only a limited subset of <expr> are allowed in CREATE COMPRESSION_DICTIONARY.
+*/
+create_compression_dictionary_allowed_expr:
+          text_literal
+          { $$= $1; }
+        | variable
+          {
+            if ($1->type() == Item::FUNC_ITEM)
+            {
+              Item_func *item= (Item_func*) $1;
+              if (item->functype() == Item_func::SUSERVAR_FUNC)
+              {
+                /*
+                  Don't allow the following syntax:
+                    CREATE COMPRESSION_DICTIONARY <dict>(@foo := expr)
+                */
+                my_parse_error(ER(ER_SYNTAX_ERROR));
+                MYSQL_YYABORT;
+              }
+            }
+            $$= $1;
           }
         ;
 
