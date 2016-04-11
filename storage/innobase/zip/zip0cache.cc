@@ -108,10 +108,11 @@ namespace zip
         if(need_dictionary_records_alteration)
         {
           // we get here only when on 2.b.1 case
+          blob_type name;
           blob_type blob;
           // here, out of the lock, try to get dictionary blob by id from the
           // SYS_ZIP_DICT InnoDB system table
-          ut_a(get_dictionary_blob_by_id(dictionary_id, blob));
+          ut_a(get_dictionary_info_by_id(dictionary_id, name, blob));
 
           {
             // acquire exclusive lock on dictionary_records mutex and try add a
@@ -126,13 +127,15 @@ namespace zip
               // the returned iterator (dictionary_records_fnd.first) hasn't been
               // exposed to other containers yet
               dictionary_records_fnd.first->second.ref_counter = 0;
+              dictionary_records_fnd.first->second.name.swap(name);
               dictionary_records_fnd.first->second.blob.swap(blob);
             }
             else
             {
               // if because of locking granularity two concurrent threads are inserting
-              // elements to the "dictionary_records", make sure that dictionary blob
+              // elements to the "dictionary_records", make sure that dictionary name/blob pair
               // is the same in this case.
+              ut_ad(dictionary_records_fnd.first->second.name == name);
               ut_ad(dictionary_records_fnd.first->second.blob == blob);
             }
           }
@@ -200,15 +203,19 @@ namespace zip
   }
 
   /*static*/
-  bool compression_dictionary_cache::get_dictionary_blob_by_id(compression_dictionary_cache::dictionary_id_type id, compression_dictionary_cache::blob_type& blob)
+  bool compression_dictionary_cache::get_dictionary_info_by_id(compression_dictionary_cache::dictionary_id_type id, compression_dictionary_cache::blob_type& name, compression_dictionary_cache::blob_type& blob)
   {
     bool res = false;
-    LEX_STRING data = { 0, 0 };
-    switch(dict_get_dictionary_data_by_id(id, &data))
+    char* local_name = 0;
+    ulint local_name_len = 0;
+    char* local_data = 0;
+    ulint local_data_len = 0;
+    switch(dict_get_dictionary_info_by_id(id, &local_name, &local_name_len, &local_data, &local_data_len))
     {
       case DB_SUCCESS:
         res = true;
-        blob.assign(data.str, data.length);
+        name.assign(local_name, local_name_len);
+        blob.assign(local_data, local_data_len);
         break;
       case DB_RECORD_NOT_FOUND:
         res = false;
@@ -216,8 +223,10 @@ namespace zip
       default:
         ut_error;
     }
-    if(data.str != 0)
-      mem_free(data.str);
+    if(local_name != 0)
+      mem_free(local_name);
+    if(local_data != 0)
+      mem_free(local_data);
     return res;
   }
 

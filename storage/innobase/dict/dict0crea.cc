@@ -2022,10 +2022,10 @@ variable (using mach_write_to_* functions).
 @return TRUE if all OK */
 static
 ibool
-dict_create_add_zip_dict_reference_aux(
+dict_create_extract_int_aux(
 /*=====================*/
-	void*		row,			/*!< in: sel_node_t* */
-	void*		user_arg)		/*!< in: int32 id */
+	void* row,      /*!< in: sel_node_t* */
+	void* user_arg) /*!< in: int32 id */
 {
 	sel_node_t*	 node = static_cast<sel_node_t*>(row);
 	ib_uint32_t* external_ptr = static_cast<ib_uint32_t*>(user_arg);
@@ -2052,10 +2052,11 @@ UNIV_INTERN
 dberr_t
 dict_create_add_zip_dict_reference(
 /*=====================================*/
-	ulint		table_id,   /*!< in: table name */
-	ulint		column_pos, /*!< in: column position*/
-	const char* dict_name,  /*!< in: dict name */
-	trx_t*		trx)        /*!< in/out: transaction */
+	ulint       table_id,      /*!< in: table name */
+	ulint       column_pos,    /*!< in: column position*/
+	const char* dict_name,     /*!< in: dict name */
+	ulint       dict_name_len, /*!< in: dict name length*/
+	trx_t*      trx)           /*!< in/out: transaction */
 {
 	ut_ad(dict_name);
 
@@ -2066,32 +2067,33 @@ dict_create_add_zip_dict_reference(
 
 	pars_info_add_int4_literal(info, "table_id", table_id);
 	pars_info_add_int4_literal(info, "column_pos", column_pos);
-	pars_info_add_str_literal(info, "dict_name", dict_name);
+	pars_info_add_literal(info, "dict_name", dict_name, dict_name_len,
+		DATA_VARCHAR, DATA_ENGLISH);
 	pars_info_bind_int4_literal(info, "dict_id", &dict_id_buf);
 	pars_info_bind_function(
-		info, "my_func", dict_create_add_zip_dict_reference_aux, &dict_id_buf);
+		info, "my_func", dict_create_extract_int_aux, &dict_id_buf);
 
 	dberr_t error = que_eval_sql(info,
-			     "PROCEDURE P () IS\n"
-				 "found INT;\n"
-			     "DECLARE FUNCTION my_func;\n"
-			     "DECLARE CURSOR cur IS\n"
-			     "  SELECT ID FROM SYS_ZIP_DICT\n"
-				 "    WHERE NAME = :dict_name;\n"
-			     "BEGIN\n"
-				 "  found := 1;\n"
-				 "  OPEN cur;\n"
-				 "  FETCH cur INTO my_func();\n"
-				 "  IF SQL % NOTFOUND THEN\n"
-				 "    found := 0;\n"
-				 "  END IF;\n"
-				 "  CLOSE cur;\n"
-				 "  IF found = 1 THEN\n"
-			     "    INSERT INTO SYS_ZIP_DICT_COLS VALUES"
-				 "      (:table_id, :column_pos, :dict_id);\n"
-				 "  END IF;\n"
-			     "END;\n",
-			     FALSE, trx);
+		"PROCEDURE P () IS\n"
+		"found INT;\n"
+		"DECLARE FUNCTION my_func;\n"
+		"DECLARE CURSOR cur IS\n"
+		"  SELECT ID FROM SYS_ZIP_DICT\n"
+		"    WHERE NAME = :dict_name;\n"
+		"BEGIN\n"
+		"  found := 1;\n"
+		"  OPEN cur;\n"
+		"  FETCH cur INTO my_func();\n"
+		"  IF SQL % NOTFOUND THEN\n"
+		"    found := 0;\n"
+		"  END IF;\n"
+		"  CLOSE cur;\n"
+		"  IF found = 1 THEN\n"
+		"    INSERT INTO SYS_ZIP_DICT_COLS VALUES"
+		"      (:table_id, :column_pos, :dict_id);\n"
+		"  END IF;\n"
+		"END;\n",
+		FALSE, trx);
 	if(error == DB_SUCCESS)
 	{
 		ib_uint32_t dict_id = mach_read_from_4(reinterpret_cast<const byte*>(&dict_id_buf));
@@ -2101,33 +2103,6 @@ dict_create_add_zip_dict_reference(
 	return error;
 }
 
-/******************************************************************//**
-Fetch callback, just stores extracted zip_dict id in the external
-variable.
-@return TRUE if all OK */
-static
-ibool
-dict_create_get_zip_dict_id_by_reference_aux(
-/*=====================*/
-	void*		row,			/*!< in: sel_node_t* */
-	void*		user_arg)		/*!< in: int32 id */
-{
-	sel_node_t*	 node = static_cast<sel_node_t*>(row);
-	ib_uint32_t* external_ptr = static_cast<ib_uint32_t*>(user_arg);
-	dfield_t*	dfield = que_node_get_val(node->select_list);
-	dtype_t*	type = dfield_get_type(dfield);
-	ulint		len = dfield_get_len(dfield);
-
-	ut_a(dtype_get_mtype(type) == DATA_INT);
-	ut_a(len == sizeof(ib_uint32_t));
-
-	*external_ptr = mach_read_from_4(
-		static_cast<byte*>(dfield_get_data(dfield)));
-
-	return(TRUE);
-}
-
-
 /********************************************************************//**
 Get a single compression dictionary id for the given (table id, column pos)
 pair.
@@ -2136,7 +2111,7 @@ UNIV_INTERN
 dberr_t
 dict_create_get_zip_dict_id_by_reference(
 /*=====================================*/
-	ulint  table_id,   /*!< in: table name */
+	ulint  table_id,   /*!< in: table id */
 	ulint  column_pos, /*!< in: column position*/
 	ulint* dict_id,    /*!< out: column position*/
 	trx_t* trx)        /*!< in/out: transaction */
@@ -2145,32 +2120,34 @@ dict_create_get_zip_dict_id_by_reference(
 
 	pars_info_t* info = pars_info_create();
 
-	ib_uint32_t local_dict_id = ULINT32_UNDEFINED;
+	ib_uint32_t dict_id_buf;
+	mach_write_to_4(reinterpret_cast<byte*>(&dict_id_buf ), ULINT32_UNDEFINED);
 
 	pars_info_add_int4_literal(info, "table_id", table_id);
 	pars_info_add_int4_literal(info, "column_pos", column_pos);
 	pars_info_bind_function(
-		info, "my_func", dict_create_get_zip_dict_id_by_reference_aux, &local_dict_id);
+		info, "my_func", dict_create_extract_int_aux, &dict_id_buf);
 
 	dberr_t error = que_eval_sql(info,
-      "PROCEDURE P () IS\n"
-      "DECLARE FUNCTION my_func;\n"
-      "DECLARE CURSOR cur IS\n"
-      "  SELECT DICT_ID FROM SYS_ZIP_DICT_COLS\n"
-      "    WHERE TABLE_ID = :table_id AND\n"
-      "          COLUMN_POS = :column_pos;\n"
-      "BEGIN\n"
-      "  OPEN cur;\n"
-      "  FETCH cur INTO my_func();\n"
-      "  CLOSE cur;\n"
-      "END;\n",
-      FALSE, trx);
+		"PROCEDURE P () IS\n"
+		"DECLARE FUNCTION my_func;\n"
+		"DECLARE CURSOR cur IS\n"
+		"  SELECT DICT_ID FROM SYS_ZIP_DICT_COLS\n"
+		"    WHERE TABLE_ID = :table_id AND\n"
+		"          COLUMN_POS = :column_pos;\n"
+		"BEGIN\n"
+		"  OPEN cur;\n"
+		"  FETCH cur INTO my_func();\n"
+		"  CLOSE cur;\n"
+		"END;\n",
+		FALSE, trx);
 	if(error == DB_SUCCESS)
 	{
+		ib_uint32_t local_dict_id = mach_read_from_4(reinterpret_cast<const byte*>(&dict_id_buf));
 		if(local_dict_id == ULINT32_UNDEFINED)
 			error = DB_RECORD_NOT_FOUND;
-    else
-      *dict_id = local_dict_id;
+		else
+			*dict_id = local_dict_id;
 	}
 	return error;
 }
@@ -2181,69 +2158,180 @@ variable.
 @return always returns TRUE */
 static
 ibool
-dict_create_get_zip_dict_data_by_id_aux(
+dict_create_get_zip_dict_info_by_id_aux(
 /*===================*/
-	void*		row,			/*!< in: sel_node_t* */
-	void*		user_arg)		/*!< in: pointer to ib_vector_t */
+	void* row,      /*!< in: sel_node_t* */
+	void* user_arg) /*!< in: pointer to ib_vector_t */
 {
 	sel_node_t*	node = static_cast<sel_node_t*>(row);
-	LEX_STRING*	value = static_cast<LEX_STRING*>(user_arg);
+	LEX_STRING* tuple = static_cast<LEX_STRING*>(user_arg);
 
-	dfield_t*	dfield = que_node_get_val(node->select_list);
+	/* NAME field */
+	que_node_t*	exp = node->select_list;
+	ut_a(exp != 0);
+
+	dfield_t*	dfield = que_node_get_val(exp);
 	dtype_t*	type = dfield_get_type(dfield);
+	ut_a(dtype_get_mtype(type) == DATA_VARCHAR);
+
 	ulint		len = dfield_get_len(dfield);
 	void*		data = dfield_get_data(dfield);
 
-	ut_a(dtype_get_mtype(type) == DATA_BLOB);
 
 	if (len != UNIV_SQL_NULL) {
-		value->str = (char*)mem_alloc(len);
-		memcpy(value->str, data, len);
-		value->length = len;
+		tuple[0].str = (char*)mem_alloc(len + 1);
+		memcpy(tuple[0].str, data, len);
+		tuple[0].str[len] = '\0';
+		tuple[0].length = len;
 	}
 
+	/* DATA field */
+	exp = que_node_get_next(exp);
+	ut_a(exp != 0);
+
+	dfield = que_node_get_val(exp);
+	type = dfield_get_type(dfield);
+	ut_a(dtype_get_mtype(type) == DATA_BLOB);
+
+	len = dfield_get_len(dfield);
+	data = dfield_get_data(dfield);
+
+	if (len != UNIV_SQL_NULL) {
+		tuple[1].str = (char*)mem_alloc(len == 0 ? 1 : len);
+		memcpy(tuple[1].str, data, len);
+		tuple[1].length = len;
+	}
+	else
+	{
+		mem_free(tuple[0].str);
+		tuple[0].str = 0;
+		tuple[0].length = 0;
+	}
+
+	ut_ad(que_node_get_next(exp) == 0);
 	return TRUE;
 }
 
 /********************************************************************//**
-Get compression dictionary data for the given id.
-Allocates memory in data->str on success. Must be freed with mem_free().
+Get compression dictionary info (name and data) for the given id.
+Allocates memory for name and data on success.
+Must be freed with mem_free().
 @return	error code or DB_SUCCESS */
 UNIV_INTERN
 dberr_t
-dict_create_get_zip_dict_data_by_id(
+dict_create_get_zip_dict_info_by_id(
 /*=====================================*/
-  ulint       dict_id, /*!< in: table name */
-  LEX_STRING* data,    /*!< out: dictionary data */
-  trx_t*      trx)     /*!< in/out: transaction */
+	ulint  dict_id,  /*!< in: table name */
+	char** name,     /*!< out: dictionary name */
+	ulint* name_len, /*!< out: dictionary name length*/
+	char** data,     /*!< out: dictionary data */
+	ulint* data_len, /*!< out: dictionary data length*/
+	trx_t* trx)      /*!< in/out: transaction */
 {
+	ut_ad(name);
 	ut_ad(data);
 
-  LEX_STRING local_data = { 0, 0 };
+	LEX_STRING local_tuple[2] = { { 0, 0 }, { 0, 0 } };
 	pars_info_t* info = pars_info_create();
 
 	pars_info_add_int4_literal(info, "id", dict_id);
 	pars_info_bind_function(
-		info, "my_func", dict_create_get_zip_dict_data_by_id_aux, &local_data);
+		info, "my_func", dict_create_get_zip_dict_info_by_id_aux, local_tuple);
 
 	dberr_t error = que_eval_sql(info,
-      "PROCEDURE P () IS\n"
-      "DECLARE FUNCTION my_func;\n"
-      "DECLARE CURSOR cur IS\n"
-      "  SELECT DATA FROM SYS_ZIP_DICT\n"
-      "    WHERE ID = :id;\n"
-      "BEGIN\n"
-      "  OPEN cur;\n"
-      "  FETCH cur INTO my_func();\n"
-      "  CLOSE cur;\n"
-      "END;\n",
-      FALSE, trx);
+	"PROCEDURE P () IS\n"
+	"DECLARE FUNCTION my_func;\n"
+	"DECLARE CURSOR cur IS\n"
+	"  SELECT NAME, DATA FROM SYS_ZIP_DICT\n"
+	"    WHERE ID = :id;\n"
+	"BEGIN\n"
+	"  OPEN cur;\n"
+	"  FETCH cur INTO my_func();\n"
+	"  CLOSE cur;\n"
+	"END;\n",
+	FALSE, trx);
 	if(error == DB_SUCCESS)
 	{
-		if(local_data.str == 0)
-      error = DB_RECORD_NOT_FOUND;
-    else
-      *data = local_data;
+		if(local_tuple[0].str == 0 || local_tuple[1].str == 0)
+			error = DB_RECORD_NOT_FOUND;
+		else
+		{
+			*name = local_tuple[0].str;
+			*name_len = local_tuple[0].length;
+			*data = local_tuple[1].str;
+			*data_len = local_tuple[1].length;
+		}
+	}
+	return error;
+}
+
+/********************************************************************//**
+Remove a single compression dictionary from the data dictionary
+tables in the database.
+@return	error code or DB_SUCCESS */
+UNIV_INTERN
+dberr_t
+dict_create_remove_zip_dict(
+/*=====================================*/
+	const char* name,     /*!< in: zip_dict name */
+	ulint       name_len, /*!< in: zip_dict name length*/
+	trx_t*      trx)      /*!< in/out: transaction */
+{
+	ut_ad(name);
+
+	pars_info_t* info = pars_info_create();
+
+	ib_uint32_t dict_id_buf;
+	mach_write_to_4(reinterpret_cast<byte*>(&dict_id_buf), ULINT32_UNDEFINED);
+	ib_uint32_t counter_buf;
+	mach_write_to_4(reinterpret_cast<byte*>(&counter_buf), ULINT32_UNDEFINED);
+
+	pars_info_add_literal(info, "name", name, name_len,
+		DATA_VARCHAR, DATA_ENGLISH);
+	pars_info_bind_int4_literal(info, "dict_id", &dict_id_buf);
+	pars_info_bind_function(
+		info, "find_dict_func", dict_create_extract_int_aux, &dict_id_buf);
+	pars_info_bind_function(
+		info, "count_func", dict_create_extract_int_aux, &counter_buf);
+
+	dberr_t error = que_eval_sql(info,
+		"PROCEDURE P () IS\n"
+		"DECLARE FUNCTION find_dict_func;\n"
+		"DECLARE FUNCTION count_func;\n"
+		"DECLARE CURSOR dict_cur IS\n"
+		"  SELECT ID FROM SYS_ZIP_DICT\n"
+		"    WHERE NAME = :name\n"
+		"  FOR UPDATE;\n"
+		"DECLARE CURSOR ref_cur IS\n"
+		"  SELECT 1 FROM SYS_ZIP_DICT_COLS\n"
+		"    WHERE DICT_ID = :dict_id;\n"
+		"BEGIN\n"
+		"  OPEN dict_cur;\n"
+		"  FETCH dict_cur INTO find_dict_func();\n"
+		"  IF NOT (SQL % NOTFOUND) THEN\n"
+		"    OPEN ref_cur;\n"
+		"    FETCH ref_cur INTO count_func();\n"
+		"    IF SQL % NOTFOUND THEN\n"
+		"      DELETE FROM SYS_ZIP_DICT WHERE CURRENT OF dict_cur;\n"
+		"    END IF;\n"
+		"    CLOSE ref_cur;\n"
+		"  END IF;\n"
+		"  CLOSE dict_cur;\n"
+		"END;\n",
+		FALSE, trx);
+	if(error == DB_SUCCESS)
+	{
+		ib_uint32_t local_dict_id = mach_read_from_4(reinterpret_cast<const byte*>(&dict_id_buf));
+		if(local_dict_id == ULINT32_UNDEFINED)
+		{
+			error = DB_RECORD_NOT_FOUND;
+		}
+		else
+		{
+			ib_uint32_t local_counter = mach_read_from_4(reinterpret_cast<const byte*>(&counter_buf));
+			if(local_counter != ULINT32_UNDEFINED)
+				error = DB_ROW_IS_REFERENCED;
+		}
 	}
 	return error;
 }

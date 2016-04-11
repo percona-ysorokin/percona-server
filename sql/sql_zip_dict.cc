@@ -28,9 +28,7 @@ int mysql_create_zip_dict(THD* thd, const char* name, ulong name_len, const char
 
   if(!hton->create_zip_dict)
   {
-    my_error(ER_ILLEGAL_HA_CREATE_OPTION, MYF(0),
-             ha_resolve_storage_engine_name(hton),
-             "ZIP_DICT");
+    my_error(ER_ILLEGAL_HA, MYF(0), ha_resolve_storage_engine_name(hton));
     DBUG_RETURN(error);
   }
 
@@ -51,7 +49,46 @@ int mysql_create_zip_dict(THD* thd, const char* name, ulong name_len, const char
         my_error(error, MYF(0), name, local_data_len);
         break;
       case HA_CREATE_ZIP_DICT_ALREADY_EXISTS:
-        error = ER_COMPRESSION_DICTIONARY_EXISTS_ERROR;
+        error = ER_COMPRESSION_DICTIONARY_EXISTS;
+        my_error(error, MYF(0), name);
+        break;
+      default:
+        error = ER_UNKNOWN_ERROR;
+        my_error(error, MYF(0));
+    }
+    DBUG_RETURN(error);
+  }
+
+  error = write_bin_log(thd, FALSE, thd->query(), thd->query_length());
+  DBUG_RETURN(error);
+}
+
+int mysql_drop_zip_dict(THD* thd, const char* name, ulong name_len)
+{
+  int error= HA_ADMIN_NOT_IMPLEMENTED;
+
+  DBUG_ENTER("mysql_drop_zip_dict");
+  handlerton *hton= ha_default_handlerton(thd);
+
+  if(!hton->drop_zip_dict)
+  {
+    my_error(ER_ILLEGAL_HA, MYF(0), ha_resolve_storage_engine_name(hton));
+    DBUG_RETURN(error);
+  }
+
+  ulong local_name_len = name_len;
+  handler_drop_zip_dict_result drop_result =
+    hton->drop_zip_dict(hton, thd, name, &local_name_len);
+  if(drop_result != HA_DROP_ZIP_DICT_OK)
+  {
+    switch(drop_result)
+    {
+      case HA_DROP_ZIP_DICT_DOES_NOT_EXIST:
+        error = ER_COMPRESSION_DICTIONARY_DOES_NOT_EXIST;
+        my_error(error, MYF(0), name);
+        break;
+      case HA_DROP_ZIP_DICT_IS_REFERENCED:
+        error = ER_COMPRESSION_DICTIONARY_IS_REFERENCED;
         my_error(error, MYF(0), name);
         break;
       default:

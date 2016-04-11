@@ -352,10 +352,12 @@ namespace zip
 
         dictionary_record():
           ref_counter(ref_counter_special_value),
+          name(),
           blob()
         {}
 
         ref_counter_type ref_counter;
+        blob_type name;
         blob_type blob;
       };
       typedef mysql::innobase_allocator<std::pair<const dictionary_id_type, dictionary_record> > dictionary_record_map_allocator;
@@ -408,8 +410,10 @@ namespace zip
         friend class compression_dictionary_cache;
 
         public:
-          item_state_type  get_state() const {  return state_;  }
-          const blob_type& get_blob () const {  return dictionary_ref_->second.blob;  }
+          item_state_type    get_state        () const {  return state_;  }
+          dictionary_id_type get_dictionary_id() const {  return dictionary_ref_->first;  }
+          const blob_type&   get_name         () const {  return dictionary_ref_->second.name;  }
+          const blob_type&   get_blob         () const {  return dictionary_ref_->second.blob;  }
 
         private:
           typedef dictionary_record_container::const_iterator dictionary_iterator;
@@ -462,7 +466,7 @@ namespace zip
       mutable item_container items_;
 
       static bool get_dictionary_id_by_key(const key& k, dictionary_id_type& id);
-      static bool get_dictionary_blob_by_id(dictionary_id_type id, blob_type& blob);
+      static bool get_dictionary_info_by_id(dictionary_id_type id, blob_type& name, blob_type& blob);
   };
 } // namespace zip
 

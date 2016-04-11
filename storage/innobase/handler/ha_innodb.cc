@@ -1260,6 +1260,17 @@ innobase_create_zip_dict(
   const char* data,  /*!< in: zip dictionary data */
   ulint* data_len);  /*!< inout: zip dictionary data length */
 
+/*****************************************************************//**
+Drops a existing compression dictionary. */
+static
+handler_drop_zip_dict_result
+innobase_drop_zip_dict(
+/*======================*/
+  handlerton* hton,      /*!< in: innobase handlerton */
+  THD*        thd,       /*!< in: handle to the MySQL thread */
+  const char* name,      /*!< in: zip dictionary name */
+  ulint*      name_len); /*!< inout: zip dictionary name length */
+
 /*************************************************************//**
 Removes old archived transaction log files.
 @return	true on error */
@@ -3267,6 +3278,7 @@ innobase_init(
 	innobase_hton->kill_connection = innobase_kill_connection;
 
 	innobase_hton->create_zip_dict = innobase_create_zip_dict;
+	innobase_hton->drop_zip_dict = innobase_drop_zip_dict;
 
 	ut_a(DATA_MYSQL_TRUE_VARCHAR == (ulint)MYSQL_TYPE_VARCHAR);
 
@@ -3960,6 +3972,38 @@ innobase_create_zip_dict(
 			break;
 		default:
 			result = HA_CREATE_ZIP_DICT_UNKNOWN_ERROR;
+	}
+	DBUG_RETURN(result);
+}
+/*****************************************************************//**
+Drops a existing compression dictionary. */
+static
+handler_drop_zip_dict_result
+innobase_drop_zip_dict(
+/*======================*/
+  handlerton* hton,     /*!< in: innobase handlerton */
+  THD*        thd,      /*!< in: handle to the MySQL thread */
+  const char* name,     /*!< in: zip dictionary name */
+  ulint*      name_len) /*!< inout: zip dictionary name length */
+{
+	handler_drop_zip_dict_result result = HA_DROP_ZIP_DICT_UNKNOWN_ERROR;
+
+	DBUG_ENTER("innobase_drop_zip_dict");
+	DBUG_ASSERT(hton == innodb_hton_ptr);
+
+	switch(dict_drop_zip_dict(name, *name_len))
+	{
+		case DB_SUCCESS:
+			result = HA_DROP_ZIP_DICT_OK;
+			break;
+		case DB_RECORD_NOT_FOUND:
+			result = HA_DROP_ZIP_DICT_DOES_NOT_EXIST;
+			break;
+		case DB_ROW_IS_REFERENCED:
+			result = HA_DROP_ZIP_DICT_IS_REFERENCED;
+			break;
+		default:
+			result = HA_DROP_ZIP_DICT_UNKNOWN_ERROR;
 	}
 	DBUG_RETURN(result);
 }
@@ -10624,7 +10668,7 @@ ha_innobase::create(
 			if((*field_ptr)->zip_dict.length != 0)
 			{
 				zip_dict_err = dict_create_add_zip_dict_reference(innobase_table->id,
-					(*field_ptr)->field_index, (*field_ptr)->zip_dict.str, trx);
+					(*field_ptr)->field_index, (*field_ptr)->zip_dict.str, (*field_ptr)->zip_dict.length, trx);
 			}
 			++field_ptr;
 		}
@@ -10636,7 +10680,7 @@ ha_innobase::create(
 			case DB_RECORD_NOT_FOUND:
 				error = -1;
 				--field_ptr;
-				my_error(ER_COMPRESSION_DICTIONARY_DOES_NOT_EXIST_ERROR, MYF(0), (*field_ptr)->zip_dict.str);
+				my_error(ER_COMPRESSION_DICTIONARY_DOES_NOT_EXIST, MYF(0), (*field_ptr)->zip_dict.str);
 				break;
 			default:
 				error = -1;

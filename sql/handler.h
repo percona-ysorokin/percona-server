@@ -809,6 +809,14 @@ enum handler_create_zip_dict_result
   HA_CREATE_ZIP_DICT_UNKNOWN_ERROR   /* unknown error during zip_dict creation */
 };
 
+enum handler_drop_zip_dict_result
+{
+  HA_DROP_ZIP_DICT_OK,             /* zip_dict successfully dropped */
+  HA_DROP_ZIP_DICT_DOES_NOT_EXIST, /* zip dict with such name does not exist */
+  HA_DROP_ZIP_DICT_IS_REFERENCED,  /* zip dict is in use */
+  HA_DROP_ZIP_DICT_UNKNOWN_ERROR   /* unknown error during zip_dict removal */
+};
+
 class handler;
 /*
   handlerton is a singleton structure - one instance per storage engine -
@@ -994,6 +1002,8 @@ struct handlerton
 
   handler_create_zip_dict_result (*create_zip_dict)(handlerton *hton, THD* thd,
     const char* name, ulong* name_len, const char* data, ulong* data_len);
+  handler_drop_zip_dict_result (*drop_zip_dict)(handlerton *hton, THD* thd,
+    const char* name, ulong* name_len);
 
    uint32 license; /* Flag for Engine License */
    void *data; /* Location for engines to keep personal structures */

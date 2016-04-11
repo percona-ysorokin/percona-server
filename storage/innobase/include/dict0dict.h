@@ -1865,19 +1865,32 @@ UNIV_INTERN
 dberr_t
 dict_get_dictionary_id_by_key(
 /*================================*/
-	ulint	table_id,   /*!< in: table id */
-	ulint column_pos, /*!< in: column position */
-	ulint* dict_id);  /*!< out: zip_dict id */
+	ulint  table_id,   /*!< in: table id */
+	ulint  column_pos, /*!< in: column position */
+	ulint* dict_id);   /*!< out: zip_dict id */
 /********************************************************************//**
-Get compression dictionary data for the given id.
-Allocates memory in data->str on success. Must be freed with mem_free().
+Get compression dictionary info (name and data) for the given id.
+Allocates memory in name->str and data->str on success.
+Must be freed with mem_free().
 @return	DB_SUCCESS if OK, DB_RECORD_NOT_FOUND if not found */
 UNIV_INTERN
 dberr_t
-dict_get_dictionary_data_by_id(
+dict_get_dictionary_info_by_id(
 /*================================*/
-  ulint       dict_id, /*!< in: table name */
-  LEX_STRING* data);   /*!< out: dictionary data */
+	ulint  dict_id,   /*!< in: table name */
+	char** name,      /*!< out: dictionary name */
+	ulint* name_len,  /*!< out: dictionary name length*/
+	char** data,      /*!< out: dictionary data */
+	ulint* data_len); /*!< out: dictionary data length*/
+/********************************************************************//**
+Insert a records into SYS_ZIP_DICT.
+@return	DB_SUCCESS if OK, DB_RECORD_NOT_FOUND if not found, DB_ROW_IS_REFERENCED if in use */
+UNIV_INTERN
+dberr_t
+dict_drop_zip_dict(
+/*================================*/
+	const char* name, /*!< in: zip_dict name */
+	ulint name_len);  /*!< in: zip_dict name length*/
 
 #ifndef UNIV_NONINL
 #include "dict0dict.ic"

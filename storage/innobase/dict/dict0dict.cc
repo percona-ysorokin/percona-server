@@ -6833,9 +6833,9 @@ UNIV_INTERN
 dberr_t
 dict_get_dictionary_id_by_key(
 /*================================*/
-	ulint	table_id,   /*!< in: table id */
-	ulint column_pos, /*!< in: column position */
-	ulint* dict_id)   /*!< out: zip_dict id */
+	ulint  table_id,   /*!< in: table id */
+	ulint  column_pos, /*!< in: column position */
+	ulint* dict_id)    /*!< out: zip_dict id */
 {
 	dberr_t		err = DB_SUCCESS;
 	trx_t*		trx;
@@ -6846,7 +6846,7 @@ dict_get_dictionary_id_by_key(
 	trx = trx_allocate_for_background();
 	trx->op_info = "get zip dict id by composite key";
 	trx->dict_operation_lock_mode = RW_X_LATCH;
-  /* TODO: (ZIP_DICT) set read-only mode for transaction */
+	/* TODO: (ZIP_DICT) set read-only mode for transaction */
 	trx_start_if_not_started(trx);
 
 	err = dict_create_get_zip_dict_id_by_reference(table_id, column_pos, dict_id, trx);
@@ -6871,15 +6871,19 @@ dict_get_dictionary_id_by_key(
 	return err;
 }
 /********************************************************************//**
-Get compression dictionary data for the given id.
-Allocates memory in data->str on success. Must be freed with mem_free().
+Get compression dictionary info (name and data) for the given id.
+Allocates memory in name->str and data->str on success.
+Must be freed with mem_free().
 @return	DB_SUCCESS if OK, DB_RECORD_NOT_FOUND if not found */
 UNIV_INTERN
 dberr_t
-dict_get_dictionary_data_by_id(
+dict_get_dictionary_info_by_id(
 /*================================*/
-  ulint       dict_id, /*!< in: table name */
-  LEX_STRING* data)    /*!< out: dictionary data */
+	ulint  dict_id,  /*!< in: table name */
+	char** name,     /*!< out: dictionary name */
+	ulint* name_len, /*!< out: dictionary name length*/
+	char** data,     /*!< out: dictionary data */
+	ulint* data_len) /*!< out: dictionary data length*/
 {
 	dberr_t		err = DB_SUCCESS;
 	trx_t*		trx;
@@ -6888,14 +6892,58 @@ dict_get_dictionary_data_by_id(
 	dict_mutex_enter_for_mysql();
 
 	trx = trx_allocate_for_background();
-	trx->op_info = "get zip dict data by id";
+	trx->op_info = "get zip dict name and data by id";
 	trx->dict_operation_lock_mode = RW_X_LATCH;
-  /* TODO: (ZIP_DICT) set read-only mode for transaction */
+	/* TODO: (ZIP_DICT) set read-only mode for transaction */
 	trx_start_if_not_started(trx);
 
-	err = dict_create_get_zip_dict_data_by_id(dict_id, data, trx);
+	err = dict_create_get_zip_dict_info_by_id(dict_id, name, name_len, data, data_len, trx);
 
 	trx_commit_for_mysql(trx);
+	trx->dict_operation_lock_mode = 0;
+	trx_free_for_background(trx);
+
+	dict_mutex_exit_for_mysql();
+	rw_lock_x_unlock(&dict_operation_lock);
+
+	return err;
+}
+/********************************************************************//**
+Insert a records into SYS_ZIP_DICT.
+@return	DB_SUCCESS if OK, DB_RECORD_NOT_FOUND if not found, DB_ROW_IS_REFERENCED if in use */
+UNIV_INTERN
+dberr_t
+dict_drop_zip_dict(
+/*================================*/
+	const char* name, /*!< in: zip_dict name */
+	ulint name_len)   /*!< in: zip_dict name length*/
+{
+	dberr_t		err = DB_SUCCESS;
+	trx_t*		trx;
+
+	ut_ad(name);
+
+	rw_lock_x_lock(&dict_operation_lock);
+	dict_mutex_enter_for_mysql();
+
+	trx = trx_allocate_for_background();
+	trx->op_info = "delete zip_dict";
+	trx->dict_operation_lock_mode = RW_X_LATCH;
+	trx_start_if_not_started(trx);
+
+	err = dict_create_remove_zip_dict(name, name_len, trx);
+
+	if(err == DB_SUCCESS)
+	{
+		trx_commit_for_mysql(trx);
+	}
+	else
+	{
+		trx->op_info = "rollback of internal trx on zip_dict table";
+		trx_rollback_to_savepoint(trx, NULL);
+		ut_a(trx->error_state == DB_SUCCESS);
+	}
+	trx->op_info = "";
 	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 
