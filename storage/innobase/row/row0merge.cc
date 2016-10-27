@@ -735,9 +735,15 @@ row_merge_buf_add(
 		}
 
 		ut_ad(len <= col->len
-		      || DATA_LARGE_MTYPE(col->mtype)
-		      || (col->mtype == DATA_POINT
-			  && len == DATA_MBR_LEN));
+		  || DATA_LARGE_MTYPE(col->mtype)
+		  || (col->mtype == DATA_POINT
+		      && len == DATA_MBR_LEN)
+		  || ((col->mtype == DATA_VARCHAR
+		       || col->mtype == DATA_BINARY
+		       || col->mtype == DATA_VARMYSQL)
+		      && (col->len == 0
+		          || len <= col->len +
+			     prtype_get_compression_extra(col->prtype))));
 
 		fixed_len = ifield->fixed_len;
 		if (fixed_len && !dict_table_is_comp(index->table)

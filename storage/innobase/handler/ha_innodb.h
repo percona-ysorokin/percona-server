@@ -351,6 +351,15 @@ public:
 		bool			commit);
 	/** @} */
 
+	/** This function reads zip dict-related info from SYS_ZIP_DICT
+	and SYS_ZIP_DICT_COLS for all columns marked with
+	COLUMN_FORMAT_TYPE_COMPRESSED flag and updates
+	zip_dict_name / zip_dict_data for those which have associated
+	compression dictionaries.
+	*/
+	virtual void update_field_defs_with_zip_dict_info();
+
+
 	bool check_if_incompatible_data(
 		HA_CREATE_INFO*		info,
 		uint			table_changes);
@@ -1108,3 +1117,34 @@ innobase_build_index_translation(
 	INNOBASE_SHARE*		share);	/*!< in/out: share structure
 					where index translation table
 					will be constructed in. */
+
+/** Compression dictionary id container */
+typedef std::map<uint16, ulint, std::less<uint16>,
+	ut_allocator<std::pair<uint16, const ulint> > >
+	zip_dict_id_container_t;
+
+/** This function checks if all the compression dictionaries referenced
+in table->fields exist in SYS_ZIP_DICT InnoDB system table.
+@return true if all referenced dictionaries exist */
+bool
+innobase_check_zip_dicts(
+	const TABLE*	table,		/*!< in: table in MySQL data
+					dictionary */
+	zip_dict_id_container_t&
+			dict_ids,	/*!< out: identified zip dict ids */
+	trx_t*		trx,		/*!< in: transaction */
+	const char**	err_dict_name);	/*!< out: the name of the
+					zip_dict which does not exist. */
+
+/** This function creates compression dictionary references in
+SYS_ZIP_DICT_COLS InnoDB system table for table_id based on info
+in table->fields and provided zip dict ids. */
+void
+innobase_create_zip_dict_references(
+	const TABLE*	table,		/*!< in: table in MySQL data
+					dictionary */
+	table_id_t	ib_table_id,	/*!< in: table ID in Innodb data
+					dictionary */
+	const zip_dict_id_container_t&
+			dict_ids,	/*!< in: zip dict ids */
+	trx_t*		trx);		/*!< in: transaction */
