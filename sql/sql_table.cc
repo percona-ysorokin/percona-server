@@ -3598,7 +3598,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
         sql_field->sql_type == MYSQL_TYPE_MEDIUM_BLOB ||
         sql_field->sql_type == MYSQL_TYPE_BLOB ||
         sql_field->sql_type == MYSQL_TYPE_LONG_BLOB ||
-        sql_field->sql_type == MYSQL_TYPE_VARCHAR)
+        sql_field->sql_type == MYSQL_TYPE_VARCHAR ||
+        sql_field->sql_type == MYSQL_TYPE_JSON)
     {
       DBUG_EXECUTE_IF("enforce_all_compressed_columns",
         if (create_info->db_type->create_zip_dict != 0)

@@ -48,6 +48,12 @@ Table	Create Table
 t9	CREATE TABLE `t9` (
   `a` varchar(1000) /*!50633 COLUMN_FORMAT COMPRESSED */ DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1
+CREATE TABLE t10 (a JSON COLUMN_FORMAT COMPRESSED) ENGINE=InnoDB;
+SHOW CREATE TABLE t10;
+Table	Create Table
+t10	CREATE TABLE `t10` (
+  `a` json /*!50633 COLUMN_FORMAT COMPRESSED */ DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
 CREATE TABLE t1(a BLOB COLUMN_FORMAT COMPRESSED, KEY(a(10)));
 ERROR HY000: Compressed column 'a' is not allowed in the key list
 CREATE TABLE t1(a BLOB COLUMN_FORMAT COMPRESSED);
@@ -213,7 +219,7 @@ test.t1	2260691284
 test.t2	2260691284
 SET GLOBAL innodb_compressed_columns_zip_level = @old_innodb_compressed_columns_zip_level;
 SET GLOBAL innodb_compressed_columns_threshold = @old_innodb_compressed_columns_threshold;
-DROP TABLE t1, t2, t3, t4, t5, t6, t7, t8, t9;
+DROP TABLE t1, t2, t3, t4, t5, t6, t7, t8, t9, t10;
 SET @saved_innodb_compressed_columns_threshold = @@global.innodb_compressed_columns_threshold;
 CREATE TABLE t1(
 a VARCHAR(1) COLUMN_FORMAT COMPRESSED

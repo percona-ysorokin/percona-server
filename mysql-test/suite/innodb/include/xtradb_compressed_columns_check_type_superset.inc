@@ -49,6 +49,7 @@ SET sql_mode = 'ONLY_FULL_GROUP_BY,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';
 # - MEDIUMTEXT
 # - LONGBLOB
 # - LONGTEXT
+# - JSON
 
 --let $base_field_type= VARCHAR
 --source suite/innodb/include/xtradb_compressed_columns_check_type_set.inc
@@ -87,6 +88,9 @@ SET sql_mode = 'ONLY_FULL_GROUP_BY,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';
 --let $full_field_type= LONGBLOB
 --source suite/innodb/include/xtradb_compressed_columns_check_type_set.inc
 
+--let $type_length_limit= 4294967295
+--let $full_field_type= JSON
+--source suite/innodb/include/xtradb_compressed_columns_check_type_set.inc
 
 # restoring moddified global variables
 --disable_warnings
