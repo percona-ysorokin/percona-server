@@ -165,7 +165,7 @@ references_cleared
 1
 SET @saved_default_storage_engine = @@default_storage_engine;
 # check if "CREATE TABLE ... LIKE ..." does not lose "COLUMN_FORMAT COMPRESSED" attribute
-*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB COLUMN_FORMAT COMPRESSED", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB COLUMN_FORMAT COMPRESSED", ALGORITHM=DEFAULT
 original_dictionary_reference_does_not_exist
 1
 *** after table alteration
@@ -179,7 +179,7 @@ modified_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." discards "COLUMN_FORMAT COMPRESSED" attribute (implicit SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_does_not_exist
 1
 *** after table alteration
@@ -195,7 +195,7 @@ modified_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." discards "COLUMN_FORMAT COMPRESSED" attribute (explicit SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_does_not_exist
 1
 *** after table alteration
@@ -211,7 +211,7 @@ modified_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." discards "COLUMN_FORMAT COMPRESSED" attribute (implicitly changing SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_does_not_exist
 1
 *** after table alteration
@@ -223,7 +223,7 @@ original_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." discards "COLUMN_FORMAT COMPRESSED" attribute (explicitly changing SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_does_not_exist
 1
 *** after table alteration
@@ -235,7 +235,7 @@ original_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." with dummy expression does not trigger ER_ILLEGAL_HA_CREATE_OPTION (no dictionary, implicit SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_does_not_exist
 1
 *** after table alteration
@@ -247,7 +247,7 @@ original_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." with dummy expression does not trigger ER_ILLEGAL_HA_CREATE_OPTION (no dictionary, explicit SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_does_not_exist
 1
 *** after table alteration
@@ -259,7 +259,7 @@ original_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... LIKE ..." does not lose compression dictionary references
-*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1", ALGORITHM=DEFAULT
 original_dictionary_reference_exists
 1
 original_dictionary_reference_matches
@@ -277,7 +277,7 @@ modified_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." discards compression dictionary references (implicit SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_exists
 1
 original_dictionary_reference_matches
@@ -297,7 +297,7 @@ modified_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." discards compression dictionary references (explicit SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_exists
 1
 original_dictionary_reference_matches
@@ -317,7 +317,7 @@ modified_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." discards compression dictionary references (implicitly changing SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_exists
 1
 original_dictionary_reference_matches
@@ -333,7 +333,7 @@ original_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." discards compression dictionary references (explicitly changing SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_exists
 1
 original_dictionary_reference_matches
@@ -349,7 +349,7 @@ original_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." with dummy expression does not trigger ER_ILLEGAL_HA_CREATE_OPTION (with a dictionary, implicit SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_exists
 1
 original_dictionary_reference_matches
@@ -365,7 +365,7 @@ original_dictionary_references_cleaned
 1
 
 # check if "CREATE TABLE ... AS SELECT * FROM ..." with dummy expression does not trigger ER_ILLEGAL_HA_CREATE_OPTION (with a dictionary, explicit SE)
-*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB", ALGORITHM=DEFAULT
 original_dictionary_reference_exists
 1
 original_dictionary_reference_matches
@@ -382,7 +382,7 @@ original_dictionary_references_cleaned
 
 SET default_storage_engine = @saved_default_storage_engine;
 # check if "TRUNCATE TABLE ..." updates compression dictionary references in SYS_ZIP_DICT_COLS
-*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1", ALGOTIRHM=DEFAULT
+*** "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1" -> "a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY d1", ALGORITHM=DEFAULT
 original_dictionary_reference_exists
 1
 original_dictionary_reference_matches

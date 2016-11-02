@@ -359,7 +359,6 @@ public:
 	*/
 	virtual void update_field_defs_with_zip_dict_info();
 
-
 	bool check_if_incompatible_data(
 		HA_CREATE_INFO*		info,
 		uint			table_changes);

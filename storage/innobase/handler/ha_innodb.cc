@@ -5836,9 +5836,9 @@ innobase_vcol_build_templ(
         templ->mbminlen = dict_col_get_mbminlen(col);
         templ->mbmaxlen = dict_col_get_mbmaxlen(col);
         templ->is_unsigned = col->prtype & DATA_UNSIGNED;
-	templ->compressed = (field->column_format()
-				== COLUMN_FORMAT_TYPE_COMPRESSED);
-	templ->zip_dict_data = field->zip_dict_data;
+        templ->compressed =
+          (field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED);
+        templ->zip_dict_data = field->zip_dict_data;
 }
 
 /** callback used by MySQL server layer to initialize
@@ -8372,7 +8372,7 @@ calc_row_difference(
 		case DATA_POINT:
 		case DATA_VAR_POINT:
 		case DATA_GEOMETRY:
-			/* Do not compress blob column while comparing*/
+			/* Do not compress blob column while comparing */
 			o_ptr = row_mysql_read_blob_ref(&o_len, o_ptr, o_len,
 				false, 0, 0, prebuilt);
 			n_ptr = row_mysql_read_blob_ref(&n_len, n_ptr, n_len,
