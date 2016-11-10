@@ -1008,6 +1008,7 @@ struct SysIndexCallback {
 				or NULL.
 @param[in]	parent_update	update vector for the parent row
 @param[in]	foreign		foreign key information
+@param[in]	prebuilt	compress_heap must be taken from here
 @return the field filled with computed value */
 dfield_t*
 innobase_get_computed_value(
@@ -1021,7 +1022,8 @@ innobase_get_computed_value(
 	TABLE*			mysql_table,
 	const dict_table_t*	old_table,
 	upd_t*			parent_update,
-	dict_foreign_t*		foreign);
+	dict_foreign_t*		foreign,
+	row_prebuilt_t*		prebuilt);
 
 /** Get the computed value by supplying the base column values.
 @param[in,out]	table	the table whose virtual column template to be built */

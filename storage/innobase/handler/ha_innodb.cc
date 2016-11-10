@@ -17954,13 +17954,14 @@ void
 ha_innobase::update_field_defs_with_zip_dict_info()
 {
 	DBUG_ENTER("update_field_defs_with_zip_dict_info");
-	ut_ad(!mutex_own(&dict_sys->mutex));
 
 	char norm_name[FN_REFLEN];
+	bool	dict_sys_prelocked = mutex_own(&dict_sys->mutex);
+
 	normalize_table_name(norm_name, table_share->normalized_path.str);
 
 	dict_table_t* ib_table = dict_table_open_on_name(
-		norm_name, FALSE, FALSE, DICT_ERR_IGNORE_NONE);
+		norm_name, dict_sys_prelocked, FALSE, DICT_ERR_IGNORE_NONE);
 
 	/* if dict_table_open_on_name() returns NULL, then it means that
 	TABLE_SHARE is populated for a table being created and we can
@@ -17969,7 +17970,7 @@ ha_innobase::update_field_defs_with_zip_dict_info()
 		DBUG_VOID_RETURN;
 
 	table_id_t ib_table_id = ib_table->id;
-	dict_table_close(ib_table, FALSE, FALSE);
+	dict_table_close(ib_table, dict_sys_prelocked, FALSE);
 	Field* field;
 	for (uint i = 0; i < table_share->fields; ++i) {
 		field = table_share->field[i];
@@ -21969,6 +21970,7 @@ innobase_get_field_from_update_vector(
 				or NULL.
 @param[in]	parent_update	update vector for the parent row
 @param[in]	foreign		foreign key information
+@param[in]	prebuilt	compress_heap must be taken from here
 @return the field filled with computed value, or NULL if just want
 to store the value in passed in "my_rec" */
 dfield_t*
@@ -21983,7 +21985,8 @@ innobase_get_computed_value(
 	TABLE*			mysql_table,
 	const dict_table_t*	old_table,
 	upd_t*			parent_update,
-	dict_foreign_t*		foreign)
+	dict_foreign_t*		foreign,
+	row_prebuilt_t*		prebuilt)
 {
 	byte		rec_buf1[REC_VERSION_56_MAX_INDEX_COL_LEN];
 	byte		rec_buf2[REC_VERSION_56_MAX_INDEX_COL_LEN];
@@ -22065,7 +22068,7 @@ innobase_get_computed_value(
 			row_sel_field_store_in_mysql_format(
 				mysql_rec + templ->mysql_col_offset,
 				templ, index, templ->clust_rec_field_no,
-				(const byte*)data, len, 0);
+				(const byte*)data, len, prebuilt);
 
 			if (templ->mysql_null_bit_mask) {
 				/* It is a nullable column with a
@@ -22107,7 +22110,7 @@ innobase_get_computed_value(
 			row_mysql_store_blob_ref(
 				mysql_rec + vctempl->mysql_col_offset,
 				vctempl->mysql_col_len, blob_mem, max_len,
-				false, 0, 0, 0);
+				false, 0, 0, prebuilt);
                 }
 
 		ret = handler::my_eval_gcolumn_expr_with_open(

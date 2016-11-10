@@ -6311,7 +6311,7 @@ ok_exit:
 		ctx->add_index, ctx->add_key_numbers, ctx->num_to_add_index,
 		altered_table, ctx->add_cols, ctx->col_map,
 		ctx->add_autoinc, ctx->sequence, ctx->skip_pk_sort,
-		ctx->m_stage, add_v, eval_table);
+		ctx->m_stage, add_v, eval_table, m_prebuilt);
 
 	if (s_templ) {
 		ut_ad(ctx->need_rebuild() || ctx->num_to_add_vcol > 0

@@ -3602,7 +3602,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
         sql_field->sql_type == MYSQL_TYPE_JSON)
     {
       DBUG_EXECUTE_IF("enforce_all_compressed_columns",
-        if (create_info->db_type->create_zip_dict != 0)
+        if (sql_field->gcol_info == 0 &&
+            create_info->db_type->create_zip_dict != 0)
           sql_field->set_column_format(COLUMN_FORMAT_TYPE_COMPRESSED);
       );
     }

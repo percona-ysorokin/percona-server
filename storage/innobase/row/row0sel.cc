@@ -237,7 +237,7 @@ row_sel_sec_rec_is_for_clust_rec(
 					&heap, NULL, NULL,
 					thr_get_trx(thr)->mysql_thd,
 					thr->prebuilt->m_mysql_table, NULL,
-					NULL, NULL);
+					NULL, NULL, thr->prebuilt);
 
 			clust_len = vfield->len;
 			clust_field = static_cast<byte*>(vfield->data);

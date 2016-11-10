@@ -7171,9 +7171,16 @@ dict_get_dictionary_id_by_key(
 {
 	dberr_t		err = DB_SUCCESS;
 	trx_t*		trx;
+	bool	dict_operation_prelocked =
+		rw_lock_own(dict_operation_lock, RW_LOCK_S);
+	bool	dict_sys_prelocked = mutex_own(&dict_sys->mutex);
 
-	rw_lock_s_lock(dict_operation_lock);
-	dict_mutex_enter_for_mysql();
+	if (!dict_operation_prelocked) {
+		rw_lock_s_lock(dict_operation_lock);
+	}
+	if (!dict_sys_prelocked) {
+		dict_mutex_enter_for_mysql();
+	}
 
 	trx = trx_allocate_for_background();
 	trx->op_info = "get zip dict id by composite key";
@@ -7187,8 +7194,12 @@ dict_get_dictionary_id_by_key(
 	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 
-	dict_mutex_exit_for_mysql();
-	rw_lock_s_unlock(dict_operation_lock);
+	if (!dict_sys_prelocked) {
+		dict_mutex_exit_for_mysql();
+	}
+	if (!dict_operation_prelocked) {
+		rw_lock_s_unlock(dict_operation_lock);
+	}
 
 	return err;
 }
@@ -7207,9 +7218,16 @@ dict_get_dictionary_info_by_id(
 {
 	dberr_t		err = DB_SUCCESS;
 	trx_t*		trx;
+	bool	dict_operation_prelocked =
+		rw_lock_own(dict_operation_lock, RW_LOCK_S);
+	bool	dict_sys_prelocked = mutex_own(&dict_sys->mutex);
 
-	rw_lock_s_lock(dict_operation_lock);
-	dict_mutex_enter_for_mysql();
+	if (!dict_operation_prelocked) {
+		rw_lock_s_lock(dict_operation_lock);
+	}
+	if (!dict_sys_prelocked) {
+		dict_mutex_enter_for_mysql();
+	}
 
 	trx = trx_allocate_for_background();
 	trx->op_info = "get zip dict name and data by id";
@@ -7223,8 +7241,12 @@ dict_get_dictionary_info_by_id(
 	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 
-	dict_mutex_exit_for_mysql();
-	rw_lock_s_unlock(dict_operation_lock);
+	if (!dict_sys_prelocked) {
+		dict_mutex_exit_for_mysql();
+	}
+	if (!dict_operation_prelocked) {
+		rw_lock_s_unlock(dict_operation_lock);
+	}
 
 	return err;
 }

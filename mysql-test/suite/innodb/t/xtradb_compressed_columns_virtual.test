@@ -1,0 +1,71 @@
+--source include/have_innodb.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+--source include/have_innodb_max_16k.inc
+# The embedded server does not support restarting.
+--source include/not_embedded.inc
+
+# creating a simple compression dictionary for future references
+CREATE COMPRESSION_DICTIONARY numbers('one' 'two' 'three');
+
+# creating a table with an index on a virtual column based on a compressed field
+CREATE TABLE t1(
+  f1 INT PRIMARY KEY,
+  f2 BLOB COLUMN_FORMAT COMPRESSED,
+  f3 BLOB GENERATED ALWAYS AS (f2) VIRTUAL,
+  INDEX(f3(200))
+) ROW_FORMAT=COMPRESSED, ENGINE=InnoDB;
+
+INSERT INTO t1 (f1, f2) VALUES (1, REPEAT('a', 96));
+# checking if changing table row format, which requires virtual values calculation, does not crash
+ALTER TABLE t1 ROW_FORMAT=COMPACT;
+# checking if deleting a row, which requires virtual values calculation in order to update the index,
+# does not crash
+DELETE FROM t1 WHERE f1 = 1;
+DROP TABLE t1;
+
+
+# checking if calculating virtual column values from current cluster index record data
+# does not cause double locking of 'dict_operation_lock' / 'dict_sys->mutex' when reading
+# zip dict data on opening an already open table
+CREATE TABLE t (
+  a BLOB COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY numbers,
+  c BLOB GENERATED ALWAYS AS (a) VIRTUAL,
+  INDEX(c(100))
+) ENGINE=InnoDB;
+
+INSERT INTO t VALUES (REPEAT('a', 16000), DEFAULT);
+
+SET GLOBAL debug="+d,ib_purge_virtual_index_callback";
+UPDATE t SET a = REPEAT('m', 16000) WHERE a LIKE "aaa%";
+SELECT SLEEP(3);
+SET GLOBAL debug="-d,ib_purge_virtual_index_callback";
+DROP TABLE t;
+
+
+# checking if calculating virtual column values from the purge threads does not crash
+SET GLOBAL innodb_purge_stop_now = 1;
+
+# Index on a virtual column
+CREATE TABLE t1(
+  id INT not null,
+  a BLOB NOT NULL COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY numbers,
+  vchar CHAR(2) AS (SUBSTR(a, 2, 2)) VIRTUAL,
+  INDEX(vchar)
+) ENGINE=InnoDB;
+
+INSERT INTO t1 VALUES(1, REPEAT('a',8000), DEFAULT);
+
+UPDATE t1 SET id = 5 where id = 1;
+DELETE FROM t1 WHERE id = 5;
+
+SET GLOBAL innodb_purge_run_now = 1;
+SET GLOBAL innodb_fast_shutdown = 0;
+--source include/restart_mysqld.inc
+SET GLOBAL innodb_purge_stop_now = 1;
+DROP TABLE t1;
+SET GLOBAL innodb_purge_run_now = 1;
+--source include/restart_mysqld.inc
+
+# cleanup
+DROP COMPRESSION_DICTIONARY numbers;
