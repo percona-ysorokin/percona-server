@@ -2164,7 +2164,9 @@ dberr_t
 dict_get_dictionary_id_by_key(
 	ulint	table_id,	/*!< in: table id */
 	ulint	column_pos,	/*!< in: column position */
-	ulint*	dict_id);	/*!< out: zip_dict id */
+	ulint*	dict_id,	/*!< out: zip_dict id */
+	bool	dict_locked);	/*!< in: true if data dictionary locked */
+
 
 /** Get compression dictionary info (name and data) for the given id.
 Allocates memory in name->str and data->str on success.
@@ -2177,7 +2179,8 @@ dict_get_dictionary_info_by_id(
 	char**	name,		/*!< out: dictionary name */
 	ulint*	name_len,	/*!< out: dictionary name length*/
 	char**	data,		/*!< out: dictionary data */
-	ulint*	data_len);	/*!< out: dictionary data length*/
+	ulint*	data_len,	/*!< out: dictionary data length*/
+	bool	dict_locked);	/*!< in: true if data dictionary locked */
 
 /** Delete a record in SYS_ZIP_DICT with the given name.
 @retval	DB_SUCCESS		if OK

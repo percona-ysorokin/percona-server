@@ -3937,7 +3937,7 @@ public:
     If the handler does not support compression dictionaries
     this method should be left empty (not overloaded).
   */
-  virtual void update_field_defs_with_zip_dict_info() { }
+  virtual void update_field_defs_with_zip_dict_info(bool dict_locked) { }
 
 public:
   /* Read-free replication interface */

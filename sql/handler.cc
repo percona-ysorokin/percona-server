@@ -8675,7 +8675,7 @@ bool handler::my_prepare_gcolumn_template(THD *thd,
   // be opened in the SE in this case is dangerous as the two shares
   // could get conflicting SE private data.
   TABLE *table= open_table_uncached(thd, path, db_name, table_name,
-                                    false, false);
+                                    false, false, true);
   if (table)
   {
     myc(table, ib_table);
@@ -8723,7 +8723,7 @@ bool handler::my_eval_gcolumn_expr_with_open(THD *thd,
   DBUG_ASSERT(!was_truncated);
 
   TABLE *table= open_table_uncached(thd, path, db_name, table_name,
-                                    false, false);
+                                    false, false, true);
   if (table)
   {
     retval= my_eval_gcolumn_expr_helper(thd, table, fields, record, true);

@@ -7167,18 +7167,19 @@ dberr_t
 dict_get_dictionary_id_by_key(
 	ulint	table_id,	/*!< in: table id */
 	ulint	column_pos,	/*!< in: column position */
-	ulint*	dict_id)	/*!< out: zip_dict id */
+	ulint*	dict_id,	/*!< out: zip_dict id */
+	bool	dict_locked)	/*!< in: true if data dictionary locked */
 {
 	dberr_t		err = DB_SUCCESS;
 	trx_t*		trx;
-	bool	dict_operation_prelocked =
-		rw_lock_own(dict_operation_lock, RW_LOCK_S);
-	bool	dict_sys_prelocked = mutex_own(&dict_sys->mutex);
+	bool		dict_operatrion_locked = dict_locked;
+	DBUG_EXECUTE_IF("ib_purge_virtual_index_callback",
+		dict_operatrion_locked = true; );
 
-	if (!dict_operation_prelocked) {
+	if (!dict_operatrion_locked) {
 		rw_lock_s_lock(dict_operation_lock);
 	}
-	if (!dict_sys_prelocked) {
+	if (!dict_locked) {
 		dict_mutex_enter_for_mysql();
 	}
 
@@ -7194,10 +7195,10 @@ dict_get_dictionary_id_by_key(
 	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 
-	if (!dict_sys_prelocked) {
+	if (!dict_locked) {
 		dict_mutex_exit_for_mysql();
 	}
-	if (!dict_operation_prelocked) {
+	if (!dict_operatrion_locked) {
 		rw_lock_s_unlock(dict_operation_lock);
 	}
 
@@ -7214,18 +7215,19 @@ dict_get_dictionary_info_by_id(
 	char**	name,		/*!< out: dictionary name */
 	ulint*	name_len,	/*!< out: dictionary name length*/
 	char**	data,		/*!< out: dictionary data */
-	ulint*	data_len)	/*!< out: dictionary data length*/
+	ulint*	data_len,	/*!< out: dictionary data length*/
+	bool	dict_locked)	/*!< in: true if data dictionary locked */
 {
 	dberr_t		err = DB_SUCCESS;
 	trx_t*		trx;
-	bool	dict_operation_prelocked =
-		rw_lock_own(dict_operation_lock, RW_LOCK_S);
-	bool	dict_sys_prelocked = mutex_own(&dict_sys->mutex);
+	bool		dict_operatrion_locked = dict_locked;
+	DBUG_EXECUTE_IF("ib_purge_virtual_index_callback",
+		dict_operatrion_locked = true; );
 
-	if (!dict_operation_prelocked) {
+	if (!dict_operatrion_locked) {
 		rw_lock_s_lock(dict_operation_lock);
 	}
-	if (!dict_sys_prelocked) {
+	if (!dict_locked) {
 		dict_mutex_enter_for_mysql();
 	}
 
@@ -7241,10 +7243,10 @@ dict_get_dictionary_info_by_id(
 	trx->dict_operation_lock_mode = 0;
 	trx_free_for_background(trx);
 
-	if (!dict_sys_prelocked) {
+	if (!dict_locked) {
 		dict_mutex_exit_for_mysql();
 	}
-	if (!dict_operation_prelocked) {
+	if (!dict_operatrion_locked) {
 		rw_lock_s_unlock(dict_operation_lock);
 	}
 

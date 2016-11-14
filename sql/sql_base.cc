@@ -6890,7 +6890,8 @@ void close_tables_for_reopen(THD *thd, TABLE_LIST **tables,
 TABLE *open_table_uncached(THD *thd, const char *path, const char *db,
                            const char *table_name,
                            bool add_to_temporary_tables_list,
-                           bool open_in_engine)
+                           bool open_in_engine,
+                           bool from_purge_thread /* = false */)
 {
   TABLE *tmp_table;
   TABLE_SHARE *share;
@@ -6942,7 +6943,7 @@ TABLE *open_table_uncached(THD *thd, const char *path, const char *db,
   init_tmp_table_share(thd, share, saved_cache_key, key_length,
                        strend(saved_cache_key)+1, tmp_path);
 
-  if (open_table_def(thd, share, 0))
+  if (open_table_def(thd, share, 0, from_purge_thread))
   {
     /* No need to lock share->mutex as this is not needed for tmp tables */
     free_table_share(share);

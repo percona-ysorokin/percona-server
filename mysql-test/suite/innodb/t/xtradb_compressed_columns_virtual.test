@@ -2,11 +2,29 @@
 --source include/have_debug.inc
 --source include/have_debug_sync.inc
 --source include/have_innodb_max_16k.inc
-# The embedded server does not support restarting.
---source include/not_embedded.inc
+
+SET @saved_innodb_compressed_columns_zip_level = @@global.innodb_compressed_columns_zip_level;
 
 # creating a simple compression dictionary for future references
 CREATE COMPRESSION_DICTIONARY numbers('one' 'two' 'three');
+
+--let $table_name  = t1
+--let $source_column_name = a
+--let $source_column_type = BLOB
+--let $generated_column_name = g
+--let $generated_column_type = BLOB
+--let $dictionary_name = numbers
+
+--source suite/innodb/include/xtradb_compressed_columns_virtual_superset.inc
+
+# setting zip level to 0 means skipping compressing for all values
+# (compressed column header will still be added)
+SET GLOBAL innodb_compressed_columns_zip_level = 0;
+
+--source suite/innodb/include/xtradb_compressed_columns_virtual_superset.inc
+
+# restoring default value
+SET GLOBAL innodb_compressed_columns_zip_level = DEFAULT;
 
 # creating a table with an index on a virtual column based on a compressed field
 CREATE TABLE t1(
@@ -60,12 +78,12 @@ UPDATE t1 SET id = 5 where id = 1;
 DELETE FROM t1 WHERE id = 5;
 
 SET GLOBAL innodb_purge_run_now = 1;
-SET GLOBAL innodb_fast_shutdown = 0;
---source include/restart_mysqld.inc
+--source include/wait_innodb_all_purged.inc
 SET GLOBAL innodb_purge_stop_now = 1;
 DROP TABLE t1;
 SET GLOBAL innodb_purge_run_now = 1;
---source include/restart_mysqld.inc
 
 # cleanup
 DROP COMPRESSION_DICTIONARY numbers;
+
+SET GLOBAL innodb_compressed_columns_zip_level = @saved_innodb_compressed_columns_zip_level;

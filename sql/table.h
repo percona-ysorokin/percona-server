@@ -2942,7 +2942,8 @@ bool get_table_and_parts_tablespace_names(
        TABLE_LIST *table,
        Tablespace_hash_set *tablespace_set);
 
-int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags);
+int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags,
+                   bool from_purge_thread = false);
 void open_table_error(TABLE_SHARE *share, int error, int db_errno, int errarg);
 void update_create_info_from_table(HA_CREATE_INFO *info, TABLE *form);
 enum_ident_name_check check_and_convert_db_name(LEX_STRING *db,

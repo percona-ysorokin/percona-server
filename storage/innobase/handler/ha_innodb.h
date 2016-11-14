@@ -357,7 +357,7 @@ public:
 	zip_dict_name / zip_dict_data for those which have associated
 	compression dictionaries.
 	*/
-	virtual void update_field_defs_with_zip_dict_info();
+	virtual void update_field_defs_with_zip_dict_info(bool dict_locked);
 
 	bool check_if_incompatible_data(
 		HA_CREATE_INFO*		info,

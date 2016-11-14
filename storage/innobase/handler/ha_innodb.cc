@@ -17951,17 +17951,19 @@ zip_dict_name / zip_dict_data for those which have associated
 compression dictionaries.
 */
 void
-ha_innobase::update_field_defs_with_zip_dict_info()
+ha_innobase::update_field_defs_with_zip_dict_info(bool dict_locked)
 {
 	DBUG_ENTER("update_field_defs_with_zip_dict_info");
 
 	char norm_name[FN_REFLEN];
-	bool	dict_sys_prelocked = mutex_own(&dict_sys->mutex);
 
 	normalize_table_name(norm_name, table_share->normalized_path.str);
 
+	DBUG_EXECUTE_IF("ib_purge_virtual_index_callback",
+		dict_locked = false; );
+
 	dict_table_t* ib_table = dict_table_open_on_name(
-		norm_name, dict_sys_prelocked, FALSE, DICT_ERR_IGNORE_NONE);
+		norm_name, dict_locked, FALSE, DICT_ERR_IGNORE_NONE);
 
 	/* if dict_table_open_on_name() returns NULL, then it means that
 	TABLE_SHARE is populated for a table being created and we can
@@ -17970,7 +17972,7 @@ ha_innobase::update_field_defs_with_zip_dict_info()
 		DBUG_VOID_RETURN;
 
 	table_id_t ib_table_id = ib_table->id;
-	dict_table_close(ib_table, dict_sys_prelocked, FALSE);
+	dict_table_close(ib_table, dict_locked, FALSE);
 	Field* field;
 	for (uint i = 0; i < table_share->fields; ++i) {
 		field = table_share->field[i];
@@ -17979,7 +17981,7 @@ ha_innobase::update_field_defs_with_zip_dict_info()
 			bool reference_found = false;
 			ulint dict_id = 0;
 			switch (dict_get_dictionary_id_by_key(ib_table_id, i,
-				&dict_id)) {
+				&dict_id, dict_locked)) {
 				case DB_SUCCESS:
 					reference_found = true;
 					break;
@@ -17996,7 +17998,8 @@ ha_innobase::update_field_defs_with_zip_dict_info()
 				ulint local_data_len = 0;
 				if (dict_get_dictionary_info_by_id(dict_id,
 					&local_name, &local_name_len,
-					&local_data, &local_data_len) !=
+					&local_data, &local_data_len,
+					dict_locked) !=
 					DB_SUCCESS) {
 					ut_error;
 				}
