@@ -3593,17 +3593,21 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
   {
     const CHARSET_INFO *save_cs;
 
-    /* check if the column is compressible.*/
-    if (sql_field->sql_type == MYSQL_TYPE_TINY_BLOB ||
-        sql_field->sql_type == MYSQL_TYPE_MEDIUM_BLOB ||
-        sql_field->sql_type == MYSQL_TYPE_BLOB ||
-        sql_field->sql_type == MYSQL_TYPE_LONG_BLOB ||
-        sql_field->sql_type == MYSQL_TYPE_VARCHAR ||
-        sql_field->sql_type == MYSQL_TYPE_JSON)
+    /*
+      Check if the column is compressible.
+      VIRTUAL generated columns cannot have COMPRESSED attribute.
+    */
+    if ((sql_field->sql_type == MYSQL_TYPE_TINY_BLOB ||
+         sql_field->sql_type == MYSQL_TYPE_MEDIUM_BLOB ||
+         sql_field->sql_type == MYSQL_TYPE_BLOB ||
+         sql_field->sql_type == MYSQL_TYPE_LONG_BLOB ||
+         sql_field->sql_type == MYSQL_TYPE_VARCHAR ||
+         sql_field->sql_type == MYSQL_TYPE_JSON) &&
+        (sql_field->gcol_info == 0 ||
+         sql_field->gcol_info->get_field_stored()))
     {
       DBUG_EXECUTE_IF("enforce_all_compressed_columns",
-        if (sql_field->gcol_info == 0 &&
-            create_info->db_type->create_zip_dict != 0)
+        if (create_info->db_type->create_zip_dict != 0)
           sql_field->set_column_format(COLUMN_FORMAT_TYPE_COMPRESSED);
       );
     }

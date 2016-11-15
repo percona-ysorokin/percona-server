@@ -1,23 +1,33 @@
 # $table_name - table name
 # $source_column_name - source column name
 # $source_column_type - source column type (e.g. BLOB | TEXT | VARCHAR(N), etc.)
+# $source_dictionary_name - '' (no compression) | '*' (compressed wo dictionary) | '<dictionary>' (compresed with <dictionary>)
 # $generated_column_name - generated columns name
 # $generated_column_type - the type of the generated columns (e.g. BLOB | TEXT | VARCHAR(N), etc.)
-# $dictionary_name - '' (no compression) | '*' (compressed wo dictionary) | '<dictionary>' (compresed with <dictionary>)
 # $generated_expression_length - generated column expression will be 'LEFT($source_column_name, $generated_expression_length)'
 # $generated_storage_type - VIRTUAL | STORED
+# $generated_dictionary_name - '' (no compression) | '*' (compressed wo dictionary) | '<dictionary>' (compresed with <dictionary>)
 # $indexed - non-empty means that generated columns will be indexed
 
 --let $source_column_definition = $source_column_name $source_column_type
-if($dictionary_name != '')
+if($source_dictionary_name != '')
 {
   --let $source_column_definition = $source_column_definition COLUMN_FORMAT COMPRESSED
-  if($dictionary_name != '*')
+  if($source_dictionary_name != '*')
   {
-    --let $source_column_definition = $source_column_definition WITH COMPRESSION_DICTIONARY $dictionary_name
+    --let $source_column_definition = $source_column_definition WITH COMPRESSION_DICTIONARY $source_dictionary_name
   }
 }
 --let $generated_column_definition = $generated_column_name $generated_column_type GENERATED ALWAYS AS (LEFT($source_column_name, $generated_expression_length)) $generated_storage_type
+if($generated_dictionary_name != '')
+{
+  --let $generated_column_definition = $generated_column_definition COLUMN_FORMAT COMPRESSED
+  if($generated_dictionary_name != '*')
+  {
+    --let $generated_column_definition = $generated_column_definition WITH COMPRESSION_DICTIONARY $generated_dictionary_name
+  }
+}
+
 --let $index_definition =
 if($indexed)
 {

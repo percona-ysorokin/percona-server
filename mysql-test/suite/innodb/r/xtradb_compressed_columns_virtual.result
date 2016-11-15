@@ -3,6 +3,48 @@ CREATE COMPRESSION_DICTIONARY numbers('one' 'two' 'three');
 SET GLOBAL innodb_compressed_columns_zip_level = 0;
 SET GLOBAL innodb_compressed_columns_zip_level = DEFAULT;
 CREATE TABLE t1(
+id INT,
+a BLOB,
+g BLOB GENERATED ALWAYS AS (a) COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY numbers
+) ENGINE=InnoDB;
+ERROR HY000: Can not define column 'g' in compressed format
+CREATE TABLE t1(
+id INT,
+a BLOB,
+g BLOB GENERATED ALWAYS AS (a) VIRTUAL COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY numbers
+) ENGINE=InnoDB;
+ERROR HY000: Can not define column 'g' in compressed format
+CREATE TABLE t1(
+id INT,
+a BLOB,
+g BLOB GENERATED ALWAYS AS (a) STORED COLUMN_FORMAT COMPRESSED WITH COMPRESSION_DICTIONARY numbers
+) ENGINE=InnoDB;
+SET @long_value = REPEAT('a', 1024);
+INSERT INTO t1 VALUES (1, @long_value, DEFAULT);
+include/assert.inc [the initial value must not be corrupted]
+ALTER TABLE t1 MODIFY g BLOB GENERATED ALWAYS AS (a) STORED COLUMN_FORMAT DEFAULT, ALGORITHM = INPLACE;
+ERROR 0A000: ALGORITHM=INPLACE is not supported. Reason: Cannot change column type INPLACE. Try ALGORITHM=COPY.
+ALTER TABLE t1 MODIFY g BLOB GENERATED ALWAYS AS (a) VIRTUAL;
+ERROR HY000: 'Changing the STORED status' is not supported for generated columns.
+ALTER TABLE t1 MODIFY g BLOB GENERATED ALWAYS AS (a) STORED COLUMN_FORMAT DEFAULT;
+include/assert.inc [the value after removing COMPRESSED attribute must not be corrupted]
+ALTER TABLE t1 MODIFY g BLOB GENERATED ALWAYS AS (a) STORED COLUMN_FORMAT COMPRESSED;
+include/assert.inc [the value after adding COMPRESSED attribute back must not be corrupted]
+ALTER TABLE t1 ADD another_g BLOB GENERATED ALWAYS AS (a) VIRTUAL COLUMN_FORMAT COMPRESSED;
+ERROR HY000: Can not define column 'another_g' in compressed format
+ALTER TABLE t1 ADD another_g BLOB GENERATED ALWAYS AS (a) VIRTUAL;
+ALTER TABLE t1 MODIFY another_g BLOB GENERATED ALWAYS AS (a) VIRTUAL COLUMN_FORMAT COMPRESSED;
+ERROR HY000: Can not define column 'another_g' in compressed format
+ALTER TABLE t1 MODIFY another_g BLOB GENERATED ALWAYS AS (a) STORED COLUMN_FORMAT COMPRESSED;
+ERROR HY000: 'Changing the STORED status' is not supported for generated columns.
+ALTER TABLE t1 DROP another_g;
+SET @long_value = REPEAT('z', 1024);
+UPDATE t1 SET a = @long_value WHERE id = 1;
+include/assert.inc [the value after updating existing record must not be corrupted]
+DELETE FROM t1 WHERE id = 1;
+include/assert.inc [the table must be empty after removing existing record]
+DROP TABLE t1;
+CREATE TABLE t1(
 f1 INT PRIMARY KEY,
 f2 BLOB COLUMN_FORMAT COMPRESSED,
 f3 BLOB GENERATED ALWAYS AS (f2) VIRTUAL,
