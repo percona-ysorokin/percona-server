@@ -87,7 +87,7 @@ LEX_STRING PARSE_GCOL_KEYWORD= {C_STRING_WITH_LEN("parse_gcol_expr")};
 void open_table_error(TABLE_SHARE *share, int error, int db_errno,
                       myf errortype, int errarg);
 static int open_binary_frm(THD *thd, TABLE_SHARE *share,
-                           uchar *head, File file, bool from_purge_thread);
+                           uchar *head, File file);
 static void fix_type_pointers(const char ***array, TYPELIB *point_to_type,
 			      uint types, char **names);
 static uint find_field(Field **fields, uchar *record, uint start, uint length);
@@ -716,8 +716,7 @@ static inline bool has_disabled_path_chars(const char *str)
    9    Wrong type in view's .frm file.
 */
 
-int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags,
-                   bool from_purge_thread /* = false */)
+int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags)
 {
   int error, table_type;
   bool error_given;
@@ -834,7 +833,7 @@ int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags,
     root_ptr= my_thread_get_THR_MALLOC();
     old_root= *root_ptr;
     *root_ptr= &share->mem_root;
-    error= open_binary_frm(thd, share, head, file, from_purge_thread);
+    error= open_binary_frm(thd, share, head, file);
     *root_ptr= old_root;
     error_given= 1;
   }
@@ -1662,7 +1661,7 @@ static int make_field_from_frm(THD *thd,
 */
 
 static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
-                           File file, bool from_purge_thread)
+                           File file)
 {
   int error, errarg= 0;
   uint new_frm_ver, field_pack_length, new_field_pack_flag;
@@ -2395,7 +2394,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
 
   /* update zip dict info (name + data) from the handler */
   if (share->has_compressed_columns())
-    handler_file->update_field_defs_with_zip_dict_info(from_purge_thread);
+    handler_file->update_field_defs_with_zip_dict_info(thd);
 
   /* Fix key->name and key_part->field */
   if (key_parts)

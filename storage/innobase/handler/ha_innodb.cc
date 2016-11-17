@@ -6217,6 +6217,21 @@ innobase_create_zip_dict_references(
 	DBUG_VOID_RETURN;
 }
 
+/** Free InnoDB session specific data.
+@param[in,out]	thd	MySQL thread handler. */
+void thd_free_innodb_session(THD* thd)
+{
+	DBUG_ASSERT(innodb_hton_ptr->slot != HA_SLOT_UNDEF);
+	innodb_session_t*& innodb_session =
+		*(innodb_session_t**)thd_ha_data(thd, innodb_hton_ptr);
+
+	if (innodb_session != 0) {
+		UT_DELETE(innodb_session);
+		innodb_session = 0;
+	}
+}
+
+
 /*******************************************************************//**
 This function uses index translation table to quickly locate the
 requested index structure.
@@ -17951,11 +17966,13 @@ zip_dict_name / zip_dict_data for those which have associated
 compression dictionaries.
 */
 void
-ha_innobase::update_field_defs_with_zip_dict_info(bool dict_locked)
+ha_innobase::update_field_defs_with_zip_dict_info(THD* thd)
 {
 	DBUG_ENTER("update_field_defs_with_zip_dict_info");
 
 	char norm_name[FN_REFLEN];
+	innodb_session_t* innodb_session = thd_to_innodb_session(thd);
+	bool dict_locked = innodb_session->m_locked_from_callback != 0;
 
 	normalize_table_name(norm_name, table_share->normalized_path.str);
 
@@ -21869,6 +21886,8 @@ innobase_init_vc_templ(
 	tbnamelen = filename_to_tablename(tbname, t_tbname,
 					  MAX_TABLE_NAME_LEN + 1);
 
+	innodb_session_t* innodb_session = thd_to_innodb_session(thd);
+	++innodb_session->m_locked_from_callback;
 #ifdef UNIV_DEBUG
 	bool ret =
 #endif /* UNIV_DEBUG */
@@ -21877,6 +21896,8 @@ innobase_init_vc_templ(
 		&innobase_build_v_templ_callback,
 		static_cast<void*>(table));
 	ut_ad(!ret);
+	--innodb_session->m_locked_from_callback;
+
 	mutex_exit(&dict_sys->mutex);
 }
 
@@ -22116,10 +22137,13 @@ innobase_get_computed_value(
 				false, 0, 0, prebuilt);
                 }
 
+		innodb_session_t* innodb_session = thd_to_innodb_session(thd);
+		++innodb_session->m_locked_from_callback;
 		ret = handler::my_eval_gcolumn_expr_with_open(
 			thd, index->table->vc_templ->db_name.c_str(),
 			index->table->vc_templ->tb_name.c_str(), &column_map,
 			(uchar *)mysql_rec);
+		--innodb_session->m_locked_from_callback;
         } else {
 		ret = handler::my_eval_gcolumn_expr(
 			thd, mysql_table, &column_map,

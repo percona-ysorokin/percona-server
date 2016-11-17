@@ -71,7 +71,8 @@ public:
 	/** Constructor */
 	innodb_session_t()
 		: m_trx(),
-		  m_open_tables()
+		  m_open_tables(),
+		  m_locked_from_callback(0)
 	{
 		/* Do nothing. */
 	}
@@ -86,6 +87,8 @@ public:
 		     ++it) {
 			delete(it->second);
 		}
+
+		m_locked_from_callback = 0;
 	}
 
 	/** Cache table handler.
@@ -140,6 +143,15 @@ public:
 	to InnoDB dictionary as they are session specific.
 	Currently, limited to intrinsic temporary tables only. */
 	table_cache_t	m_open_tables;
+
+	/** This counter is used by
+	ha_innobase::update_field_defs_with_zip_dict_info() to determine
+	whether it needs to acquire dict_sys mutex or not. Non-zero value
+	means that this mutex has already been locked by one of the purge
+	threads just before calling handler::my_prepare_gcolumn_template() /
+	handler::my_eval_gcolumn_expr_with_open() and therefore it must not
+	be touched to avoid recursive locking. */
+	uint		m_locked_from_callback;
 };
 
 

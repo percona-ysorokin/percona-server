@@ -357,7 +357,7 @@ public:
 	zip_dict_name / zip_dict_data for those which have associated
 	compression dictionaries.
 	*/
-	virtual void update_field_defs_with_zip_dict_info(bool dict_locked);
+	virtual void update_field_defs_with_zip_dict_info(THD* thd);
 
 	bool check_if_incompatible_data(
 		HA_CREATE_INFO*		info,
@@ -1147,3 +1147,7 @@ innobase_create_zip_dict_references(
 	const zip_dict_id_container_t&
 			dict_ids,	/*!< in: zip dict ids */
 	trx_t*		trx);		/*!< in: transaction */
+
+/** Free InnoDB session specific data.
+@param[in,out]	thd	MySQL thread handler. */
+void thd_free_innodb_session(THD* thd);

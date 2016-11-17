@@ -7172,11 +7172,11 @@ dict_get_dictionary_id_by_key(
 {
 	dberr_t		err = DB_SUCCESS;
 	trx_t*		trx;
-	bool		dict_operatrion_locked = dict_locked;
+	bool		dict_operation_locked = dict_locked;
 	DBUG_EXECUTE_IF("ib_purge_virtual_index_callback",
-		dict_operatrion_locked = true; );
+		dict_operation_locked = true; );
 
-	if (!dict_operatrion_locked) {
+	if (!dict_operation_locked) {
 		rw_lock_s_lock(dict_operation_lock);
 	}
 	if (!dict_locked) {
@@ -7198,7 +7198,7 @@ dict_get_dictionary_id_by_key(
 	if (!dict_locked) {
 		dict_mutex_exit_for_mysql();
 	}
-	if (!dict_operatrion_locked) {
+	if (!dict_operation_locked) {
 		rw_lock_s_unlock(dict_operation_lock);
 	}
 
@@ -7220,11 +7220,11 @@ dict_get_dictionary_info_by_id(
 {
 	dberr_t		err = DB_SUCCESS;
 	trx_t*		trx;
-	bool		dict_operatrion_locked = dict_locked;
+	bool		dict_operation_locked = dict_locked;
 	DBUG_EXECUTE_IF("ib_purge_virtual_index_callback",
-		dict_operatrion_locked = true; );
+		dict_operation_locked = true; );
 
-	if (!dict_operatrion_locked) {
+	if (!dict_operation_locked) {
 		rw_lock_s_lock(dict_operation_lock);
 	}
 	if (!dict_locked) {
@@ -7246,7 +7246,7 @@ dict_get_dictionary_info_by_id(
 	if (!dict_locked) {
 		dict_mutex_exit_for_mysql();
 	}
-	if (!dict_operatrion_locked) {
+	if (!dict_operation_locked) {
 		rw_lock_s_unlock(dict_operation_lock);
 	}
 
