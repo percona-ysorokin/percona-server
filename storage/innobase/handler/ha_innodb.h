@@ -356,6 +356,8 @@ public:
 	COLUMN_FORMAT_TYPE_COMPRESSED flag and updates
 	zip_dict_name / zip_dict_data for those which have associated
 	compression dictionaries.
+	@param thd Thread handle, used to determine whether it is necessary
+	to lock dict_sys mutex
 	*/
 	virtual void update_field_defs_with_zip_dict_info(THD* thd);
 
