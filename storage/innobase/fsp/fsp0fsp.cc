@@ -614,8 +614,8 @@ xdes_get_descriptor_with_space_hdr(
 	              || (srv_startup_is_before_trx_rollback_phase
 	                  && fsp_is_undo_tablespace(fspace->id)))));
 	ut_ad(size == fspace->size_in_header);
-	ut_ad(flags == fspace->flags);
-
+	ut_ad((flags & ~FSP_FLAGS_MASK_DATA_DIR)
+	      == (fspace->flags & ~FSP_FLAGS_MASK_DATA_DIR));
 	if ((offset >= size) || (offset >= limit)) {
 		return(NULL);
 	}
