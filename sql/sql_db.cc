@@ -84,6 +84,7 @@
 #include "sql_security_ctx.h"
 #include "sql_string.h"
 #include "sql_table.h"       // build_table_filename
+#include "strfunc.h"         // casedn
 #include "system_variables.h"
 #include "table.h"           // TABLE_LIST
 #include "template_utils.h"
@@ -513,6 +514,68 @@ private:
   bool m_is_active;
 };
 
+/**
+  Check if two schema names are equal, taking lower_case_table_names into
+  account. FIXME: this must be handled better: this is hack to be revisited
+  once Dictionary_client::fetch_fk_children_uncached, documented to be
+  a "temporary workaround until WL#6049", changes.
+  @param        t1      first schema name
+  @param        t2      second schema name
+  @return       whether the two schema names are equal
+ */
+MY_ATTRIBUTE((warn_unused_result))
+static
+bool schema_names_equal(const dd::String_type & t1, const dd::String_type & t2)
+{
+  if (!lower_case_table_names)
+    return t1 == t2;
+
+  return dd::String_type(casedn(system_charset_info, t1))
+    == dd::String_type(casedn(system_charset_info, t2));
+}
+
+/**
+  Check if DROP DATABASE would fail because of a foreign key constraint
+  violation. Allows the drop if there are FK constraints between the tables in
+  the database being dropped and forbids if there are constraints to other
+  databases with ER_ROW_IS_REFERENCED_2 returned.
+  @param        thd     thread handle
+  @param        tables  list of the tables in the database being dropped
+
+  @retval       false   drop is allowed
+  @retval       true    drop is forbidden or a DD error has occured
+ */
+MY_ATTRIBUTE((warn_unused_result))
+static
+bool check_drop_database_foreign_keys(THD *thd, TABLE_LIST *tables)
+{
+  DBUG_ASSERT(thd_sql_command(thd) == SQLCOM_DROP_DB);
+
+  if (thd_test_options(thd, OPTION_NO_FOREIGN_KEY_CHECKS))
+    return false;
+
+  for (const auto * table= tables; table; table= table->next_local)
+  {
+    std::vector<dd::String_type> child_schemas;
+    std::vector<dd::String_type> child_names;
+    if (thd->dd_client()->fetch_fk_children_uncached(table->db,
+                                                     table->table_name,
+                                                     &child_schemas,
+                                                     &child_names))
+      return true;
+
+    for (const auto & child_schema : child_schemas)
+    {
+      /* Allow FK constraints to any table in the database being dropped */
+      if (!schema_names_equal(table->db, child_schema))
+      {
+        my_error(ER_ROW_IS_REFERENCED_2, MYF(0), child_schema.c_str());
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 /**
   Drop all tables, routines and events in a database and the database itself.
@@ -623,6 +686,9 @@ bool mysql_rm_db(THD *thd,const LEX_CSTRING &db, bool if_exists)
         || Events::lock_schema_events(thd, *schema)
         || lock_db_routines(thd, *schema)
         || lock_trigger_names(thd, tables))
+      DBUG_RETURN(true);
+
+    if (check_drop_database_foreign_keys(thd, tables))
       DBUG_RETURN(true);
 
     /* mysql_ha_rm_tables() requires a non-null TABLE_LIST. */

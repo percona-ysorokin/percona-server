@@ -21,16 +21,71 @@ include/sync_slave_sql_with_master.inc
 [connection master]
 CREATE TABLE test2.t2 (fk INT, FOREIGN KEY (fk) REFERENCES test1.t4(pk));
 DROP DATABASE test1;
-ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (test2)
 USE test1;
-include/assert.inc [Table t4 is not dropped]
+include/assert.inc [Tables in test1 database are not dropped]
+SET foreign_key_checks=0;
 DROP DATABASE test1;
-ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails
+SET foreign_key_checks=1;
+CREATE DATABASE test1;
+USE test1;
+CREATE TABLE test1.t4 (pk INT PRIMARY KEY);
+DROP DATABASE test1;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (test2)
 SHOW TABLES;
 Tables_in_test1
+db_test1_long_table_name1
+db_test1_long_table_name10
+db_test1_long_table_name11
+db_test1_long_table_name12
+db_test1_long_table_name13
+db_test1_long_table_name14
+db_test1_long_table_name15
+db_test1_long_table_name16
+db_test1_long_table_name17
+db_test1_long_table_name18
+db_test1_long_table_name19
+db_test1_long_table_name2
+db_test1_long_table_name20
+db_test1_long_table_name21
+db_test1_long_table_name22
+db_test1_long_table_name23
+db_test1_long_table_name24
+db_test1_long_table_name25
+db_test1_long_table_name26
+db_test1_long_table_name27
+db_test1_long_table_name28
+db_test1_long_table_name29
+db_test1_long_table_name3
+db_test1_long_table_name30
+db_test1_long_table_name31
+db_test1_long_table_name32
+db_test1_long_table_name33
+db_test1_long_table_name34
+db_test1_long_table_name35
+db_test1_long_table_name36
+db_test1_long_table_name37
+db_test1_long_table_name38
+db_test1_long_table_name39
+db_test1_long_table_name4
+db_test1_long_table_name40
+db_test1_long_table_name41
+db_test1_long_table_name42
+db_test1_long_table_name43
+db_test1_long_table_name44
+db_test1_long_table_name45
+db_test1_long_table_name46
+db_test1_long_table_name47
+db_test1_long_table_name48
+db_test1_long_table_name49
+db_test1_long_table_name5
+db_test1_long_table_name50
+db_test1_long_table_name6
+db_test1_long_table_name7
+db_test1_long_table_name8
+db_test1_long_table_name9
 t4
-include/assert.inc [db_test1_long_table_name tables are dropped]
-include/assert.inc [Table t4 is not dropped]
+include/assert.inc [Tables in test1 database are not dropped]
 USE test2;
 CREATE TABLE t1 (n INT);
 INSERT INTO t1 VALUES (1234);
