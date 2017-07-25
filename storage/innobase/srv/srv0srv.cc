@@ -1908,6 +1908,13 @@ srv_export_innodb_status(void)
 	export_vars.innodb_sec_rec_cluster_reads_avoided =
 		srv_sec_rec_cluster_reads_avoided;
 
+	export_vars.innodb_logical_read_ahead_misses =
+		srv_stats.n_logical_read_ahead_misses;
+	export_vars.innodb_logical_read_ahead_prefetched =
+		srv_stats.n_logical_read_ahead_prefetched;
+	export_vars.innodb_logical_read_ahead_in_buf_pool =
+		srv_stats.n_logical_read_ahead_in_buf_pool;
+
 	mutex_exit(&srv_innodb_monitor_mutex);
 }
 

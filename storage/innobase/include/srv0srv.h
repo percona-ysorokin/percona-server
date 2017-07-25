@@ -129,6 +129,20 @@ struct srv_stats_t {
 	ulint_ctr_1_t		lock_deadlock_count;
 
 	ulint_ctr_1_t		n_lock_max_wait_time;
+
+	/** total number of pages that logical-read-ahead missed while doing
+	a table scan. The number is the total for all transactions that used a
+	non-zero innodb_lra_size. */
+	ulint_ctr_64_t n_logical_read_ahead_misses;
+	/** total number of pages that logical-read-ahead prefetched. The
+	number is the total for all transactions that used a non-zero
+	innodb_lra_size. */
+	ulint_ctr_64_t n_logical_read_ahead_prefetched;
+	/** total number of pages that logical-read-ahead did not need to
+	prefetch because these pages were already in the buffer pool. The
+	number is the total for all transactions that used a non-zero
+	innodb_lra_size. */
+	ulint_ctr_64_t n_logical_read_ahead_in_buf_pool;
 };
 
 extern const char*	srv_main_thread_op_info;
@@ -1093,6 +1107,31 @@ struct export_var_t{
 
 	ulint innodb_sec_rec_cluster_reads;	/*!< srv_sec_rec_cluster_reads */
 	ulint innodb_sec_rec_cluster_reads_avoided; /*!< srv_sec_rec_cluster_reads_avoided */
+
+	ulint innodb_logical_read_ahead_misses; /*!< total number of pages that
+						logical-read-ahead missed
+						during a table scan.
+						The number is the total for all
+						the transactions that used a
+						non-zero
+						innodb_lra_size.
+						*/
+	ulint innodb_logical_read_ahead_prefetched; /*!< total number of pages
+						that logical-read-ahead
+						prefetched. The number is the
+						total for all the transactions
+						that used a non-zero
+						innodb_lra_size.
+						*/
+	ulint innodb_logical_read_ahead_in_buf_pool; /*!< total number of pages
+						that logical-read-ahead did not
+						need to prefetch because these
+						pages were already in the
+						buffer pool. The number is the
+						total for all transactions that
+						used a non-zero
+						innodb_lra_size.
+						*/
 };
 
 /** Thread slot in the thread table.  */

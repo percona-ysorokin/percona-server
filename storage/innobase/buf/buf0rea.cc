@@ -123,7 +123,7 @@ buf_read_page_low(
 			use to stop dangling page reads from a tablespace
 			which we have DISCARDed + IMPORTed back */
 	ulint	offset,	/*!< in: page number */
-	trx_t*	trx)
+	trx_t*	trx)	/*!< in: transaction object */
 {
 	buf_page_t*	bpage;
 	ulint		wake_later;
@@ -581,6 +581,12 @@ buf_read_ahead_linear(
 
 	if (UNIV_UNLIKELY(srv_startup_is_before_trx_rollback_phase)) {
 		/* No read-ahead to avoid thread deadlocks */
+		return(0);
+	}
+
+	/* linear read ahead is disabled if user requested logical read ahead.
+	*/
+	if (trx && trx->lra_size) {
 		return(0);
 	}
 
