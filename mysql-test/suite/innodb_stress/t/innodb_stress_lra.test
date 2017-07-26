@@ -3,8 +3,9 @@
 --source include/have_innodb.inc
 --source include/master-slave.inc
 --source include/big_test.inc
---source include/have_native_aio.inc
+#--source include/have_native_aio.inc
 
+let $MYSQL_BASEDIR = `SELECT @@BASEDIR`;
 
 --disable_warnings
 DROP TABLE IF EXISTS t1;

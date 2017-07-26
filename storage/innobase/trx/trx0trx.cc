@@ -299,15 +299,6 @@ trx_lra_reset(
 			alloc +=  sizeof(page_no_holder_t) * n_pages_max;
 			trx->lra_cur = (btr_pcur_t*) alloc;
 			btr_pcur_init(trx->lra_cur);
-#ifdef TARGET_OS_LINUX
-			if (cachedev_enabled) {
-				pid_t pid = syscall(SYS_gettid);
-				ioctl(cachedev_fd,
-				      FLASHCACHEADDBLACKLIST,
-				      &pid);
-			}
-#endif /* TARGET_OS_LINUX */
-
 		}
 	} else {
 		if (trx->lra_ht) {
@@ -325,14 +316,6 @@ trx_lra_reset(
 			trx->lra_arr1 = NULL;
 			trx->lra_arr2 = NULL;
 			trx->lra_cur = NULL;
-#ifdef TARGET_OS_LINUX
-			if (cachedev_enabled) {
-				pid_t pid = syscall(SYS_gettid);
-				ioctl(cachedev_fd,
-				      FLASHCACHEDELBLACKLIST,
-				      &pid);
-			}
-#endif /* TARGET_OS_LINUX */
 		} else {
 			ut_a(!trx->lra_ht1);
 			ut_a(!trx->lra_ht2);

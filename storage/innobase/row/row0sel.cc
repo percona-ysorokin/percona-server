@@ -3690,6 +3690,7 @@ page_no_array. Does not issue read requests. */
 static
 void
 row_read_ahead_logical_low(
+	trx_t*	trx, /* in: transaction */
 	hash_table_t*	hash_table, /* in/out: This hash table is emptied and
 	then filled with the next batch of page numbers that should be
 	prefetched. */
@@ -3709,7 +3710,6 @@ row_read_ahead_logical_low(
 	ulint page_no;
 	ulint n_prefetched = 0;
 	rec_t* rec;
-	trx_t* trx = mtr->trx;
 	/* empty the hash table because we don't want it to grow to hold
 	 * all leaf page numbers of the table. The concern is not memory, but
 	 * the lookup time.
@@ -3749,7 +3749,7 @@ row_read_ahead_logical_low(
 			btr_pcur_store_position(trx->lra_cur, mtr);
 			mtr_commit(mtr);
 			os_thread_sleep(trx->lra_sleep * 1000);
-			mtr_start_trx(mtr, trx);
+			mtr_start(mtr);
 			btr_pcur_restore_position_func(
 					BTR_SEARCH_LEAF, trx->lra_cur, 1,
 					__FILE__, __LINE__, mtr);
@@ -3808,6 +3808,7 @@ caller. */
 static
 ibool
 row_read_ahead_logical(
+	trx_t*	trx, /* in: transaction */
 	btr_pcur_t* pcur, /* in/out: Cursor from which the current page number
 	is obtained. Cursor's position may change and this is indicated in the
 	return value. */
@@ -3831,7 +3832,6 @@ row_read_ahead_logical(
 	ulint num_prefetched = 0;
 	ulint num_read_requests = 0;
 	ulint i;
-	trx_t* trx = mtr->trx;
 	ulint root_page_no;
 	buf_block_t* root_block;
 
@@ -3893,7 +3893,7 @@ row_read_ahead_logical(
 		os_thread_sleep(1000000);
 	}
 #endif
-	mtr_start_trx(mtr, trx);
+	mtr_start(mtr);
 
 	if (UNIV_LIKELY(trx->lra_space_id == space)) {
 #ifdef UNIV_DEBUG
@@ -3903,7 +3903,7 @@ row_read_ahead_logical(
 		btr_pcur_restore_position_func(
 			BTR_SEARCH_LEAF, trx->lra_cur, 1,
 			__FILE__, __LINE__, mtr);
-		row_read_ahead_logical_low(
+		row_read_ahead_logical_low(trx,
 			trx->lra_ht, &num_prefetched,
 			trx->lra_sort_arr, index, mtr,
 			offsets, heap);
@@ -3940,15 +3940,15 @@ row_read_ahead_logical(
 			       2 * trx->lra_n_pages * sizeof(ulint));
 #endif
 			mtr_commit(mtr);
-			mtr_start_trx(mtr, trx);
+			mtr_start(mtr);
 			btr_pcur_open_low(index, 1, tuple, PAGE_CUR_LE,
 					  BTR_SEARCH_LEAF, trx->lra_cur,
 					  __FILE__, __LINE__, mtr);
-			row_read_ahead_logical_low(
+			row_read_ahead_logical_low(trx,
 				trx->lra_ht1, &num_prefetched,
 				trx->lra_sort_arr, index, mtr,
 				offsets, heap);
-			row_read_ahead_logical_low(
+			row_read_ahead_logical_low(trx,
 				trx->lra_ht2, &num_prefetched,
 				&trx->lra_sort_arr[num_prefetched], index, mtr,
 				offsets, heap);
@@ -3985,17 +3985,14 @@ row_read_ahead_logical(
 				&err, FALSE,
 				BUF_READ_ANY_PAGE | OS_AIO_SIMULATED_WAKE_LATER,
 				space, zip_size, FALSE, tablespace_version,
-				trx->lra_sort_arr[i], trx, TRUE);
+				trx->lra_sort_arr[i], trx);
 		}
-#ifdef LINUX_NATIVE_AIO
-		os_aio_linux_dispatch_read_array_submit();
-#endif
 		srv_stats.n_logical_read_ahead_prefetched.add(
 							num_read_requests);
 		srv_stats.n_logical_read_ahead_in_buf_pool.add(
 					num_prefetched - num_read_requests);
 	}
-	mtr_start_trx(mtr, trx);
+	mtr_start(mtr);
 	return sel_restore_position_for_mysql(&same_user_rec, BTR_SEARCH_LEAF,
 					      pcur, TRUE, mtr);
 }
@@ -5472,7 +5469,7 @@ next_rec:
 	if (moves_up) {
 		if (trx
 		    && row_read_ahead_logical(
-				pcur, index, &mtr, offsets, &heap)) {
+				trx, pcur, index, &mtr, offsets, &heap)) {
 			goto rec_loop;
 		}
 		if (UNIV_UNLIKELY(!btr_pcur_move_to_next(pcur, &mtr))) {
