@@ -325,9 +325,9 @@ The wrapper functions have the prefix of "innodb_". */
 	pfs_os_file_close_func(file, __FILE__, __LINE__)
 
 # define os_aio(type, mode, name, file, buf, offset,			\
-		n, message1, message2, space_id, trx)			\
+		n, message1, message2, space_id, trx, should_buffer)	\
 	pfs_os_aio_func(type, mode, name, file, buf, offset,		\
-		n, message1, message2, space_id, trx,			\
+		n, message1, message2, space_id, trx, should_buffer,	\
 		__FILE__, __LINE__)
 
 # define os_file_read(file, buf, offset, n)				\
@@ -375,9 +375,9 @@ to original un-instrumented file I/O APIs */
 # define os_file_close(file)	os_file_close_func(file)
 
 # define os_aio(type, mode, name, file, buf, offset, n, message1,	\
-		message2, space_id, trx)				\
+		message2, space_id, trx, should_buffer)			\
 	os_aio_func(type, mode, name, file, buf, offset, n,		\
-		    message1, message2, space_id, trx)
+		    message1, message2, space_id, trx, should_buffer)
 
 # define os_file_read(file, buf, offset, n)				\
 	os_file_read_func(file, buf, offset, n, NULL)
@@ -782,6 +782,12 @@ pfs_os_aio_func(
                                 OS_AIO_SYNC */
 	ulint		space_id,
 	trx_t*		trx,
+	bool		should_buffer,
+				/*!< in: Whether to buffer an aio request.
+				AIO read ahead uses this. If you plan to
+				use this parameter, make sure you remember
+				to call os_aio_linux_dispatch_read_array_submit
+				when you're ready to commit all your requests.*/
 	const char*	src_file,/*!< in: file name where func invoked */
 	ulint		src_line);/*!< in: line where the func invoked */
 /*******************************************************************//**
@@ -1154,7 +1160,13 @@ os_aio_func(
 				aio operation); ignored if mode is
 				OS_AIO_SYNC */
 	ulint		space_id,
-	trx_t*		trx);
+	trx_t*		trx,
+	bool		should_buffer);
+				/*!< in: Whether to buffer an aio request.
+				AIO read ahead uses this. If you plan to
+				use this parameter, make sure you remember
+				to call os_aio_linux_dispatch_read_array_submit
+				when you're ready to commit all your requests.*/
 /************************************************************************//**
 Wakes up all async i/o threads so that they know to exit themselves in
 shutdown. */
@@ -1307,7 +1319,7 @@ therefore no other thread is allowed to do the freeing!
 UNIV_INTERN
 ibool
 os_aio_linux_handle(
-/*================*/
+	/*================*/
 	ulint	global_seg,	/*!< in: segment number in the aio array
 				to wait for; segment 0 is the ibuf
 				i/o thread, segment 1 is log i/o thread,
@@ -1321,6 +1333,12 @@ os_aio_linux_handle(
 				restart the operation. */
 	ulint*	type,		/*!< out: OS_FILE_WRITE or ..._READ */
 	ulint*	space_id);
+
+/*******************************************************************//**
+Submit buffered AIO requests on the given segment to the kernel. */
+UNIV_INTERN
+void
+os_aio_linux_dispatch_read_array_submit();
 #endif /* LINUX_NATIVE_AIO */
 
 #ifndef UNIV_NONINL
