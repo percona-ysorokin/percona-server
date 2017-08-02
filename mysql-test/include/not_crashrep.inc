@@ -22,3 +22,7 @@ EOF
 if ($crashrep) {
   --skip CrashReporter would popup a window
 }
+
+--disable_query_log
+call mtr.add_suppression(".*tablespaces\\.open\\.* size is .* bytes. Must be at least");
+--enable_query_log

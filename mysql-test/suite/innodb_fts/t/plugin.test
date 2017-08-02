@@ -1,4 +1,5 @@
 --source include/have_simple_parser.inc
+--source include/not_crashrep.inc
 
 # Install fts parser plugin
 --replace_regex /\.dll/.so/

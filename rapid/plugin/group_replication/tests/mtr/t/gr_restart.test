@@ -20,6 +20,7 @@
 ################################################################################
 # This test does crashes servers, thence we skip it on valgrind.
 --source include/not_valgrind.inc
+--source include/not_crashrep.inc
 --source include/have_debug.inc
 --source include/force_restart.inc
 --let $group_replication_group_name= 8a94f357-aab4-11df-86ab-c80aa9429576
