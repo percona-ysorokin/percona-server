@@ -1,0 +1,8 @@
+SET GLOBAL innodb_lra_debug = 1;
+SELECT @@GLOBAL.innodb_lra_debug;
+@@GLOBAL.innodb_lra_debug
+1
+SET GLOBAL innodb_lra_debug = DEFAULT;
+SELECT @@GLOBAL.innodb_lra_debug;
+@@GLOBAL.innodb_lra_debug
+0
