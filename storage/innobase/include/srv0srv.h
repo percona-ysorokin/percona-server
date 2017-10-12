@@ -988,6 +988,39 @@ bool
 srv_is_undo_tablespace(
 	ulint	space_id);
 
+/** Page gragmentation statistics */
+struct fragmentation_stats_t {
+	fragmentation_stats_t():
+		scan_pages_contiguous(0),
+		scan_pages_disjointed(0),
+		scan_pages_total_seek_distance(0),
+		scan_data_in_pages(0),
+		scan_garbage_in_pages(0)
+	{}
+
+	ulint scan_pages_contiguous;		/*!< number of contiguous
+						page reads */
+	ulint scan_pages_disjointed;		/*!< number of disjointed
+						page reads */
+	ulint scan_pages_total_seek_distance;	/*!< total seek distance */
+	ulint scan_data_in_pages;		/*!< amount of data in all
+						pages read */
+	ulint scan_garbage_in_pages;		/*!< amount of garbage in all
+						pages read */
+};
+
+/** Gets page fragmentation statistics
+@param[out]	stats	a reference to fragmentation statistics to fill */
+UNIV_INTERN
+void
+srv_get_fragmentation_stats(fragmentation_stats_t& stats);
+
+/** Adds page scan statistics
+@param[in]	stats	a reference to fragmentation statistics to add */
+UNIV_INTERN
+void
+srv_add_fragmentation_stats(const fragmentation_stats_t& stats);
+
 /** Status variables to be passed to MySQL */
 struct export_var_t{
 	ulint innodb_adaptive_hash_hash_searches;
@@ -1105,6 +1138,9 @@ struct export_var_t{
 	ulint innodb_sec_rec_cluster_reads_avoided; /*!< srv_sec_rec_cluster_reads_avoided */
 
 	ulint innodb_buffered_aio_submitted;
+
+	fragmentation_stats_t innodb_fragmentation_stats;/*!< Fragmentation
+						statistics */
 };
 
 /** Thread slot in the thread table.  */

@@ -722,6 +722,16 @@ typedef struct system_status_var
   ulong max_statement_time_set;
   ulong max_statement_time_set_failed;
 
+  /** number of contiguous page reads */
+  ulonglong scan_pages_contiguous;
+  /** number of disjointed page reads */
+  ulonglong scan_pages_disjointed;
+  /** total seek distance */
+  ulonglong scan_pages_total_seek_distance;
+  /** amount of data read in all pages*/
+  ulonglong scan_data_in_pages;
+  /** amount of garbage read in all pages */
+  ulonglong scan_garbage_in_pages;
 } STATUS_VAR;
 
 /*

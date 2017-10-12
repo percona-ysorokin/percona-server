@@ -33,6 +33,39 @@ Created 2/23/1996 Heikki Tuuri
 #include "rem0cmp.h"
 #include "trx0trx.h"
 #include "srv0srv.h"
+
+/** Updates fragmentation statistics for a single page transition.
+@param[in]	page			the current page being processed
+@param[in]	page_no			page number to move to (next_page_no
+					if forward_direction is true,
+					prev_page_no otherwise.
+@param[in]	forward_direction	move direction: true means moving
+					forward, false - backward. */
+static
+void
+btr_update_scan_stats(const page_t* page, ulint page_no, bool forward_direction)
+{
+	fragmentation_stats_t	stats;
+	ulint	extracted_page_no = page_get_page_no(page);
+	ulint	delta = forward_direction ?
+		page_no - extracted_page_no :
+		extracted_page_no - page_no;
+
+	if (delta == 1) {
+		++stats.scan_pages_contiguous;
+	} else {
+		++stats.scan_pages_disjointed;
+	}
+	stats.scan_pages_total_seek_distance +=
+		extracted_page_no > page_no ?
+		extracted_page_no - page_no :
+		page_no - extracted_page_no;
+
+	stats.scan_data_in_pages += page_get_data_size(page);
+	stats.scan_garbage_in_pages +=
+		page_header_get_field(page, PAGE_GARBAGE);
+	srv_add_fragmentation_stats(stats);
+}
 /**************************************************************//**
 Allocates memory for a persistent cursor object and initializes the cursor.
 @return	own: persistent cursor */
@@ -426,6 +459,8 @@ btr_pcur_move_to_next_page(
 
 	ut_ad(next_page_no != FIL_NULL);
 
+	btr_update_scan_stats(page, next_page_no, true /* forward */);
+
 	next_block = btr_block_get(space, zip_size, next_page_no,
 				   cursor->latch_mode,
 				   btr_pcur_get_btr_cur(cursor)->index, mtr);
@@ -508,6 +543,10 @@ btr_pcur_move_backward_from_page(
 	page = btr_pcur_get_page(cursor);
 
 	prev_page_no = btr_page_get_prev(page, mtr);
+
+	if (prev_page_no != FIL_NULL) {
+		btr_update_scan_stats(page, prev_page_no, false /* backward */);
+	}
 
 	if (prev_page_no == FIL_NULL) {
 	} else if (btr_pcur_is_before_first_on_page(cursor)) {

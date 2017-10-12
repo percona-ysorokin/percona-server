@@ -39,6 +39,14 @@ Created 10/8/1995 Heikki Tuuri
 *******************************************************/
 
 /* Dummy comment */
+#ifndef MYSQL_SERVER
+#define MYSQL_SERVER /* For THD class */
+#include "sql_class.h"
+#undef MYSQL_SERVER
+#else
+#include "sql_class.h"
+#endif /* MYSQL_SERVER */
+
 #include "srv0srv.h"
 
 #include "ut0mem.h"
@@ -1911,6 +1919,8 @@ srv_export_innodb_status(void)
 	export_vars.innodb_buffered_aio_submitted =
 		srv_stats.n_aio_submitted;
 
+	srv_get_fragmentation_stats(export_vars.innodb_fragmentation_stats);
+
 	mutex_exit(&srv_innodb_monitor_mutex);
 }
 
@@ -3602,4 +3612,48 @@ srv_is_undo_tablespace(
 	return(space_id >= srv_undo_space_id_start
 	       && space_id < (srv_undo_space_id_start
 			      + srv_undo_tablespaces_open));
+}
+
+/** Gets page fragmentation statistics
+@param[out]	stats	a reference to fragmentation statistics to fill */
+UNIV_INTERN
+void
+srv_get_fragmentation_stats(fragmentation_stats_t& stats)
+{
+	THD*	thd = current_thd;
+	if (UNIV_LIKELY(thd)) {
+		stats.scan_pages_contiguous =
+			thd->status_var.scan_pages_contiguous;
+		stats.scan_pages_disjointed =
+			thd->status_var.scan_pages_disjointed;
+		stats.scan_pages_total_seek_distance =
+			thd->status_var.scan_pages_total_seek_distance;
+		stats.scan_data_in_pages =
+			thd->status_var.scan_data_in_pages;
+		stats.scan_garbage_in_pages =
+			thd->status_var.scan_garbage_in_pages;
+	} else {
+		stats = fragmentation_stats_t();
+	}
+}
+
+/** Adds page scan statistics
+@param[in]	stats	a reference to fragmentation statistics to add */
+UNIV_INTERN
+void
+srv_add_fragmentation_stats(const fragmentation_stats_t& stats)
+{
+	THD*	thd = current_thd;
+	if (UNIV_LIKELY(thd)) {
+		thd->status_var.scan_pages_contiguous +=
+			stats.scan_pages_contiguous;
+		thd->status_var.scan_pages_disjointed +=
+			stats.scan_pages_disjointed;
+		thd->status_var.scan_pages_total_seek_distance +=
+			stats.scan_pages_total_seek_distance;
+		thd->status_var.scan_data_in_pages +=
+			stats.scan_data_in_pages;
+		thd->status_var.scan_garbage_in_pages +=
+			stats.scan_garbage_in_pages;
+	}
 }
