@@ -1,0 +1,34 @@
+CREATE TABLE t1(
+id VARCHAR(32) NOT NULL,
+PRIMARY KEY(id)
+) ENGINE=InnoDB;
+ALTER TABLE t1 DISCARD TABLESPACE;
+ALTER TABLE t1 IMPORT TABLESPACE;
+CHECKSUM TABLE t1;
+Table	Checksum
+test.t1	2758149539
+SELECT MAX(event_id) INTO @ps_event_id FROM performance_schema.events_statements_history_long;
+include/assert.inc [(Fragmented table) The number of disjointed pages is much greater than the number of contiguous pages]
+SET innodb_lra_size = 2;
+SET innodb_lra_pages_before_sleep = 1024;
+SET innodb_lra_sleep = 50;
+CHECKSUM TABLE t1;
+Table	Checksum
+test.t1	2758149539
+SELECT MAX(event_id) INTO @ps_event_id FROM performance_schema.events_statements_history_long;
+include/assert.inc [Scanning fragmented table with LRA enabled shows better execution time]
+ALTER TABLE t1 ENGINE=InnoDB;
+CHECKSUM TABLE t1;
+Table	Checksum
+test.t1	2758149539
+SELECT MAX(event_id) INTO @ps_event_id FROM performance_schema.events_statements_history_long;
+include/assert.inc [(Defragmented table) The number of disjointed pages is much less than the number of contiguous pages]
+SET innodb_lra_size = 2;
+SET innodb_lra_pages_before_sleep = 1024;
+SET innodb_lra_sleep = 50;
+CHECKSUM TABLE t1;
+Table	Checksum
+test.t1	2758149539
+SELECT MAX(event_id) INTO @ps_event_id FROM performance_schema.events_statements_history_long;
+include/assert.inc [Enabling LRA for defragmented table does not decrease execution time]
+DROP TABLE t1;

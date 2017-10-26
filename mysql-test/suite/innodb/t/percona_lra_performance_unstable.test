@@ -1,0 +1,138 @@
+--source include/have_innodb.inc
+
+--let $magnitude_factor = 10
+
+# creating a simple table with one VARCHAR column which serves as a primary key
+CREATE TABLE t1(
+  id VARCHAR(32) NOT NULL,
+  PRIMARY KEY(id)
+) ENGINE=InnoDB;
+
+# discarding t1's empty tablespace which has just been created
+ALTER TABLE t1 DISCARD TABLESPACE;
+
+
+# unziping pre-created tablespace archive
+--exec wget -P $MYSQL_TMP_DIR https://s3-us-west-2.amazonaws.com/percona-tmp/percona_lra_performance.zip 
+--let $data_dir = `SELECT @@datadir`
+--exec unzip -qo $MYSQL_TMP_DIR/percona_lra_performance.zip -d $data_dir/test
+--remove_file $MYSQL_TMP_DIR/percona_lra_performance.zip
+
+# this tablespace archive was created using the following script
+# --delimiter |
+# CREATE PROCEDURE fill_table(IN number_of_records BIGINT UNSIGNED)
+# BEGIN
+#   DECLARE i BIGINT UNSIGNED DEFAULT 0;
+#   START TRANSACTION;
+#   WHILE i < number_of_records DO
+#     INSERT INTO t1 VALUES(MD5(i));
+#     SET i = i + 1;
+#   END WHILE;
+#   COMMIT;
+# END|
+# --delimiter ;
+#
+# CALL fill_table(8 * 1024 * 1024);
+#
+# FLUSH TABLES t1 FOR EXPORT;
+# packing 'test/t1.ibd' and 'test/t1.cfg' into 'percona_lra_performance.zip'
+# UNLOCK TABLES;
+
+# importing tablespace for t1
+ALTER TABLE t1 IMPORT TABLESPACE;
+
+
+# restarting the server to reset buffers
+--source include/restart_mysqld.inc
+
+# extracting initial values of the page fragmentation counters
+--let $pages_contiguous_initial = query_get_value(SHOW STATUS LIKE 'innodb_scan_pages_contiguous', Value, 1)
+--let $pages_disjointed_initial = query_get_value(SHOW STATUS LIKE 'innodb_scan_pages_disjointed', Value, 1)
+
+# performing a scan operation
+CHECKSUM TABLE t1;
+
+# determining execution time for the latest query
+SELECT MAX(event_id) INTO @ps_event_id FROM performance_schema.events_statements_history_long;
+--let $execution_time_lra_disabled = `SELECT TRUNCATE(timer_wait/1000000000000, 6) FROM performance_schema.events_statements_history_long WHERE event_id = @ps_event_id`
+
+# extracting the values of page fragmentation counters after the scan
+--let $pages_contiguous_current = query_get_value(SHOW STATUS LIKE 'innodb_scan_pages_contiguous', Value, 1)
+--let $pages_disjointed_current = query_get_value(SHOW STATUS LIKE 'innodb_scan_pages_disjointed', Value, 1)
+--let $pages_contiguous_delta = `SELECT $pages_contiguous_current - $pages_contiguous_initial`
+--let $pages_disjointed_delta = `SELECT $pages_disjointed_current - $pages_disjointed_initial`
+
+# consistency asserts
+--let $assert_text= (Fragmented table) The number of disjointed pages is much greater than the number of contiguous pages
+--let $assert_cond= $pages_disjointed_delta > $pages_contiguous_delta * $magnitude_factor
+--source include/assert.inc
+
+# restarting the server to reset buffers
+--source include/restart_mysqld.inc
+
+# enabling LRA
+SET innodb_lra_size = 2;
+SET innodb_lra_pages_before_sleep = 1024;
+SET innodb_lra_sleep = 50;
+
+# performing a scan operation
+CHECKSUM TABLE t1;
+
+# determining execution time for the latest query
+SELECT MAX(event_id) INTO @ps_event_id FROM performance_schema.events_statements_history_long;
+--let $execution_time_lra_enabled = `SELECT TRUNCATE(timer_wait/1000000000000, 6) FROM performance_schema.events_statements_history_long WHERE event_id = @ps_event_id`
+
+# LRA performance asserts
+--let $assert_text= Scanning fragmented table with LRA enabled shows better execution time
+--let $assert_cond= $execution_time_lra_enabled < $execution_time_lra_disabled
+--source include/assert.inc
+
+# reordering table records by the primary key (defragmenting)
+ALTER TABLE t1 ENGINE=InnoDB;
+
+# restarting the server to reset buffers
+--source include/restart_mysqld.inc
+
+# extracting initial values of the page fragmentation counters
+--let $pages_contiguous_initial = query_get_value(SHOW STATUS LIKE 'innodb_scan_pages_contiguous', Value, 1)
+--let $pages_disjointed_initial = query_get_value(SHOW STATUS LIKE 'innodb_scan_pages_disjointed', Value, 1)
+
+# performing a scan operation
+CHECKSUM TABLE t1;
+
+# determining execution time for the latest query
+SELECT MAX(event_id) INTO @ps_event_id FROM performance_schema.events_statements_history_long;
+--let $execution_time_lra_disabled = `SELECT TRUNCATE(timer_wait/1000000000000, 6) FROM performance_schema.events_statements_history_long WHERE event_id = @ps_event_id`
+
+# extracting the values of page fragmentation counters after the scan
+--let $pages_contiguous_current = query_get_value(SHOW STATUS LIKE 'innodb_scan_pages_contiguous', Value, 1)
+--let $pages_disjointed_current = query_get_value(SHOW STATUS LIKE 'innodb_scan_pages_disjointed', Value, 1)
+--let $pages_contiguous_delta = `SELECT $pages_contiguous_current - $pages_contiguous_initial`
+--let $pages_disjointed_delta = `SELECT $pages_disjointed_current - $pages_disjointed_initial`
+
+# consistency asserts
+--let $assert_text= (Defragmented table) The number of disjointed pages is much less than the number of contiguous pages
+--let $assert_cond= $pages_disjointed_delta * $magnitude_factor < $pages_contiguous_delta
+--source include/assert.inc
+
+# restarting the server to reset buffers
+--source include/restart_mysqld.inc
+
+# enabling LRA
+SET innodb_lra_size = 2;
+SET innodb_lra_pages_before_sleep = 1024;
+SET innodb_lra_sleep = 50;
+
+# performing a scan operation
+CHECKSUM TABLE t1;
+
+# determining execution time for the latest query
+SELECT MAX(event_id) INTO @ps_event_id FROM performance_schema.events_statements_history_long;
+--let $execution_time_lra_enabled = `SELECT TRUNCATE(timer_wait/1000000000000, 6) FROM performance_schema.events_statements_history_long WHERE event_id = @ps_event_id`
+
+# LRA performance asserts
+--let $assert_text= Enabling LRA for defragmented table does not decrease execution time
+--let $assert_cond= $execution_time_lra_enabled > $execution_time_lra_disabled
+--source include/assert.inc
+
+DROP TABLE t1;
