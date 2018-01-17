@@ -831,7 +831,6 @@ Transaction_Message::append_cache(IO_CACHE *src)
                 buffer,
                 buffer + length);
 
-    src->read_pos= src->read_end;
     length= my_b_fill(src);
     buffer= src->read_pos;
   }

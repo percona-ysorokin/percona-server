@@ -50,7 +50,6 @@ SET GLOBAL debug='+d,error_unique_log_filename';
 RESET MASTER;
 
 SET GLOBAL debug='-d,error_unique_log_filename';
-SET @@GLOBAL.DEBUG= @debug_save;
 
 --error ER_UNKNOWN_TARGET_BINLOG
 RESET MASTER;
