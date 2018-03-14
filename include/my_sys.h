@@ -1,4 +1,5 @@
 /* Copyright (c) 2000, 2017, Oracle and/or its affiliates. All rights reserved.
+   Copyright (c) 2018, Percona and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -81,7 +82,7 @@ C_MODE_START
 #define MY_WAIT_IF_FULL 32	/* Wait and try again if disk full error */
 #define MY_IGNORE_BADFD 32      /* my_sync: ignore 'bad descriptor' errors */
 #define MY_SYNC_DIR     8192    /* my_create/delete/rename: sync directory */
-#define MY_UNUSED       64      /* Unused (was support for RAID) */
+#define MY_ENCRYPT      64      /* Encrypt IO_CACHE temporary files */
 #define MY_FULL_IO     512      /* For my_read - loop intil I/O is complete */
 #define MY_DONT_CHECK_FILESIZE 128 /* Option to init_io_cache() */
 #define MY_LINK_WARNING 32	/* my_redel() gives warning if links */
@@ -273,7 +274,7 @@ enum cache_type
 {
   TYPE_NOT_SET= 0, READ_CACHE, WRITE_CACHE,
   SEQ_READ_APPEND		/* sequential read or append */,
-  READ_FIFO, READ_NET,WRITE_NET};
+  READ_FIFO, READ_NET};
 
 enum flush_type
 {
@@ -487,46 +488,100 @@ typedef void (*my_error_reporter)(enum loglevel level, const char *format, ...)
 
 extern my_error_reporter my_charset_error_reporter;
 
-/* defines for mf_iocache */
+/* inline functions for mf_iocache */
 extern PSI_file_key key_file_io_cache;
 
+extern int _my_b_get(IO_CACHE *info);
+extern int _my_b_read(IO_CACHE *info, uchar *Buffer, size_t Count);
+extern int _my_b_write(IO_CACHE *info, const uchar *Buffer, size_t Count);
+
 /* Test if buffer is inited */
-#define my_b_clear(info) (info)->buffer=0
-#define my_b_inited(info) (info)->buffer
+static inline void my_b_clear(IO_CACHE *info) { info->buffer= 0; }
+static inline int my_b_inited(const IO_CACHE *info)
+{
+  return MY_TEST(info->buffer);
+}
 #define my_b_EOF INT_MIN
 
-#define my_b_read(info,Buffer,Count) \
-  ((info)->read_pos + (Count) <= (info)->read_end ?\
-   (memcpy(Buffer,(info)->read_pos,(size_t) (Count)), \
-    ((info)->read_pos+=(Count)),0) :\
-   (*(info)->read_function)((info),Buffer,Count))
+static inline int my_b_read(IO_CACHE *info, uchar *Buffer, size_t Count)
+{
+  if (info->read_pos + Count <= info->read_end)
+  {
+    memcpy(Buffer, info->read_pos, Count);
+    info->read_pos+= Count;
+    return 0;
+  }
+  return _my_b_read(info, Buffer, Count);
+}
 
-#define my_b_write(info,Buffer,Count) \
- ((info)->write_pos + (Count) <=(info)->write_end ?\
-  (memcpy((info)->write_pos, (Buffer), (size_t)(Count)),\
-   ((info)->write_pos+=(Count)),0) : \
-   (*(info)->write_function)((info),(uchar *)(Buffer),(Count)))
+static inline int my_b_write(IO_CACHE *info, const uchar *Buffer,
+                             size_t Count)
+{
+  if (info->write_pos + Count <= info->write_end)
+  {
+    memcpy(info->write_pos, Buffer, Count);
+    info->write_pos+= Count;
+    return 0;
+  }
+  return _my_b_write(info, Buffer, Count);
+}
 
-#define my_b_get(info) \
-  ((info)->read_pos != (info)->read_end ?\
-   ((info)->read_pos++, (int) (uchar) (info)->read_pos[-1]) :\
-   _my_b_get(info))
+static inline int my_b_get(IO_CACHE *info)
+{
+  if (info->read_pos != info->read_end)
+  {
+    info->read_pos++;
+    return info->read_pos[-1];
+  }
+  return _my_b_get(info);
+}
 
-#define my_b_tell(info) ((info)->pos_in_file + \
-			 (size_t) (*(info)->current_pos - (info)->request_pos))
+/**
+  Fill buffer of the cache.
 
-#define my_b_get_buffer_start(info) (info)->request_pos 
-#define my_b_get_bytes_in_buffer(info) (char*) (info)->read_end -   \
-  (char*) my_b_get_buffer_start(info)
-#define my_b_get_pos_in_file(info) (info)->pos_in_file
+  @note It assumes that you have already used all characters in the CACHE,
+        independent of the read_pos value!
+
+  @returns
+        0     On error or EOF (info->error = -1 on error)
+        #     Number of characters
+*/
+static inline size_t my_b_fill(IO_CACHE *info)
+{
+  info->read_pos= info->read_end;
+  return _my_b_read(info, 0, 0) ? 0 : info->read_end - info->read_pos;
+}
+
+static inline my_off_t my_b_tell(const IO_CACHE *info)
+{
+  return info->pos_in_file + (*info->current_pos - info->request_pos);
+}
+
+static inline uchar* my_b_get_buffer_start(const IO_CACHE *info)
+{
+  return info->request_pos;
+}
+
+static inline size_t my_b_get_bytes_in_buffer(const IO_CACHE *info)
+{
+  return info->read_end - info->request_pos;
+}
+
+static inline my_off_t my_b_get_pos_in_file(const IO_CACHE *info)
+{
+  return info->pos_in_file;
+}
+
+static inline size_t my_b_bytes_in_cache(const IO_CACHE *info)
+{
+  return *info->current_end - *info->current_pos;
+}
 
 /* tell write offset in the SEQ_APPEND cache */
 int      my_b_copy_to_file(IO_CACHE *cache, FILE *file);
 my_off_t my_b_append_tell(IO_CACHE* info);
 my_off_t my_b_safe_tell(IO_CACHE* info); /* picks the correct tell() */
-
-#define my_b_bytes_in_cache(info) (size_t) (*(info)->current_end - \
-					  *(info)->current_pos)
+int my_b_pread(IO_CACHE *info, uchar *Buffer, size_t Count, my_off_t pos);
 
 typedef uint32 ha_checksum;
 
@@ -723,26 +778,30 @@ extern void my_qsort2(void *base_ptr, size_t total_elems, size_t size,
                       qsort2_cmp cmp, const void *cmp_argument);
 void my_store_ptr(uchar *buff, size_t pack_length, my_off_t pos);
 my_off_t my_get_ptr(uchar *ptr, size_t pack_length);
+
+typedef int (*io_cache_encr_read_function)(IO_CACHE*, uchar*, size_t);
+typedef int (*io_cache_encr_write_function)(IO_CACHE*, const uchar*, size_t);
+extern void init_io_cache_encryption_ext(
+  io_cache_encr_read_function read_function,
+  io_cache_encr_write_function write_function,
+  size_t encr_block_size, size_t encr_header_size);
+extern void init_io_cache_encryption(my_bool enable);
+
 extern int init_io_cache_ext(IO_CACHE *info,File file,size_t cachesize,
                              enum cache_type type,my_off_t seek_offset,
-                             pbool use_async_io, myf cache_myflags,
+                             my_bool use_async_io, myf cache_myflags,
                              PSI_file_key file_key);
 extern int init_io_cache(IO_CACHE *info,File file,size_t cachesize,
                          enum cache_type type,my_off_t seek_offset,
-                         pbool use_async_io, myf cache_myflags);
+                         my_bool use_async_io, myf cache_myflags);
 extern my_bool reinit_io_cache(IO_CACHE *info,enum cache_type type,
-                               my_off_t seek_offset,pbool use_async_io,
-                               pbool clear_cache);
+                               my_off_t seek_offset, my_bool use_async_io,
+                               my_bool clear_cache);
 extern void setup_io_cache(IO_CACHE* info);
-extern int _my_b_read(IO_CACHE *info,uchar *Buffer,size_t Count);
-extern int _my_b_read_r(IO_CACHE *info,uchar *Buffer,size_t Count);
 extern void init_io_cache_share(IO_CACHE *read_cache, IO_CACHE_SHARE *cshare,
                                 IO_CACHE *write_cache, uint num_threads);
 extern void remove_io_thread(IO_CACHE *info);
-extern int _my_b_seq_read(IO_CACHE *info,uchar *Buffer,size_t Count);
-extern int _my_b_net_read(IO_CACHE *info,uchar *Buffer,size_t Count);
-extern int _my_b_get(IO_CACHE *info);
-extern int _my_b_write(IO_CACHE *info,const uchar *Buffer,size_t Count);
+extern int _my_b_net_read(IO_CACHE *info, uchar *Buffer, size_t Count);
 extern int my_b_append(IO_CACHE *info,const uchar *Buffer,size_t Count);
 extern int my_b_safe_write(IO_CACHE *info,const uchar *Buffer,size_t Count);
 
@@ -753,7 +812,6 @@ extern int my_b_flush_io_cache(IO_CACHE *info, int need_append_buffer_lock);
 #define flush_io_cache(info) my_b_flush_io_cache((info),1)
 
 extern int end_io_cache(IO_CACHE *info);
-extern size_t my_b_fill(IO_CACHE *info);
 extern void my_b_seek(IO_CACHE *info,my_off_t pos);
 extern size_t my_b_gets(IO_CACHE *info, char *to, size_t max_length);
 extern my_off_t my_b_filelength(IO_CACHE *info);

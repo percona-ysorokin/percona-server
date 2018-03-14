@@ -2276,7 +2276,7 @@ log_event_print_value(IO_CACHE *file, const uchar *ptr,
       struct timeval tm;
       my_timestamp_from_binary(&tm, ptr, meta);
       int buflen= my_timeval_to_str(&tm, buf, meta);
-      my_b_write(file, buf, buflen);
+      my_b_write(file, reinterpret_cast<uchar*>(buf), buflen);
       return my_timestamp_binary_length(meta);
     }
 

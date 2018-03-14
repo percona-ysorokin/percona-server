@@ -4456,7 +4456,9 @@ end_with_restore_list:
       if (!res)
         my_ok(thd);
     } 
-    
+    else
+      res= 1; // reload_acl_and_cache failed
+
     break;
   }
   case SQLCOM_KILL:

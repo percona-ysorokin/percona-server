@@ -5922,7 +5922,10 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd, bool delete_only)
     }
     // don't clear global_sid_map because it's used by the relay log too
     if (gtid_state->init() != 0)
+    {
+      error= 1;
       goto err;
+    }
   }
 #endif
 
@@ -5936,11 +5939,12 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd, bool delete_only)
                             NULL)))
       goto err;
   }
-  my_free((void *) save_name);
 
 err:
-  if (error == 1)
+  if (error)
     name= const_cast<char*>(save_name);
+  else
+    my_free(const_cast<char *>(save_name));
   global_sid_lock->unlock();
   mysql_mutex_unlock(&LOCK_index);
   mysql_mutex_unlock(&LOCK_log);
@@ -7799,7 +7803,6 @@ end:
 static bool read_cache_page(IO_CACHE *cache, uchar **buf_p, uint32 *buf_len_p)
 {
   DBUG_ASSERT(*buf_len_p == 0);
-  cache->read_pos= cache->read_end;
   *buf_len_p= my_b_fill(cache);
   *buf_p= cache->read_pos;
   return cache->error ? true : false;
