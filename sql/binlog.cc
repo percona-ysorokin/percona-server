@@ -7803,6 +7803,7 @@ end:
 static bool read_cache_page(IO_CACHE *cache, uchar **buf_p, uint32 *buf_len_p)
 {
   DBUG_ASSERT(*buf_len_p == 0);
+  cache->read_pos= cache->read_end;
   *buf_len_p= my_b_fill(cache);
   *buf_p= cache->read_pos;
   return cache->error ? true : false;

@@ -536,21 +536,6 @@ static inline int my_b_get(IO_CACHE *info)
   return _my_b_get(info);
 }
 
-/**
-  Fill buffer of the cache.
-
-  @note It assumes that you have already used all characters in the CACHE,
-        independent of the read_pos value!
-
-  @returns
-        0     On error or EOF (info->error = -1 on error)
-        #     Number of characters
-*/
-static inline size_t my_b_fill(IO_CACHE *info)
-{
-  info->read_pos= info->read_end;
-  return _my_b_read(info, 0, 0) ? 0 : info->read_end - info->read_pos;
-}
 
 static inline my_off_t my_b_tell(const IO_CACHE *info)
 {
@@ -812,6 +797,7 @@ extern int my_b_flush_io_cache(IO_CACHE *info, int need_append_buffer_lock);
 #define flush_io_cache(info) my_b_flush_io_cache((info),1)
 
 extern int end_io_cache(IO_CACHE *info);
+extern size_t my_b_fill(IO_CACHE *info);
 extern void my_b_seek(IO_CACHE *info,my_off_t pos);
 extern size_t my_b_gets(IO_CACHE *info, char *to, size_t max_length);
 extern my_off_t my_b_filelength(IO_CACHE *info);

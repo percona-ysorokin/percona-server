@@ -1298,6 +1298,8 @@ static int _my_b_seq_read(IO_CACHE *info, uchar *Buffer, size_t Count)
   my_off_t pos_in_file;
   save_count=Count;
 
+  DBUG_ASSERT(!(info->myflags & MY_ENCRYPT));
+
   lock_append_buffer(info);
 
   /* pos_in_file always point on where info->buffer was read */
@@ -1674,6 +1676,7 @@ int my_b_flush_io_cache(IO_CACHE *info, int need_append_buffer_lock)
     {
       if (append_cache)
       {
+        DBUG_ASSERT(!(info->myflags & MY_ENCRYPT));
         if (mysql_file_write(info->file, info->write_buffer, length,
                              info->myflags | MY_NABP))
           info->error= -1;
