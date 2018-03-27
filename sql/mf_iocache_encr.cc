@@ -93,8 +93,7 @@ static int my_b_encr_read(IO_CACHE *info, uchar *Buffer, size_t Count)
 
   if (pos_in_file == info->end_of_file)
   {
-    info->read_pos= info->read_end= info->buffer;
-    info->pos_in_file= pos_in_file;
+    info->read_pos= info->read_end;
     info->error= 0;
     DBUG_RETURN(MY_TEST(Count));
   }
@@ -148,7 +147,8 @@ static int my_b_encr_read(IO_CACHE *info, uchar *Buffer, size_t Count)
     if (length == MY_AES_BAD_DATA)
     {
       set_my_errno(1);
-      DBUG_RETURN(info->error= -1);
+      info->error= -1;
+      DBUG_RETURN(1);
     }
 
     DBUG_ASSERT(static_cast<uint>(length) <= info->buffer_length);
@@ -210,7 +210,8 @@ static int my_b_encr_write(IO_CACHE *info, const uchar *Buffer, size_t Count)
     if (my_rand_buffer(crypt_data->key, sizeof(crypt_data->key)))
     {
       set_my_errno(1);
-      DBUG_RETURN(info->error= -1);
+      info->error= -1;
+      DBUG_RETURN(1);
     }
     crypt_data->counter= 0;
 
@@ -236,7 +237,8 @@ static int my_b_encr_write(IO_CACHE *info, const uchar *Buffer, size_t Count)
     if (elength == MY_AES_BAD_DATA)
     {
       set_my_errno(1);
-      DBUG_RETURN(info->error= -1);
+      info->error= -1;
+      DBUG_RETURN(1);
     }
     wlength= elength + ebuffer - wbuffer;
 
@@ -262,7 +264,10 @@ static int my_b_encr_write(IO_CACHE *info, const uchar *Buffer, size_t Count)
 
     if (mysql_file_write(info->file, wbuffer, wlength,
         info->myflags | MY_NABP))
-      DBUG_RETURN(info->error= -1);
+    {
+      info->error= -1;
+      DBUG_RETURN(1);
+    }
 
     Buffer+= length;
     Count-= length;
