@@ -125,6 +125,10 @@ TEST_P(IOCacheTest, MDEV9044)
   res= reinit_io_cache(&info, READ_CACHE, 0, 0, 0);
   EXPECT_EQ(0, res) << "reinit READ_CACHE" << INFO_TAIL;
 
+  if (encryption_enabled)
+  {
+    info.read_pos= info.read_end;
+  }
   res= my_b_fill(&info);
   EXPECT_EQ(0, res) << "fill" << INFO_TAIL;
 
