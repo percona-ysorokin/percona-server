@@ -23,6 +23,14 @@ INCLUDE (CheckCCompilerFlag)
 INCLUDE (CheckCSourceRuns)
 INCLUDE (CheckSymbolExists)
 
+IF (WITH_MODERN_CXX)
+  INCLUDE (check_stdcxx11)
+  IF (HAVE_STDCXX11)
+    MESSAGE (STATUS "Building with modern C++ (-std=c++11)")
+  ELSE ()
+    MESSAGE (FATAL_ERROR "${CMAKE_CXX_COMPILER} doesn't support -std=c++11, but WITH_MODERN_CXX was specified. Terminating")
+  ENDIF ()
+ENDIF ()
 
 # WITH_PIC options.Not of much use, PIC is taken care of on platforms
 # where it makes sense anyway.
