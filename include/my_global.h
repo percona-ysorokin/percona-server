@@ -360,6 +360,12 @@ C_MODE_END
 #include <crypt.h>
 #endif
 
+#ifdef HAVE_STDCXX11
+  #define MY_TYPEOF decltype
+#else
+  #define MY_TYPEOF typeof
+#endif
+
 /**
   Cast a member of a structure to the structure that contains it.
 
@@ -369,7 +375,7 @@ C_MODE_END
 */
 #define my_container_of(ptr, type, member)              \
   ({                                                    \
-    const typeof(((type *)0)->member) *__mptr= (ptr);   \
+    const MY_TYPEOF(((type *)0)->member) *__mptr= (ptr);\
     (type *)((char *)__mptr - offsetof(type, member));  \
   })
 

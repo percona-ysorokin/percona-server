@@ -677,4 +677,7 @@
 #cmakedefine HAVE_WMAYBE_UNINITIALIZED
 #cmakedefine HAVE_PRAGMA_GCC_DIAGNOSTIC_PUSH
 
+/* c++11 mode */
+#cmakedefine HAVE_STDCXX11 1
+
 #endif
