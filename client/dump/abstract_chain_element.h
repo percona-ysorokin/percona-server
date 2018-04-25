@@ -111,6 +111,17 @@ protected:
 
 
 private:
+#ifdef HAVE_STDCXX11
+  Abstract_chain_element(const Abstract_chain_element&) = delete;
+  Abstract_chain_element& operator = (const Abstract_chain_element&) = delete;
+
+  Abstract_chain_element(Abstract_chain_element&&) = delete;
+  Abstract_chain_element& operator = (Abstract_chain_element&&) = delete;
+#else
+  Abstract_chain_element(const Abstract_chain_element&);
+  Abstract_chain_element& operator = (const Abstract_chain_element&);
+#endif
+
   /**
     Wrapper on item_completion_in_child_callback which allows creation of
     pointer to function which will then fetch correct virtual method pointer.

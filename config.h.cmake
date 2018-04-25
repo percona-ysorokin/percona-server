@@ -453,4 +453,7 @@
 /* For default value of --early_plugin_load */
 #cmakedefine DEFAULT_EARLY_PLUGIN_LOAD @DEFAULT_EARLY_PLUGIN_LOAD@
 
+/* c++11 mode */
+#cmakedefine HAVE_STDCXX11 1
+
 #endif

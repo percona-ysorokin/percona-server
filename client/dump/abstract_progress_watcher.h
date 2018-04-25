@@ -69,6 +69,17 @@ protected:
   Progress_data m_last_progress;
 
 private:
+#ifdef HAVE_STDCXX11
+  Abstract_progress_watcher(const Abstract_progress_watcher&) = delete;
+  Abstract_progress_watcher& operator = (const Abstract_progress_watcher&) = delete;
+
+  Abstract_progress_watcher(Abstract_progress_watcher&&) = delete;
+  Abstract_progress_watcher& operator = (Abstract_progress_watcher&&) = delete;
+#else
+  Abstract_progress_watcher(const Abstract_progress_watcher&);
+  Abstract_progress_watcher& operator = (const Abstract_progress_watcher&);
+#endif
+
   /**
     Throttles progress changes to be reported to progress_changed() about 1 in
     second. It uses 10 stages, each 100ms long, in each there is number of

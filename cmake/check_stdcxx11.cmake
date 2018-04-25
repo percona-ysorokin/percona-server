@@ -1,4 +1,4 @@
-# Copyright (c) 2017, Percona and/or its affiliates. All rights reserved.
+# Copyright (c) 2017, 2018, Percona and/or its affiliates. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,21 +16,28 @@
 # cmake include to wrap if compiler supports std cxx11 and alters compiler flags
 # On return, HAVE_STDCXX11 will be set
 
-INCLUDE (CheckCCompilerFlag)
-INCLUDE (CheckCXXCompilerFlag)
+# CMAKE_CXX_STANDARD was introduced in CMake 3.1, it will be ignored by older CMake
+IF ("${CMAKE_VERSION}" VERSION_GREATER "3.1" OR "${CMAKE_VERSION}" VERSION_EQUAL "3.1")
+  SET(CMAKE_CXX_STANDARD 11)
+  SET(CMAKE_CXX_EXTENSIONS OFF)
+  SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-check_cxx_compiler_flag (-std=c++11 HAVE_STDCXX11)
-
-IF (HAVE_STDCXX11)
-  IF ("${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" VERSION_GREATER "3.1")
-    SET (CMAKE_CXX_FLAGS "-Wno-deprecated-declarations ${CMAKE_CXX_FLAGS}")
+  SET (HAVE_STDCXX11 1 CACHE INTERNAL "C++11 mode")
+ELSE ()
+  INCLUDE(CheckCXXCompilerFlag)
+  CHECK_CXX_COMPILER_FLAG(-std=c++11 CXX11_OPTION_SUPPORTED)
+  IF (CXX11_OPTION_SUPPORTED)
+    SET (CMAKE_CXX_FLAGS "--std=c++11 ${CMAKE_CXX_FLAGS}")
+    SET (HAVE_STDCXX11 1 CACHE INTERNAL "C++11 mode")
   ELSE ()
-    # CMAKE_CXX_STANDARD was introduced in CMake 3.1, it will be ignored by older CMake
-    SET (CMAKE_CXX_FLAGS "--std=c++11 -Wno-deprecated-declarations ${CMAKE_CXX_FLAGS}")
-  ENDIF()
+    CHECK_CXX_COMPILER_FLAG(-std=c++0x CXX0X_OPTION_SUPPORTED)
+    IF (CXX0X_OPTION_SUPPORTED)
+      SET (CMAKE_CXX_FLAGS "--std=c++0x ${CMAKE_CXX_FLAGS}")
+      SET (HAVE_STDCXX11 1 CACHE INTERNAL "C++11 mode")
+    ENDIF ()
+  ENDIF ()
 ENDIF ()
 
-
-SET(CMAKE_CXX_STANDARD 11)
-SET(CMAKE_CXX_EXTENSIONS OFF)
-SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+IF (HAVE_STDCXX11)
+  SET (CMAKE_CXX_FLAGS "-Wno-deprecated-declarations ${CMAKE_CXX_FLAGS}")
+ENDIF ()
