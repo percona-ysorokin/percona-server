@@ -666,7 +666,12 @@ static net_async_status net_write_vector_nonblocking(NET *net, ssize_t *res) {
       *res = vio_write(net->vio, (uchar *)vec->iov_base, vec->iov_len);
 
       if (*res < 0) {
-        if (errno == SOCKET_EAGAIN || errno == SOCKET_EWOULDBLOCK) {
+        // On some platforms SOCKET_EAGAIN and SOCKET_EWOULDBLOCK
+        // are defined identically. So, using this trick instead of
+        // (errno == SOCKET_EAGAIN || errno == SOCKET_EWOULDBLOCK)
+        // to avoid 'identical conditions in logical or' warning.
+        bool errno_condition = (errno == SOCKET_EAGAIN);
+        if (errno_condition || errno == SOCKET_EWOULDBLOCK) {
           // In the unlikely event that there is a renegotiation and
           // SSL_ERROR_WANT_READ is returned, set blocking state to read.
           if (static_cast<size_t>(*res) == VIO_SOCKET_WANT_READ) {
@@ -694,7 +699,12 @@ static net_async_status net_write_vector_nonblocking(NET *net, ssize_t *res) {
                net->async_write_vector_size - net->async_write_vector_current);
 
     if (*res < 0) {
-      if (errno == SOCKET_EAGAIN || errno == SOCKET_EWOULDBLOCK) {
+      // On some platforms SOCKET_EAGAIN and SOCKET_EWOULDBLOCK
+      // are defined identically. So, using this trick instead of
+      // (errno == SOCKET_EAGAIN || errno == SOCKET_EWOULDBLOCK)
+      // to avoid 'identical conditions in logical or' warning.
+      bool errno_condition = (errno == SOCKET_EAGAIN);
+      if (errno_condition || errno == SOCKET_EWOULDBLOCK) {
         net->async_blocking_state = NET_NONBLOCKING_WRITE;
         DBUG_RETURN(NET_ASYNC_NOT_READY);
       }
@@ -1439,10 +1449,16 @@ static ulong net_read_available(NET *net, size_t count) {
   }
 
   /* Call would block, just return with socket_errno set */
-  if (recvcnt == VIO_SOCKET_ERROR &&
-      (socket_errno == SOCKET_EAGAIN || socket_errno == SOCKET_EWOULDBLOCK)) {
-    net->async_blocking_state = NET_NONBLOCKING_READ;
-    DBUG_RETURN(0);
+  if (recvcnt == VIO_SOCKET_ERROR) {
+    // On some platforms SOCKET_EAGAIN and SOCKET_EWOULDBLOCK
+    // are defined identically. So, using this trick instead of
+    // (errno == SOCKET_EAGAIN || errno == SOCKET_EWOULDBLOCK)
+    // to avoid 'identical conditions in logical or' warning.
+    bool errno_condition = (errno == SOCKET_EAGAIN);
+    if (errno_condition || errno == SOCKET_EWOULDBLOCK) {
+      net->async_blocking_state = NET_NONBLOCKING_READ;
+      DBUG_RETURN(0);
+    }
   }
 
   /* Not EOF and not an error?  Return the bytes read.*/
