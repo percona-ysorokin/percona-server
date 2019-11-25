@@ -3119,7 +3119,7 @@ static void buf_flush_page_coordinator_thread(size_t n_page_cleaners) {
     of active server in which case, it could be just the beginning of the
     next period, so there is no reason to consider it idle yet. */
 
-    const bool is_server_active =
+    bool is_server_active =
         was_server_active || srv_check_activity(last_activity);
 
     /* The page_cleaner skips sleep if the server is
@@ -3189,7 +3189,7 @@ static void buf_flush_page_coordinator_thread(size_t n_page_cleaners) {
       /* log_sys is closed for resize. We cannot use
       log_sys or any LSNs during this period. */
       is_sync_flush = false;
-      ut_ad(is_server_active == false);
+      is_server_active = false;
     } else {
       ut_a(log_sys != nullptr);
 
