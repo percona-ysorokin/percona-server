@@ -5297,7 +5297,7 @@ dberr_t buf_page_io_complete(buf_page_t *bpage, bool evict) {
     key_version = mach_read_from_4(frame + FIL_PAGE_ENCRYPTION_KEY_VERSION);
 
     if (bpage->id.space() == TRX_SYS_SPACE &&
-        buf_dblwr_page_inside(bpage->id.page_no())) {
+        dblwr::v1::is_inside(bpage->id.page_no())) {
       ib::error(ER_IB_MSG_78) << "Reading page " << bpage->id
                               << ", which is in the doublewrite buffer!";
 
@@ -5453,23 +5453,27 @@ dberr_t buf_page_io_complete(buf_page_t *bpage, bool evict) {
     fil_space_release_for_io(space);
   }
 
-  mutex_enter(&buf_pool->LRU_list_mutex);
+  auto page_mutex = buf_page_get_mutex(bpage);
 
-  BPageMutex *page_mutex = buf_page_get_mutex(bpage);
-  mutex_enter(page_mutex);
+  if (io_type == BUF_IO_WRITE) {
+    mutex_enter(&buf_pool->LRU_list_mutex);
 
-  if (io_type == BUF_IO_WRITE &&
-      (
+    mutex_enter(page_mutex);
+
+    if (
 #if defined UNIV_DEBUG || defined UNIV_BUF_DEBUG
-          /* to keep consistency at buf_LRU_insert_zip_clean() */
-          buf_page_get_state(bpage) == BUF_BLOCK_ZIP_DIRTY ||
+        /* to keep consistency at buf_LRU_insert_zip_clean() */
+        buf_page_get_state(bpage) == BUF_BLOCK_ZIP_DIRTY ||
 #endif /* UNIV_DEBUG || UNIV_BUF_DEBUG */
-          buf_page_get_flush_type(bpage) == BUF_FLUSH_LRU ||
-          buf_page_get_flush_type(bpage) == BUF_FLUSH_SINGLE_PAGE)) {
+        buf_page_get_flush_type(bpage) == BUF_FLUSH_LRU ||
+        buf_page_get_flush_type(bpage) == BUF_FLUSH_SINGLE_PAGE) {
 
-    have_LRU_mutex = true; /* optimistic */
+      have_LRU_mutex = true; /* optimistic */
+    } else {
+      mutex_exit(&buf_pool->LRU_list_mutex);
+    }
   } else {
-    mutex_exit(&buf_pool->LRU_list_mutex);
+    mutex_enter(page_mutex);
   }
 
 #ifdef UNIV_IBUF_COUNT_DEBUG
@@ -5503,7 +5507,7 @@ dberr_t buf_page_io_complete(buf_page_t *bpage, bool evict) {
         rw_lock_x_unlock_gen(&((buf_block_t *)bpage)->lock, BUF_IO_READ);
       }
 
-      mutex_exit(buf_page_get_mutex(bpage));
+      mutex_exit(page_mutex);
 
       ut_ad(buf_pool->n_pend_reads > 0);
       os_atomic_decrement_ulint(&buf_pool->n_pend_reads, 1);

@@ -1718,7 +1718,7 @@ int main(int argc, char **argv) {
       }
 
       if (ferror(fil_in)) {
-        fprintf(stderr, "Error reading %u bytes", page_size.physical());
+        fprintf(stderr, "Error reading %zu bytes", page_size.physical());
         perror(" ");
 
         return 1;
@@ -1727,7 +1727,7 @@ int main(int argc, char **argv) {
       if (bytes != page_size.physical()) {
         fprintf(stderr,
                 "Error: bytes read (%lu) "
-                "doesn't match page size (%u)\n",
+                "doesn't match page size (%zu)\n",
                 bytes, page_size.physical());
         return 1;
       }
