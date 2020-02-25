@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2019, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2020, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2016, Percona Inc. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -1990,8 +1990,13 @@ static void buf_flush_end(buf_pool_t *buf_pool, buf_flush_t flush_type,
 
   mutex_exit(&buf_pool->flush_state_mutex);
 
-  if (!srv_read_only_mode && dblwr::enabled && flushed_page_count) {
-    dblwr::force_flush(flush_type, buf_pool_index(buf_pool));
+  if (!srv_read_only_mode) {
+    if (dblwr::enabled) {
+      if (flushed_page_count)
+        dblwr::force_flush(flush_type, buf_pool_index(buf_pool));
+    } else {
+      buf_flush_sync_datafiles();
+    }
   } else {
     os_aio_simulated_wake_handler_threads();
   }
