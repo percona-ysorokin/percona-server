@@ -16,7 +16,7 @@ select @@session.tokudb_backup_last_error;
 select @@session.tokudb_backup_last_error_string;
 @@session.tokudb_backup_last_error_string
 NULL
-10
+20
 set session tokudb_backup_exclude='(t1[abc]|mysqld_safe\.pid)+';
 select @@session.tokudb_backup_last_error;
 @@session.tokudb_backup_last_error
@@ -24,7 +24,7 @@ select @@session.tokudb_backup_last_error;
 select @@session.tokudb_backup_last_error_string;
 @@session.tokudb_backup_last_error_string
 NULL
-5
+20
 drop table t1;
 drop table t1a;
 drop table t1b;
