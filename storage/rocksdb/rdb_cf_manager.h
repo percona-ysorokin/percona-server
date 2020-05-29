@@ -22,7 +22,17 @@
 #include <vector>
 
 /* MySQL header files */
+/* MySQL has an enum symbol ZSTD but rocksdb has a macro defined ZSTD, we need
+   to tip-toe around this */
+#if defined (ZSTD)
+#define MYROCKS_TEMP_ZSTD ZSTD
+#undef ZSTD
+#endif  // defined(ZSTD)
 #include "sql/sql_class.h"
+#if defined(MYROCKS_TEMP_ZSTD)
+#define ZSTD MYROCKS_TEMP_ZSTD
+#undef MYROCKS_TEMP_ZSTD
+#endif  // defined(MYROCKS_TEMP_ZSTD)
 
 /* RocksDB header files */
 #include "rocksdb/db.h"
