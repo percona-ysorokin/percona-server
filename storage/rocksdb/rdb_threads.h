@@ -28,7 +28,17 @@
 #include "include/mysql/psi/mysql_thread.h"
 #include "mysql/psi/mysql_table.h"
 #include "mysql/thread_pool_priv.h"
+/* MySQL has an enum symbol ZSTD but rocksdb has a macro defined ZSTD, we need
+   to tip-toe around this */
+#if defined (ZSTD)
+#define MYROCKS_TEMP_ZSTD ZSTD
+#undef ZSTD
+#endif  // defined(ZSTD)
 #include "sql/sql_class.h"
+#if defined(MYROCKS_TEMP_ZSTD)
+#define ZSTD MYROCKS_TEMP_ZSTD
+#undef MYROCKS_TEMP_ZSTD
+#endif  // defined(MYROCKS_TEMP_ZSTD)
 
 /* MyRocks header files */
 #include "./rdb_utils.h"
