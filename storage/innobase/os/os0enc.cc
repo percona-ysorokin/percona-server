@@ -1121,27 +1121,8 @@ byte *Encryption::encrypt_log(const IORequest &type, byte *src, ulint src_len,
   return (dst);
 }
 
-byte *Encryption::encrypt(const IORequest &type, byte *src, ulint src_len,
-                          byte *dst, ulint *dst_len) noexcept {
-  ut_ad(m_type != NONE);
-  ut_ad(!type.is_log());
-
-#ifdef UNIV_ENCRYPT_DEBUG
-  const page_id_t page_id(
-      mach_read_from_4(src + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID),
-      mach_read_from_4(src + FIL_PAGE_OFFSET));
-
-  {
-    std::ostringstream msg{};
-    msg << "Encrypting page: " << page_id << " src_len: " << src_len
-        << std::endl;
-
-    ut_print_buf(msg, m_key, 32);
-    msg << std::endl;
-    ut_print_buf(msg, m_iv, 32);
-    ib::info() << msg.str();
-  }
-#endif /* UNIV_ENCRYPT_DEBUG */
+bool Encryption::encrypt_low(const IORequest &type, byte *src, ulint src_len,
+                             byte *dst, ulint *dst_len) noexcept {
   // Destination header might need to acommodate key_version and checksum after
   // encryption
   const uint16_t page_type = mach_read_from_2(src + FIL_PAGE_TYPE);
@@ -1214,7 +1195,7 @@ byte *Encryption::encrypt(const IORequest &type, byte *src, ulint src_len,
 
         ib::error(ER_IB_MSG_844) << " Can't encrypt data of page " << page_id;
         *dst_len = src_len;
-        return src;
+        return false;
       }
 
       const auto len = static_cast<size_t>(elen);
@@ -1240,7 +1221,7 @@ byte *Encryption::encrypt(const IORequest &type, byte *src, ulint src_len,
 
           ib::error(ER_IB_MSG_845) << " Can't encrypt data of page," << page_id;
           *dst_len = src_len;
-          return src;
+          return false;
         }
 
         ut_a(static_cast<size_t>(elen) == trailer_len);
@@ -1339,72 +1320,58 @@ byte *Encryption::encrypt(const IORequest &type, byte *src, ulint src_len,
 #endif
   }
 
+#if !defined(UNIV_INNOCHECKSUM)
+  srv_stats.pages_encrypted.inc();
+#endif
+
+  *dst_len = src_len;
+  return (true);
+}
+
+byte *Encryption::encrypt(const IORequest &type, byte *src, ulint src_len,
+                          byte *dst, ulint *dst_len) noexcept {
+  /* For encrypting redo log, take another way. */
+  ut_ad(!type.is_log());
+
 #ifdef UNIV_ENCRYPT_DEBUG
-#ifndef UNIV_INNOCHECKSUM
-  if (m_type == KEYRING) {
+  {
+    ulint space_id = mach_read_from_4(src + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
+    ulint page_no = mach_read_from_4(src + FIL_PAGE_OFFSET);
+
+    fprintf(stderr, "Encrypting page:%lu.%lu len:%lu\n", space_id, page_no,
+            src_len);
+    ut_print_buf(stderr, m_key, 32);
+    ut_print_buf(stderr, m_iv, 32);
+  }
+#endif /* UNIV_ENCRYPT_DEBUG */
+
+  ut_ad(m_type != NONE);
+
+  if (!encrypt_low(type, src, src_len, dst, dst_len)) {
+    return (src);
+  }
+
+#ifdef UNIV_ENCRYPT_DEBUG
+  {
     byte *check_buf = static_cast<byte *>(ut_malloc_nokey(src_len));
     byte *buf2 = static_cast<byte *>(ut_malloc_nokey(src_len));
 
     memcpy(check_buf, dst, src_len);
 
-    fprintf(stderr, "Robert: Comparing before and after encryption");
-
-    byte *m_key_used = m_key;
-
-    if (m_type == KEYRING)  // TODO:Robert:For decryption KEYRING
-                            // page key needs to be set to nullptr
-      m_key = nullptr;
-
     dberr_t err = decrypt(type, check_buf, src_len, buf2, src_len);
-    if (space_id == 23 && page_no == 1) {
-      fprintf(stderr, "Robert: After encrypting page 23:1:");
-      ut_print_buf(stderr, dst, src_len);
-    }
-
     if (err != DB_SUCCESS ||
         memcmp(src + FIL_PAGE_DATA, check_buf + FIL_PAGE_DATA,
-               src_len - FIL_PAGE_DATA - 4) != 0) {
-      fprintf(stderr,
-              "Robert: After and before encryption are different. "
-              " key_version used for encryption: %d, key used for encryption:",
-              m_key_version);
-      ut_print_buf(stderr, m_key_used, 32);
-      m_key_version =
-          mach_read_from_4(check_buf + FIL_PAGE_ENCRYPTION_KEY_VERSION);
-      fprintf(stderr,
-              "Robert: After and before encryption are different. "
-              " key_version used for decryption: %d, key used for decryption:",
-              m_key_version);
-
-      size_t key_len;
-      get_tablespace_key(m_key_id, m_key_version, &m_key, &key_len);
-      ut_print_buf(stderr, m_key, 32);
-
+               src_len - FIL_PAGE_DATA) != 0) {
+      ut_print_buf(stderr, src, src_len);
+      ut_print_buf(stderr, check_buf, src_len);
       ut_ad(0);
     }
     ut_free(buf2);
     ut_free(check_buf);
 
-    ut_ad(type.is_page_zip_compressed() ||
-          fil_space_verify_crypt_checksum(dst, *dst_len,
-                                          type.is_page_zip_compressed(),
-                                          type.is_compressed()));
-
-    ut_ad(type.is_page_zip_compressed() ||
-          fil_space_verify_crypt_checksum(dst, *dst_len,
-                                          type.is_page_zip_compressed(),
-                                          type.is_compressed()));
+    fprintf(stderr, "Encrypted page:%lu.%lu\n", space_id, page_no);
   }
-  fprintf(stderr, "Encrypted page:%lu.%lu\n", space_id, page_no);
-
-#endif
 #endif /* UNIV_ENCRYPT_DEBUG */
-
-  *dst_len = src_len;
-
-#if !defined(UNIV_INNOCHECKSUM)
-  srv_stats.pages_encrypted.inc();
-#endif
   return dst;
 }
 
@@ -1583,22 +1550,29 @@ dberr_t Encryption::decrypt(const IORequest &type, byte *src, ulint src_len,
   ulint main_len;
   ulint remain_len;
   ulint original_type;
-  ulint page_type;
   byte remain_buf[MY_AES_BLOCK_SIZE * 2];
   file::Block *block;
 
+  /* If the page is encrypted, then we need key to decrypt it. */
+  if (is_encrypted_page(src) && m_type == NONE) {
+    return DB_IO_DECRYPT_FAIL;
+  }
+
   if (!is_encrypted_page(src) || m_type == NONE) {
     /* There is nothing we can do. */
-    return (DB_SUCCESS);
+    return DB_SUCCESS;
   }
 
   /* For compressed page, we need to get the compressed size
   for decryption */
-  page_type = mach_read_from_2(src + FIL_PAGE_TYPE);
+  const ulint page_type = mach_read_from_2(src + FIL_PAGE_TYPE);
+
+  /* Actual length of the compressed data */
+  uint16_t z_len = 0;
+
   if (page_type == FIL_PAGE_COMPRESSED_AND_ENCRYPTED) {
-    src_len = static_cast<uint16_t>(
-                  mach_read_from_2(src + FIL_PAGE_COMPRESS_SIZE_V1)) +
-              FIL_PAGE_DATA;
+    z_len = mach_read_from_2(src + FIL_PAGE_COMPRESS_SIZE_V1);
+    src_len = z_len + FIL_PAGE_DATA;
 
     Compression::meta_t header;
     Compression::deserialize_header(src, &header);
@@ -1684,6 +1658,7 @@ dberr_t Encryption::decrypt(const IORequest &type, byte *src, ulint src_len,
                               reinterpret_cast<unsigned char *>(m_key),
                               static_cast<uint32>(m_klen), my_aes_256_cbc,
                               reinterpret_cast<unsigned char *>(m_iv), false);
+
         if (elen == MY_AES_BAD_DATA) {
           if (block != nullptr) {
             os_free_block(block);
@@ -1691,6 +1666,8 @@ dberr_t Encryption::decrypt(const IORequest &type, byte *src, ulint src_len,
 
           return (DB_IO_DECRYPT_FAIL);
         }
+
+        ut_ad(static_cast<ulint>(elen) == remain_len);
 
         /* Copy the other data bytes to temp area. */
         memcpy(dst, ptr, data_len - remain_len);
@@ -1772,6 +1749,19 @@ dberr_t Encryption::decrypt(const IORequest &type, byte *src, ulint src_len,
   if (block != nullptr) {
     os_free_block(block);
   }
+
+#ifdef UNIV_DEBUG
+  {
+    /* Check if all the padding bytes are zeroes. */
+    if (page_type == FIL_PAGE_COMPRESSED_AND_ENCRYPTED) {
+      uint32_t padding = src_len - FIL_PAGE_DATA - z_len;
+      for (uint32_t i = 0; i < padding; ++i) {
+        byte *pad = src + z_len + FIL_PAGE_DATA + i;
+        ut_ad(*pad == 0x0);
+      }
+    }
+  }
+#endif /* UNIV_DEBUG */
 
 #ifdef UNIV_ENCRYPT_DEBUG
   ib::info(ER_IB_MSG_850) << "Decrypted page: " << page_id;

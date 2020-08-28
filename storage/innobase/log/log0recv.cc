@@ -1093,7 +1093,7 @@ static void recv_apply_log_rec(recv_addr_t *recv_addr) {
   fil_space_t *space = fil_space_acquire_for_io_with_load(recv_addr->space);
   const page_size_t page_size(space->flags);
 
-  if (space && space->is_encrypted) {
+  if (space && space->is_space_encrypted) {
     /* found space that cannot be decrypted, abort processing REDO */
     recv_sys->found_corrupt_log = true;
     fil_space_release_for_io(space);

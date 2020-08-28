@@ -367,6 +367,7 @@ class FlushObserver {
   ulint m_number_of_pages_flushed;
 };
 
+lsn_t get_flush_sync_lsn() noexcept;
 #endif /* !UNIV_HOTBACKUP */
 
 /** If LRU list of a buf_pool is less than this size then LRU eviction

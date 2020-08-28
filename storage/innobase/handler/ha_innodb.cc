@@ -184,6 +184,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "trx0trx.h"
 #include "trx0xa.h"
 #include "ut0mem.h"
+#include "ut0test.h"
 #include "xtradb_i_s.h"
 #else
 #include <typelib.h>
@@ -4147,6 +4148,12 @@ static void innobase_post_recover() {
         srv_undo_log_encrypt = false;
       }
       mutex_exit(&undo::ddl_mutex);
+
+      /* We have to ensure that the first page of the undo tablespaces gets
+       * flushed to disk.  Otherwise during recovery, since we read the first
+       * page without applying the redo logs, it will be determined that
+       * encryption is off. */
+      buf_flush_sync_all_buf_pools();
     }
   }
 
@@ -21206,19 +21213,20 @@ static void innodb_make_page_dirty(
 {
   mtr_t mtr;
   ulong space_id = *static_cast<const ulong *>(save);
+  page_no_t page_no = srv_saved_page_number_debug;
+
   fil_space_t *space = fil_space_acquire_silent(space_id);
 
   if (space == nullptr) {
     return;
   }
 
-  if (srv_saved_page_number_debug > space->size) {
+  if (page_no > space->size) {
     fil_space_release(space);
     return;
   }
 
-  auto page_id =
-      page_id_t{space->id, static_cast<page_no_t>(srv_saved_page_number_debug)};
+  auto page_id = page_id_t{space->id, page_no};
 
   mtr.start();
 
@@ -21227,13 +21235,18 @@ static void innodb_make_page_dirty(
 
   if (block != nullptr) {
     byte *page = block->frame;
+    page_type_t page_type = fil_page_get_type(page);
 
-    ib::info(ER_IB_MSG_574) << "Dirtying page: " << page_id;
+    /* Don't dirty a page that is not yet used. */
+    if (page_type != FIL_PAGE_TYPE_ALLOCATED) {
+      ib::info(ER_IB_MSG_574)
+          << "Dirtying page: " << page_id
+          << ", page_type=" << fil_get_page_type_str(page_type);
 
-    dblwr::Force_crash = page_id;
+      dblwr::Force_crash = page_id;
 
-    mlog_write_ulint(page + FIL_PAGE_TYPE, fil_page_get_type(page), MLOG_2BYTES,
-                     &mtr);
+      mlog_write_ulint(page + FIL_PAGE_TYPE, page_type, MLOG_2BYTES, &mtr);
+    }
   }
 
   mtr.commit();
@@ -24451,6 +24464,33 @@ static MYSQL_SYSVAR_UINT(background_scrub_data_interval,
                          NULL, NULL, srv_background_scrub_data_interval, 1,
                          UINT_MAX32, 0);
 
+#ifdef UNIV_DEBUG
+/** Use this variable innodb_interpreter to execute debug code within InnoDB.
+The output is stored in the innodb_interpreter_output variable. */
+static MYSQL_THDVAR_STR(interpreter, PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_NOPERSIST,
+                        "Invoke InnoDB test interpreter with commands"
+                        " to be executed.",
+                        ib_interpreter_check, ib_interpreter_update, "init");
+
+/** When testing commands are executed in the innodb_interpreter variable, the
+output is stored in this innodb_interpreter_output variable. */
+static MYSQL_THDVAR_STR(interpreter_output,
+                        PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_MEMALLOC |
+                            PLUGIN_VAR_NOPERSIST,
+                        "Output from InnoDB testing module (ut0test).", nullptr,
+                        nullptr, "The Default Value");
+
+char **thd_innodb_interpreter_output(THD *thd) {
+  return (MYSQL_SYSVAR_NAME(interpreter_output)
+              .resolve(thd, MYSQL_SYSVAR_NAME(interpreter_output).offset));
+}
+
+char **thd_innodb_interpreter(THD *thd) {
+  return MYSQL_SYSVAR_NAME(interpreter)
+      .resolve(thd, MYSQL_SYSVAR_NAME(interpreter).offset);
+}
+#endif /* UNIV_DEBUG */
+
 static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(api_trx_level),
     MYSQL_SYSVAR(api_bk_commit_interval),
@@ -24680,6 +24720,8 @@ static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(sync_debug),
     MYSQL_SYSVAR(buffer_pool_debug),
     MYSQL_SYSVAR(ddl_log_crash_reset_debug),
+    MYSQL_SYSVAR(interpreter),
+    MYSQL_SYSVAR(interpreter_output),
 #endif /* UNIV_DEBUG */
     MYSQL_SYSVAR(parallel_read_threads),
     MYSQL_SYSVAR(corrupt_table_action),
