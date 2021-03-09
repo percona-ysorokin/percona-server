@@ -398,12 +398,7 @@ struct fil_space_t {
   /** Copy the encryption info from this object to the provided
   Encryption object.
   @param[in]    en   Encryption object to which info is copied. */
-  void get_encryption_info(Encryption &en) noexcept {
-    en.set_type(encryption_type);
-    en.set_key(encryption_key);
-    en.set_key_length(encryption_klen);
-    en.set_initial_vector(encryption_iv);
-  }
+  void get_encryption_info(Encryption &en) noexcept;
 
 #ifdef UNIV_DEBUG
   /** Print the extent descriptor pages of this tablespace into
