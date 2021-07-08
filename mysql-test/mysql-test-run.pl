@@ -176,6 +176,7 @@ my $opt_mtr_term_args      = env_or_val(MTR_TERM => "xterm -title %title% -e");
 my $opt_lldb_cmd           = env_or_val(MTR_LLDB => "lldb");
 our $opt_junit_output      = undef;
 our $opt_junit_package     = undef;
+my $opt_after_failure_hook = undef;
 
 # Options used when connecting to an already running server
 my %opts_extern;
@@ -1802,6 +1803,7 @@ sub command_line_setup {
     'vardir=s'        => \$opt_vardir,
 
     # Misc
+    'after-failure-hook=s'  => \$opt_after_failure_hook,
     'charset-for-testdb=s'  => \$opt_charset_for_testdb,
     'colored-diff'          => \$opt_colored_diff,
     'comment=s'             => \$opt_comment,
@@ -6042,6 +6044,11 @@ sub save_datadir_after_failure($$) {
   mtr_report(" - saving '$dir'");
   my $dir_name = basename($dir);
   rename("$dir", "$savedir/$dir_name");
+  if (defined $opt_after_failure_hook and $opt_after_failure_hook ne '') {
+    mtr_report(" - executing custom after-faulure hook");
+    mtr_verbose(" - $opt_after_failure_hook");
+    system($opt_after_failure_hook);
+  }
 }
 
 sub remove_ndbfs_from_ndbd_datadir {
@@ -8016,6 +8023,9 @@ Misc options
   xml-report=FILE       Generate a XML report file compatible with JUnit.
   junit-output=FILE     Output JUnit test summary XML to FILE.
   junit-package=NAME    Set the JUnit package name to NAME for this test run.
+  after-failure-hook=COMMAND
+                        Execute custom command (e.g. external storage cleanup)
+                        upon test failure (Currently used for ZenFS storages).
 
 Some options that control enabling a feature for normal test runs,
 can be turned off by prepending 'no' to the option, e.g. --notimer.
