@@ -176,7 +176,7 @@ my $opt_mtr_term_args      = env_or_val(MTR_TERM => "xterm -title %title% -e");
 my $opt_lldb_cmd           = env_or_val(MTR_LLDB => "lldb");
 our $opt_junit_output      = undef;
 our $opt_junit_package     = undef;
-my $opt_after_failure_hook = undef;
+my $opt_fs_cleanup_hook = undef;
 
 # Options used when connecting to an already running server
 my %opts_extern;
@@ -1803,7 +1803,7 @@ sub command_line_setup {
     'vardir=s'        => \$opt_vardir,
 
     # Misc
-    'after-failure-hook=s'  => \$opt_after_failure_hook,
+    'fs-cleanup-hook=s'     => \$opt_fs_cleanup_hook,
     'charset-for-testdb=s'  => \$opt_charset_for_testdb,
     'colored-diff'          => \$opt_colored_diff,
     'comment=s'             => \$opt_comment,
@@ -3506,6 +3506,7 @@ sub remove_stale_vardir () {
   # Remove the "tmp" dir
   mtr_verbose("Removing $opt_tmpdir/");
   rmtree("$opt_tmpdir/");
+  invoke_fs_cleanup_hook();
 }
 
 # Create var and the directories needed in var
@@ -5997,6 +5998,14 @@ sub clean_dir {
     $dir);
 }
 
+sub invoke_fs_cleanup_hook {
+  if (defined $opt_fs_cleanup_hook and $opt_fs_cleanup_hook ne '') {
+    mtr_report(" - executing custom fs-cleanup hook");
+    mtr_verbose(" - $opt_fs_cleanup_hook");
+    system($opt_fs_cleanup_hook);
+  }
+}
+
 sub clean_datadir {
   my ($tinfo) = @_;
 
@@ -6023,6 +6032,7 @@ sub clean_datadir {
         !$bootstrap_opts) {
       mtr_verbose(" - removing '$mysqld_dir'");
       rmtree($mysqld_dir);
+      invoke_fs_cleanup_hook();
     }
   }
 
@@ -6044,11 +6054,7 @@ sub save_datadir_after_failure($$) {
   mtr_report(" - saving '$dir'");
   my $dir_name = basename($dir);
   rename("$dir", "$savedir/$dir_name");
-  if (defined $opt_after_failure_hook and $opt_after_failure_hook ne '') {
-    mtr_report(" - executing custom after-faulure hook");
-    mtr_verbose(" - $opt_after_failure_hook");
-    system($opt_after_failure_hook);
-  }
+  invoke_fs_cleanup_hook();
 }
 
 sub remove_ndbfs_from_ndbd_datadir {
@@ -8023,7 +8029,7 @@ Misc options
   xml-report=FILE       Generate a XML report file compatible with JUnit.
   junit-output=FILE     Output JUnit test summary XML to FILE.
   junit-package=NAME    Set the JUnit package name to NAME for this test run.
-  after-failure-hook=COMMAND
+  fs-cleanup-hook=COMMAND
                         Execute custom command (e.g. external storage cleanup)
                         upon test failure (Currently used for ZenFS storages).
 
