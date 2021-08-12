@@ -375,6 +375,7 @@ our $exe_mysql_migrate_keyring;
 our $exe_mysql_keyring_encryption_test;
 our $exe_mysqladmin;
 our $exe_mysqltest;
+our $exe_mysql_zenfs;
 our $glob_mysql_test_dir;
 our $mysql_version_extra;
 our $mysql_version_id;
@@ -2741,6 +2742,7 @@ sub executable_setup () {
     my_find_bin($bindir,
                 [ "runtime_output_directory", "libexec", "sbin", "bin" ],
                 "mysql_keyring_encryption_test");
+  $exe_mysql_zenfs = mtr_exe_exists("$path_client_bindir/zenfs");
 
   if ($ndbcluster_enabled) {
     # Look for single threaded NDB
@@ -3277,6 +3279,7 @@ sub environment_setup {
     client_arguments_no_grp_suffix("mysql_config_editor");
   $ENV{'MYSQL_SECURE_INSTALLATION'} =
     "$path_client_bindir/mysql_secure_installation";
+  $ENV{'MYSQL_ZENFS'} = $exe_mysql_zenfs;
 
   my $exe_mysqld = find_mysqld($basedir);
   $ENV{'MYSQLD'} = $exe_mysqld;
