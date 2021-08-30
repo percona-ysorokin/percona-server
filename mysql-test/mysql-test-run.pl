@@ -2742,7 +2742,7 @@ sub executable_setup () {
     my_find_bin($bindir,
                 [ "runtime_output_directory", "libexec", "sbin", "bin" ],
                 "mysql_keyring_encryption_test");
-  $exe_mysql_zenfs = mtr_exe_exists("$path_client_bindir/zenfs");
+  $exe_mysql_zenfs = mtr_exe_maybe_exists("$path_client_bindir/zenfs");
 
   if ($ndbcluster_enabled) {
     # Look for single threaded NDB
