@@ -67,6 +67,7 @@
 %token QB_NAME_HINT
 %token SEMIJOIN_HINT
 %token SUBQUERY_HINT
+%token LOOSE_INDEX_SCAN_HINT
 
 /* Other tokens */
 
@@ -372,6 +373,10 @@ table_level_hint_type_on:
         | BNL_HINT
           {
             $$= BNL_HINT_ENUM;
+          }
+        | LOOSE_INDEX_SCAN_HINT
+          {
+            $$= LOOSE_INDEX_SCAN_ENUM;
           }
         ;
 

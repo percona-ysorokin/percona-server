@@ -48,6 +48,7 @@ struct st_opt_hint_info opt_hint_info[]=
   {"QB_NAME", false, false},
   {"SEMIJOIN", false, false},
   {"SUBQUERY", false, false},
+  {"LOOSE_INDEX_SCAN", true, true},
   {0, 0, 0}
 };
 

@@ -772,6 +772,7 @@ static const SYMBOL symbols[] = {
   { SYM_H("QB_NAME",                QB_NAME_HINT)},
   { SYM_H("SEMIJOIN",               SEMIJOIN_HINT)},
   { SYM_H("SUBQUERY",               SUBQUERY_HINT)},
+  { SYM_H("LOOSE_INDEX_SCAN",       LOOSE_INDEX_SCAN_HINT)},
 };
 
 #endif /* LEX_INCLUDED */

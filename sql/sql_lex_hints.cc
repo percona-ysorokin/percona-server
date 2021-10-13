@@ -161,6 +161,7 @@ void Hint_scanner::add_hint_token_digest()
       case QB_NAME_HINT:
       case SEMIJOIN_HINT:
       case SUBQUERY_HINT:
+      case LOOSE_INDEX_SCAN_HINT:
         break;
       default:
         assert(false);

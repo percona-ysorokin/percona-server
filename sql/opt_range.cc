@@ -3075,6 +3075,8 @@ int test_quick_select(THD *thd, key_map keys_to_use,
                                    Opt_trace_context::RANGE_OPTIMIZER);
       if (unlikely(trace->is_started()))
         group_trp->trace_basic_info(&param, &grp_summary);
+      if (hint_table_state(thd, head, LOOSE_INDEX_SCAN_ENUM, 0))
+          group_trp->cost_est.multiply(0.1);
       if (group_trp->cost_est < best_cost)
       {
         grp_summary.add("chosen", true);
