@@ -1,0 +1,34 @@
+--source include/have_udf.inc
+
+--echo ***
+--echo *** creating test UDF functions
+--echo ***
+--replace_result $TEST_UDF_WRAPPERS_LIB TEST_UDF_WRAPPERS_LIB
+eval CREATE FUNCTION udf_reverse RETURNS STRING SONAME '$TEST_UDF_WRAPPERS_LIB';
+--replace_result $TEST_UDF_WRAPPERS_LIB TEST_UDF_WRAPPERS_LIB
+eval CREATE FUNCTION udf_reverse_manual RETURNS STRING SONAME '$TEST_UDF_WRAPPERS_LIB';
+
+
+--echo ***
+--echo *** checking 'udf_reverse()'
+--echo ***
+
+SELECT udf_reverse(NULL);
+SELECT udf_reverse('');
+SELECT udf_reverse('a');
+SELECT udf_reverse('abcdefgh');
+
+--echo ***
+--echo *** checking 'udf_reverse_manual()'
+--echo ***
+
+SELECT udf_reverse_manual(NULL);
+SELECT udf_reverse_manual('');
+SELECT udf_reverse_manual('a');
+SELECT udf_reverse_manual('abcdefgh');
+
+--echo ***
+--echo *** dropping test UDF functions
+--echo ***
+DROP FUNCTION udf_reverse;
+DROP FUNCTION udf_reverse_manual;

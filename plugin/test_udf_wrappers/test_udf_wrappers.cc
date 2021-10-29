@@ -16,6 +16,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <mysqlpp/udf_wrappers.hpp>
 
@@ -122,8 +123,81 @@ class wrapped_udf_int_impl {
   }
 };
 
+class udf_reverse_impl {
+ public:
+  udf_reverse_impl(mysqlpp::udf_context &ctx) {
+    if (ctx.get_number_of_args() != 1)
+      throw std::invalid_argument("function requires exactly one argument");
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+    ctx.mark_arg_nullable(0, true);
+    ctx.set_arg_type(0, STRING_RESULT);
+  }
+
+  mysqlpp::udf_result_t<STRING_RESULT> calculate(const mysqlpp::udf_context &ctx) {
+    auto arg_sv = ctx.get_arg<STRING_RESULT>(0);
+    if (arg_sv.data() == nullptr) return {};
+    return std::string(std::crbegin(arg_sv), std::crend(arg_sv));
+  }
+};
+
+struct udf_reverse_manual_context {
+  using buffer_type = std::vector<char>;
+  buffer_type buffer;
+};
+
 }  // end of anonymous namespace
 
 DECLARE_STRING_UDF(wrapped_udf_string_impl, wrapped_udf_string)
 DECLARE_REAL_UDF(wrapped_udf_real_impl, wrapped_udf_real)
 DECLARE_INT_UDF(wrapped_udf_int_impl, wrapped_udf_int)
+
+DECLARE_STRING_UDF(udf_reverse_impl, udf_reverse)
+
+extern "C" bool udf_reverse_manual_init(UDF_INIT *initid, UDF_ARGS *args, char *message) {
+  if (args->arg_count != 1) {
+    std::strncpy(message, "function requires exactly one argument", MYSQL_ERRMSG_SIZE);
+    message[MYSQL_ERRMSG_SIZE - 1] = '\0';
+    return true;
+  }
+  initid->const_item = false;
+  initid->maybe_null = true;
+  args->maybe_null[0] = 1;
+  args->arg_type[0] = STRING_RESULT;
+
+  auto context = new (std::nothrow) udf_reverse_manual_context;
+  if (context == nullptr) {
+    std::strncpy(message, "cannot allocate context", MYSQL_ERRMSG_SIZE);
+    message[MYSQL_ERRMSG_SIZE - 1] = '\0';
+    return true;
+  }
+
+  initid->ptr = reinterpret_cast<char *>(context);
+
+  return false;
+}
+
+extern "C" void udf_reverse_manual_deinit(UDF_INIT *initid) {
+  delete reinterpret_cast<udf_reverse_manual_context *>(initid->ptr);
+}
+
+extern "C" char *udf_reverse_manual(UDF_INIT *initid, UDF_ARGS *args,
+                         char */*result*/, unsigned long *length,
+                         char *is_null, char *error) {
+  auto arg_ptr = args->args[0];
+  if (arg_ptr == nullptr) {
+    *error = 0;
+    *is_null = 1;
+    return nullptr;
+  }
+  std::size_t arg_length = args->lengths[0];
+
+  auto context = reinterpret_cast<udf_reverse_manual_context *>(initid->ptr);
+  context->buffer.resize(arg_length + 1);
+  std::reverse_copy(arg_ptr, arg_ptr + arg_length, std::begin(context->buffer));
+  context->buffer.back() = '\0';
+  *error = 0;
+  *is_null = 0;
+  *length = arg_length;
+  return context->buffer.data();
+}
