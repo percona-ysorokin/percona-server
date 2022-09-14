@@ -551,7 +551,7 @@ void Loader::spawn_signal_handler_thread() {
         } else if (sig == SIGHUP) {
           request_log_reopen();
         } else {
-          harness_assert(sig == SIGINT || sig == SIGTERM);
+          // harness_assert(sig == SIGINT || sig == SIGTERM);
           request_application_shutdown();
           return;
         }
