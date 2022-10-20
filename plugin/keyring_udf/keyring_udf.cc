@@ -24,9 +24,9 @@
 
 #include <stdio.h>
 #include <sys/types.h>
-#include <boost/optional/optional.hpp>
 #include <memory>
 #include <new>
+#include <optional>
 
 #include <mysql/components/my_service.h>
 #include <mysql/components/services/keyring_generator.h>
@@ -274,7 +274,7 @@ static bool validate_run_time(UDF_ARGS *args, int to_validate) {
 
 static bool keyring_udf_func_init(
     UDF_INIT *initid, UDF_ARGS *args, char *message, int to_validate,
-    const boost::optional<size_t> max_lenth_to_return,
+    const std::optional<size_t> max_lenth_to_return,
     const size_t size_of_memory_to_allocate) {
   initid->ptr = nullptr;
   uint expected_arg_count = get_args_count_from_validation_request(to_validate);
@@ -538,7 +538,7 @@ PLUGIN_EXPORT
 bool keyring_key_length_fetch_init(UDF_INIT *initid, UDF_ARGS *args,
                                    char *message) {
   return keyring_udf_func_init(initid, args, message, VALIDATE_KEY_ID,
-                               boost::none, 0);
+                               std::nullopt, 0);
 }
 
 PLUGIN_EXPORT
