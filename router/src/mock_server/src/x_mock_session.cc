@@ -131,6 +131,10 @@ void MySQLXProtocol::encode_message(
 
   auto buf = dyn_buf.data(orig_size, grow_size);
 
+  if (buf.size() == 0) {
+    throw std::runtime_error("Failed to assign message id");
+  }
+
   static_cast<uint8_t *>(buf.data())[0] = msg_id;
   buf += 1;
 
