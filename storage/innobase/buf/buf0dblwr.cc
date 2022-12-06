@@ -45,7 +45,7 @@ Atomic writes handling. */
 
 #include <iomanip>
 #include <iostream>
-#include <regex>
+#include "my_regex.h"
 #include <vector>
 
 /** Doublewrite buffer */

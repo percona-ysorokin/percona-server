@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-#include <regex>
+#include "my_regex.h"
 using regex_search_and_replace_patterns = std::pair<std::regex, std::string>;
 
 namespace mysqlrouter {

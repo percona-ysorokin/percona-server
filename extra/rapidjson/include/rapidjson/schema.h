@@ -35,7 +35,15 @@
 #if RAPIDJSON_SCHEMA_USE_INTERNALREGEX
 #include "internal/regex.h"
 #elif RAPIDJSON_SCHEMA_USE_STDREGEX
+// GCC 12.1 bug 105562
+#if defined(__GNUC__) && !defined(__clang__) && (__GNUC__ == 12)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 #include <regex>
+#if defined(__GNUC__) && !defined(__clang__) && (__GNUC__ == 12)
+#pragma GCC diagnostic pop
+#endif
 #endif
 
 #if RAPIDJSON_SCHEMA_USE_INTERNALREGEX || RAPIDJSON_SCHEMA_USE_STDREGEX

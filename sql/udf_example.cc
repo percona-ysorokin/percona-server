@@ -126,7 +126,7 @@
 #include <algorithm>
 #include <mutex>
 #include <new>
-#include <regex>
+#include "my_regex.h"
 #include <string>
 #include <vector>
 

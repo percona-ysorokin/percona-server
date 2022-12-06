@@ -31,7 +31,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include <sql_tablespace.h>
 
 #include <algorithm>
-#include <regex>
+#include "my_regex.h"
 
 #include "dict0boot.h"
 #include "dict0crea.h"

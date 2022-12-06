@@ -67,7 +67,7 @@
 #include "random_generator.h"
 
 #ifdef USE_STD_REGEX
-#include <regex>
+#include "my_regex.h"
 #else
 #include <regex.h>
 #endif

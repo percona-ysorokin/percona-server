@@ -28,7 +28,7 @@
 #include "mysqlrouter/rest_api_component.h"
 
 #include <list>
-#include <regex>
+#include "my_regex.h"
 #include <shared_mutex>
 
 class RestApi {

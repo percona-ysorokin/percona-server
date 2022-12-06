@@ -24,7 +24,7 @@
 
 #include "hostname_validator.h"
 
-#include <regex>
+#include "my_regex.h"
 
 #include "mysql/harness/net_ts/internet.h"
 

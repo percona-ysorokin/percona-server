@@ -17,7 +17,7 @@
 
 #include <iostream>
 #include <iterator>
-#include <regex>
+#include "my_regex.h"
 
 #include "plugin/auth_ldap/include/plugin_log.h"
 

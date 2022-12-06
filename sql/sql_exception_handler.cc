@@ -45,7 +45,7 @@
 // boost::geometry::exception
 #include <boost/geometry/core/exception.hpp>
 #include <new>  // std::bad_alloc
-#include <regex>
+#include "my_regex.h"
 #include <stdexcept>  // Other std exceptions
 #include <string>
 

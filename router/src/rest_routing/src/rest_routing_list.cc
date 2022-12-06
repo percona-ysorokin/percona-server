@@ -24,7 +24,7 @@
 
 #include "rest_routing_list.h"
 
-#include <regex>
+#include "my_regex.h"
 #include <string>
 
 #include "mysqlrouter/rest_api_utils.h"

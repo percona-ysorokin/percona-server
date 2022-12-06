@@ -25,7 +25,7 @@
 #include <string.h>
 #include <iterator>
 #include <new>
-#include <regex>
+#include "my_regex.h"
 #include <utility>
 
 #include "lex_string.h"

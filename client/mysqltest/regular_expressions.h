@@ -23,7 +23,7 @@
 #ifndef REGULAR_EXPRESSIONS_INCLUDED
 #define REGULAR_EXPRESSIONS_INCLUDED
 
-#include <regex>
+#include "my_regex.h"
 
 #include "mysql/components/services/bits/psi_bits.h"
 #include "prealloced_array.h"

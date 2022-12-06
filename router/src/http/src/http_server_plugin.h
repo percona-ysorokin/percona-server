@@ -26,7 +26,7 @@
 #define MYSQLROUTER_HTTP_SERVER_PLUGIN_INCLUDED
 
 #include <mutex>
-#include <regex>
+#include "my_regex.h"
 #include <string>
 #include <thread>
 #include <vector>

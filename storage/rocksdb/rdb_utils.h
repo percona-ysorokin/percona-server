@@ -17,7 +17,7 @@
 
 /* C++ standard header files */
 #include <chrono>
-#include <regex>
+#include "my_regex.h"
 #include <string>
 #include <unordered_map>
 #include <vector>

@@ -25,7 +25,7 @@
 #include "core_dumper.h"
 
 #include <fstream>
-#include <regex>
+#include "my_regex.h"
 #include <string>
 
 #include "core_finder.h"

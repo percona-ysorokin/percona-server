@@ -28,7 +28,7 @@
 #include <Windows.h>
 #include <Winsock2.h>
 
-#include <regex>
+#include "my_regex.h"
 #include <string>
 
 namespace mysql_harness {

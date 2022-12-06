@@ -21,7 +21,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
 #include "sql/xa/xid_extract.h"
-#include <regex>
+#include "my_regex.h"
 #include "unhex.h"
 
 namespace xa::extractor {

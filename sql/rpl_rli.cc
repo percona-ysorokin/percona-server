@@ -27,7 +27,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <algorithm>
-#include <regex>
+#include "my_regex.h"
 
 #include "libbinlogevents/include/binlog_event.h"
 #include "m_ctype.h"

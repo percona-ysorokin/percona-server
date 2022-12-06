@@ -24,7 +24,7 @@
 
 #include "rest_connection_pool_list.h"
 
-#include <regex>
+#include "my_regex.h"
 #include <string>
 
 #include "mysqlrouter/connection_pool_component.h"
