@@ -21,11 +21,6 @@ else()
   return()
 endif()
 
-if(NOT DEFINED CMAKE_CXX_VISIBILITY_PRESET AND NOT DEFINED CMAKE_VISIBILITY_INLINES_HIDDEN)
-  set(CMAKE_CXX_VISIBILITY_PRESET hidden)
-  set(CMAKE_VISIBILITY_INLINES_HIDDEN YES)
-endif()
-
 # We are not interesting in profiling tests.
 DISABLE_MISSING_PROFILE_WARNING()
 
@@ -35,6 +30,11 @@ MYSQL_ADD_COMPONENT(encryption_udf
   server_helpers.cc
   LINK_LIBRARIES OpenSSLPP::OpenSSLPP ext::zlib
   MODULE_ONLY
+)
+
+set_target_properties(component_encryption_udf PROPERTIES
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN YES
 )
 
 target_include_directories(component_encryption_udf SYSTEM PRIVATE ${BOOST_PATCHES_DIR} ${BOOST_INCLUDE_DIR})

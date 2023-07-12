@@ -17,11 +17,22 @@
 #include <stdexcept>
 #include <string>
 
+#include <my_sys.h>
+
 #include <mysqlpp/udf_wrappers.hpp>
 
 namespace {
 
-class wrapped_udf_string_impl {
+class error_reporter_initializer {
+ public:
+  error_reporter_initializer() noexcept {
+    [[maybe_unused]] static bool dummy_value = []() {
+      mysqlpp::udf_error_reporter::instance() = &my_error;
+      return true;
+    }();
+  }
+};
+class wrapped_udf_string_impl : private error_reporter_initializer {
  public:
   wrapped_udf_string_impl(mysqlpp::udf_context &ctx) {
     if (ctx.get_number_of_args() == 2)
@@ -62,7 +73,7 @@ class wrapped_udf_string_impl {
   }
 };
 
-class wrapped_udf_real_impl {
+class wrapped_udf_real_impl : private error_reporter_initializer {
  public:
   wrapped_udf_real_impl(mysqlpp::udf_context &ctx) {
     if (ctx.get_number_of_args() != 1)
@@ -94,7 +105,7 @@ class wrapped_udf_real_impl {
   }
 };
 
-class wrapped_udf_int_impl {
+class wrapped_udf_int_impl : private error_reporter_initializer {
  public:
   wrapped_udf_int_impl(mysqlpp::udf_context &ctx) {
     if (ctx.get_number_of_args() != 1)

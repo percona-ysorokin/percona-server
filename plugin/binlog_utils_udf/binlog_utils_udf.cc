@@ -64,6 +64,10 @@ int binlog_utils_udf_init(void *) {
   sys_var_srv.reset(
       reinterpret_cast<SERVICE_TYPE(component_sys_variable_register) *>(
           acquired_service));
+  // Here we initialize UDF wrapper errror reporter with
+  // the default one from mysys
+  mysqlpp::udf_error_reporter::instance() = &my_error;
+
   binlog_utils_udf_initialized = true;
   return 0;
 }
