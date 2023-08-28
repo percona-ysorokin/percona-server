@@ -94,17 +94,17 @@ include/assert.inc [Checking wrapped_udf_int(): 1.75]
 * error code to ER_UDF_ERROR
 * if the second argument is not NULL, it is just ignored
 SELECT wrapped_udf_string('42', NULL) AS result;
-ERROR HY000: wrapped_udf_string<string> UDF failed; argument 1 cannot be null
+ERROR HY000: wrapped_udf_string<string> UDF failed; argument 2 cannot be null
 SELECT wrapped_udf_string('42', '42') AS result;
 result
 {42}
 SELECT wrapped_udf_real(42.0, NULL) AS result;
-ERROR HY000: wrapped_udf_real<real> UDF failed; argument 1 cannot be null
+ERROR HY000: wrapped_udf_real<real> UDF failed; argument 2 cannot be null
 SELECT wrapped_udf_real(42.0, 42.0) AS result;
 result
 42.25
 SELECT wrapped_udf_int(42, NULL) AS result;
-ERROR HY000: wrapped_udf_int<int> UDF failed; argument 1 cannot be null
+ERROR HY000: wrapped_udf_int<int> UDF failed; argument 2 cannot be null
 SELECT wrapped_udf_int(42, 42) AS result;
 result
 142

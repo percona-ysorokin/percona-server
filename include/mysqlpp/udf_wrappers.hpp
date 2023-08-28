@@ -141,7 +141,7 @@ class udf_base {
   static void validate_argument_nullness(const udf_context &udf_ctx) {
     for (std::size_t index = 0; index < udf_ctx.get_number_of_args(); ++index) {
       if (!udf_ctx.is_arg_nullable(index) && udf_ctx.is_arg_null(index)) {
-        throw std::invalid_argument("argument " + std::to_string(index) +
+        throw std::invalid_argument("argument " + std::to_string(index + 1) +
                                     " cannot be null");
       }
     }
