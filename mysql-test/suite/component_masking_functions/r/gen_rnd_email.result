@@ -7,17 +7,17 @@ SELECT gen_rnd_email(42, 42, '', '');
 ERROR HY000: Can't initialize function 'gen_rnd_email'; Wrong argument list: should be ([int], [int], [string])
 # argument nullness checks
 SELECT gen_rnd_email(NULL);
-ERROR HY000: gen_rnd_email<string> UDF failed; argument 0 cannot be null
+ERROR HY000: gen_rnd_email<string> UDF failed; argument 1 cannot be null
 SELECT gen_rnd_email(NULL, 42);
-ERROR HY000: gen_rnd_email<string> UDF failed; argument 0 cannot be null
+ERROR HY000: gen_rnd_email<string> UDF failed; argument 1 cannot be null
 SELECT gen_rnd_email(42, NULL);
-ERROR HY000: gen_rnd_email<string> UDF failed; argument 1 cannot be null
-SELECT gen_rnd_email(NULL, 42, '');
-ERROR HY000: gen_rnd_email<string> UDF failed; argument 0 cannot be null
-SELECT gen_rnd_email(42, NULL, '');
-ERROR HY000: gen_rnd_email<string> UDF failed; argument 1 cannot be null
-SELECT gen_rnd_email(42, 42, NULL);
 ERROR HY000: gen_rnd_email<string> UDF failed; argument 2 cannot be null
+SELECT gen_rnd_email(NULL, 42, '');
+ERROR HY000: gen_rnd_email<string> UDF failed; argument 1 cannot be null
+SELECT gen_rnd_email(42, NULL, '');
+ERROR HY000: gen_rnd_email<string> UDF failed; argument 2 cannot be null
+SELECT gen_rnd_email(42, 42, NULL);
+ERROR HY000: gen_rnd_email<string> UDF failed; argument 3 cannot be null
 # constraints checks
 SELECT gen_rnd_email(-42);
 ERROR HY000: gen_rnd_email<string> UDF failed; Name length must be a positive number

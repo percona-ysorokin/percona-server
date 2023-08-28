@@ -13,19 +13,19 @@ SELECT mask_outer('', 42, 42, '', '');
 ERROR HY000: Can't initialize function 'mask_outer'; Wrong argument list: should be (string, int, int [char])
 # argument nullness checks
 SELECT mask_outer(NULL, 42, 42);
-ERROR HY000: mask_outer<string> UDF failed; argument 0 cannot be null
+ERROR HY000: mask_outer<string> UDF failed; argument 1 cannot be null
 SELECT mask_outer('', NULL, 42);
-ERROR HY000: mask_outer<string> UDF failed; argument 1 cannot be null
+ERROR HY000: mask_outer<string> UDF failed; argument 2 cannot be null
 SELECT mask_outer('', 42, NULL);
-ERROR HY000: mask_outer<string> UDF failed; argument 2 cannot be null
-SELECT mask_outer(NULL, 42, 42, '');
-ERROR HY000: mask_outer<string> UDF failed; argument 0 cannot be null
-SELECT mask_outer('', NULL, 42, '');
-ERROR HY000: mask_outer<string> UDF failed; argument 1 cannot be null
-SELECT mask_outer('', 42, NULL, '');
-ERROR HY000: mask_outer<string> UDF failed; argument 2 cannot be null
-SELECT mask_outer('', 42, 42, NULL);
 ERROR HY000: mask_outer<string> UDF failed; argument 3 cannot be null
+SELECT mask_outer(NULL, 42, 42, '');
+ERROR HY000: mask_outer<string> UDF failed; argument 1 cannot be null
+SELECT mask_outer('', NULL, 42, '');
+ERROR HY000: mask_outer<string> UDF failed; argument 2 cannot be null
+SELECT mask_outer('', 42, NULL, '');
+ERROR HY000: mask_outer<string> UDF failed; argument 3 cannot be null
+SELECT mask_outer('', 42, 42, NULL);
+ERROR HY000: mask_outer<string> UDF failed; argument 4 cannot be null
 # constraints checks
 SELECT mask_outer('foo', -1, 0);
 ERROR HY000: mask_outer<string> UDF failed; Margins can't be negative!

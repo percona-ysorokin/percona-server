@@ -9,11 +9,11 @@ SELECT mask_uk_nin('', '', '');
 ERROR HY000: Can't initialize function 'mask_uk_nin'; Wrong argument list: should be (string, [char])
 # argument nullness checks
 SELECT mask_uk_nin(NULL);
-ERROR HY000: mask_uk_nin<string> UDF failed; argument 0 cannot be null
-SELECT mask_uk_nin(NULL, '');
-ERROR HY000: mask_uk_nin<string> UDF failed; argument 0 cannot be null
-SELECT mask_uk_nin('', NULL);
 ERROR HY000: mask_uk_nin<string> UDF failed; argument 1 cannot be null
+SELECT mask_uk_nin(NULL, '');
+ERROR HY000: mask_uk_nin<string> UDF failed; argument 1 cannot be null
+SELECT mask_uk_nin('', NULL);
+ERROR HY000: mask_uk_nin<string> UDF failed; argument 2 cannot be null
 # constraints checks
 SELECT mask_uk_nin('');
 ERROR HY000: mask_uk_nin<string> UDF failed; Argument must be between 9 and 11 characters

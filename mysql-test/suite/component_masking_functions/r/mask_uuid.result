@@ -9,11 +9,11 @@ SELECT mask_uuid('', '', '');
 ERROR HY000: Can't initialize function 'mask_uuid'; Wrong argument list: should be (string, [char])
 # argument nullness checks
 SELECT mask_uuid(NULL);
-ERROR HY000: mask_uuid<string> UDF failed; argument 0 cannot be null
-SELECT mask_uuid(NULL, '');
-ERROR HY000: mask_uuid<string> UDF failed; argument 0 cannot be null
-SELECT mask_uuid('', NULL);
 ERROR HY000: mask_uuid<string> UDF failed; argument 1 cannot be null
+SELECT mask_uuid(NULL, '');
+ERROR HY000: mask_uuid<string> UDF failed; argument 1 cannot be null
+SELECT mask_uuid('', NULL);
+ERROR HY000: mask_uuid<string> UDF failed; argument 2 cannot be null
 # constraints checks
 SELECT mask_uuid('');
 ERROR HY000: mask_uuid<string> UDF failed; Argument must be exactly 36 characters

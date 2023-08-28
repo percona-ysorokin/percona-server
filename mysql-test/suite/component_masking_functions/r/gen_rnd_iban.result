@@ -7,11 +7,11 @@ SELECT gen_rnd_iban('', 42, '');
 ERROR HY000: Can't initialize function 'gen_rnd_iban'; Wrong argument list: should be ([string], [int])
 # argument nullness checks
 SELECT gen_rnd_iban(NULL);
-ERROR HY000: gen_rnd_iban<string> UDF failed; argument 0 cannot be null
-SELECT gen_rnd_iban(NULL, 42);
-ERROR HY000: gen_rnd_iban<string> UDF failed; argument 0 cannot be null
-SELECT gen_rnd_iban('', NULL);
 ERROR HY000: gen_rnd_iban<string> UDF failed; argument 1 cannot be null
+SELECT gen_rnd_iban(NULL, 42);
+ERROR HY000: gen_rnd_iban<string> UDF failed; argument 1 cannot be null
+SELECT gen_rnd_iban('', NULL);
+ERROR HY000: gen_rnd_iban<string> UDF failed; argument 2 cannot be null
 # constraints checks
 SELECT gen_rnd_iban('');
 ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 2 characters

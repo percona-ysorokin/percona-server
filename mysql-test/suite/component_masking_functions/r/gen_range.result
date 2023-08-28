@@ -11,9 +11,9 @@ SELECT gen_range(42, 43, 44);
 ERROR HY000: Can't initialize function 'gen_range'; Wrong argument list: should be (int, int)
 # argument nullness checks
 SELECT gen_range(NULL, 42);
-ERROR HY000: gen_range<int> UDF failed; argument 0 cannot be null
-SELECT gen_range(42, NULL);
 ERROR HY000: gen_range<int> UDF failed; argument 1 cannot be null
+SELECT gen_range(42, NULL);
+ERROR HY000: gen_range<int> UDF failed; argument 2 cannot be null
 # reversing min,max would be always NULL
 include/assert.inc [gen_range(-10, -80) should return NULL]
 include/assert.inc [gen_range(90, 10) should return NULL]

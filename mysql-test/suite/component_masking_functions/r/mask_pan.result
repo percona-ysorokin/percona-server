@@ -9,11 +9,11 @@ SELECT mask_pan('', '', '');
 ERROR HY000: Can't initialize function 'mask_pan'; Wrong argument list: should be (string, [char])
 # argument nullness checks
 SELECT mask_pan(NULL);
-ERROR HY000: mask_pan<string> UDF failed; argument 0 cannot be null
-SELECT mask_pan(NULL, '');
-ERROR HY000: mask_pan<string> UDF failed; argument 0 cannot be null
-SELECT mask_pan('', NULL);
 ERROR HY000: mask_pan<string> UDF failed; argument 1 cannot be null
+SELECT mask_pan(NULL, '');
+ERROR HY000: mask_pan<string> UDF failed; argument 1 cannot be null
+SELECT mask_pan('', NULL);
+ERROR HY000: mask_pan<string> UDF failed; argument 2 cannot be null
 # constraints checks
 SELECT mask_pan('');
 ERROR HY000: mask_pan<string> UDF failed; Argument must be between 14 and 19 characters
