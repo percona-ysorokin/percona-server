@@ -28,6 +28,46 @@
 
 namespace mysqlpp {
 
+// The following set of helper aliases, functions and macros is intended to
+// simplify automatic registration / unregistration of UDFs using
+// 'udf_registration' service.
+// Te UDFs are expected to be created via UDF Wrappers framework but
+// stand-alone usages are supported as well.
+//
+// Typical usage scenario:
+//
+// class func1_impl { ... };
+// class func2_impl { ... };
+// ...
+// class funcN_impl { ... };
+//
+// DECLARE_STRING_UDF_AUTO(func1)
+// DECLARE_STRING_UDF_AUTO(func2)
+// ...
+// DECLARE_STRING_UDF_AUTO(funcN)
+//
+// static const std::array known_udfs{
+//     DECLARE_UDF_INFO_AUTO(func1),
+//     DECLARE_UDF_INFO_AUTO(func1),
+//     ...
+//     DECLARE_UDF_INFO_AUTO(funcn)
+// };
+// using udf_bitset_type =
+//    mysqlpp::udf_bitset<std::tuple_size_v<decltype(known_udfs)>>;
+// static udf_bitset_type registered_udfs;
+//
+// static mysql_service_status_t component_init() {
+//   mysqlpp::register_udfs(mysql_service_udf_registration, known_udfs,
+//                          registered_udfs);
+//   return registered_udfs.all();
+// }
+//
+// static mysql_service_status_t component_deinit() {
+//   mysqlpp::unregister_udfs(mysql_service_udf_registration, known_udfs,
+//                            registered_udfs);
+//   return registered_udfs.none();
+// }
+
 struct udf_info {
   const char *name;
   Item_result return_type;
@@ -91,5 +131,12 @@ void unregister_udfs(SERVICE_TYPE(udf_registration) * service,
   mysqlpp::udf_info {                                              \
     #NAME, TYPE, (Udf_func_any)&NAME, &NAME##_init, &NAME##_deinit \
   }
+
+// A simplified version of the DECLARE_UDF_INFO macro that relies on the
+// fact that the logic of the '<custom_udf>' UDF is put into the
+// '<custom_udf>_impl' class
+#define DECLARE_UDF_INFO_AUTO(NAME) \
+  DECLARE_UDF_INFO(NAME,            \
+                   ::mysqlpp::udf_impl_meta_info<NAME##_impl>::item_result)
 
 #endif

@@ -44,6 +44,11 @@ namespace mysqlpp {
 template <typename ImplType>
 struct udf_impl_meta_info;
 
+// 'udf_base' is a part of the `generic_udf_base` / `generic_udf` logic that
+// does not depend on template parameters. The main reason for doing this
+// is to eliminate so called `c++ template code bloat` when functions with
+// identical bodies will be present in different instantiations of the class
+// template.
 class udf_base {
  private:
   static const char *get_function_label(std::string &buffer,
@@ -68,11 +73,15 @@ class udf_base {
     std::string buffer;
     try {
       // The following suppression is needed exclusively for Clang 5.0 that
-      // has a bug in noexcept specification diagnostics
+      // has a bug in noexcept specification diagnostics.
 #if defined(__clang__) && (__clang_major__ == 5)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wexceptions"
 #endif
+      // Rethrowing the exception that was previously caught with
+      // 'catch(...)' in one of the derived classes
+      // This is done to write the sequence of the catch blocks
+      // in one place.
       throw;
 #if defined(__clang__) && (__clang_major__ == 5)
 #pragma clang diagnostic pop
@@ -113,6 +122,10 @@ class udf_base {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wexceptions"
 #endif
+      // Rethrowing the exception that was previously caught with
+      // 'catch(...)' in one of the derived classes
+      // This is done to write the sequence of the catch blocks
+      // in one place.
       throw;
 #if defined(__clang__) && (__clang_major__ == 5)
 #pragma clang diagnostic pop
@@ -342,5 +355,12 @@ class generic_udf<ImplType, INT_RESULT>
   DECLARE_UDF_INIT(IMPL, INT_RESULT, NAME)      \
   DECLARE_UDF_INT_FUNC(IMPL, NAME)              \
   DECLARE_UDF_DEINIT(IMPL, INT_RESULT, NAME)
+
+// A simplified versions of the DECLARE_STRING_UDF. DECLARE_REAL_UDF and
+// DECLARE_INT_UDF macros that rely on the fact that the logic of the
+// '<custom_udf>' UDF is put into the '<custom_udf>_impl' class
+#define DECLARE_STRING_UDF_AUTO(NAME) DECLARE_STRING_UDF(NAME##_impl, NAME)
+#define DECLARE_REAL_UDF_AUTO(NAME) DECLARE_REAL_UDF(NAME##_impl, NAME)
+#define DECLARE_INT_UDF_AUTO(NAME) DECLARE_INT_UDF(NAME##_impl, NAME)
 
 #endif

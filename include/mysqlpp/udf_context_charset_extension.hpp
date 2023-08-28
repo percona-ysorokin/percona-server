@@ -27,6 +27,12 @@
 
 namespace mysqlpp {
 
+// A helper class which simplifies handling of charsets / collations for the
+// string arguments and the result of a UDF.
+// This functionality is put into a separate class (rather than directly into
+// 'udf_context') deliberately because the implementation depends on the
+// 'mysql_udf_metadata' service and this dependency may not be desired in all
+// use cases.
 class udf_context_charset_extension {
  private:
   static constexpr const char *const charset_attribute_name = "charset";

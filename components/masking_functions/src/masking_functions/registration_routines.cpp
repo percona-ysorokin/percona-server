@@ -1053,59 +1053,57 @@ class masking_dictionary_term_remove_impl {
 
 }  // anonymous namespace
 
-DECLARE_INT_UDF(gen_range_impl, gen_range)
-DECLARE_STRING_UDF(gen_rnd_email_impl, gen_rnd_email)
-DECLARE_STRING_UDF(gen_rnd_iban_impl, gen_rnd_iban)
-DECLARE_STRING_UDF(gen_rnd_canada_sin_impl, gen_rnd_canada_sin)
-DECLARE_STRING_UDF(gen_rnd_pan_impl, gen_rnd_pan)
-DECLARE_STRING_UDF(gen_rnd_ssn_impl, gen_rnd_ssn)
-DECLARE_STRING_UDF(gen_rnd_uk_nin_impl, gen_rnd_uk_nin)
-DECLARE_STRING_UDF(gen_rnd_us_phone_impl, gen_rnd_us_phone)
-DECLARE_STRING_UDF(gen_rnd_uuid_impl, gen_rnd_uuid)
+DECLARE_INT_UDF_AUTO(gen_range)
+DECLARE_STRING_UDF_AUTO(gen_rnd_email)
+DECLARE_STRING_UDF_AUTO(gen_rnd_iban)
+DECLARE_STRING_UDF_AUTO(gen_rnd_canada_sin)
+DECLARE_STRING_UDF_AUTO(gen_rnd_pan)
+DECLARE_STRING_UDF_AUTO(gen_rnd_ssn)
+DECLARE_STRING_UDF_AUTO(gen_rnd_uk_nin)
+DECLARE_STRING_UDF_AUTO(gen_rnd_us_phone)
+DECLARE_STRING_UDF_AUTO(gen_rnd_uuid)
 
-DECLARE_STRING_UDF(mask_inner_impl, mask_inner)
-DECLARE_STRING_UDF(mask_outer_impl, mask_outer)
-DECLARE_STRING_UDF(mask_canada_sin_impl, mask_canada_sin)
-DECLARE_STRING_UDF(mask_iban_impl, mask_iban)
-DECLARE_STRING_UDF(mask_pan_impl, mask_pan)
-DECLARE_STRING_UDF(mask_pan_relaxed_impl, mask_pan_relaxed)
-DECLARE_STRING_UDF(mask_ssn_impl, mask_ssn)
-DECLARE_STRING_UDF(mask_uk_nin_impl, mask_uk_nin)
-DECLARE_STRING_UDF(mask_uuid_impl, mask_uuid)
-DECLARE_STRING_UDF(gen_blocklist_impl, gen_blocklist)
-DECLARE_STRING_UDF(gen_dictionary_impl, gen_dictionary)
-DECLARE_STRING_UDF(masking_dictionary_remove_impl, masking_dictionary_remove)
-DECLARE_STRING_UDF(masking_dictionary_term_add_impl,
-                   masking_dictionary_term_add)
-DECLARE_STRING_UDF(masking_dictionary_term_remove_impl,
-                   masking_dictionary_term_remove)
+DECLARE_STRING_UDF_AUTO(mask_inner)
+DECLARE_STRING_UDF_AUTO(mask_outer)
+DECLARE_STRING_UDF_AUTO(mask_canada_sin)
+DECLARE_STRING_UDF_AUTO(mask_iban)
+DECLARE_STRING_UDF_AUTO(mask_pan)
+DECLARE_STRING_UDF_AUTO(mask_pan_relaxed)
+DECLARE_STRING_UDF_AUTO(mask_ssn)
+DECLARE_STRING_UDF_AUTO(mask_uk_nin)
+DECLARE_STRING_UDF_AUTO(mask_uuid)
+DECLARE_STRING_UDF_AUTO(gen_blocklist)
+DECLARE_STRING_UDF_AUTO(gen_dictionary)
+DECLARE_STRING_UDF_AUTO(masking_dictionary_remove)
+DECLARE_STRING_UDF_AUTO(masking_dictionary_term_add)
+DECLARE_STRING_UDF_AUTO(masking_dictionary_term_remove)
 
-/* The UDFs we will register. */
-std::array known_udfs{
-    DECLARE_UDF_INFO(gen_range, INT_RESULT),
-    DECLARE_UDF_INFO(gen_rnd_email, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_rnd_iban, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_rnd_canada_sin, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_rnd_pan, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_rnd_ssn, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_rnd_uk_nin, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_rnd_us_phone, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_rnd_uuid, STRING_RESULT),
+// TODO: in c++20 (where CTAD works for alias templates) this shoud be changed
+// to 'static const udf_info_container known_udfs'
+std::array known_udfs{DECLARE_UDF_INFO_AUTO(gen_range),
+                      DECLARE_UDF_INFO_AUTO(gen_rnd_email),
+                      DECLARE_UDF_INFO_AUTO(gen_rnd_iban),
+                      DECLARE_UDF_INFO_AUTO(gen_rnd_canada_sin),
+                      DECLARE_UDF_INFO_AUTO(gen_rnd_pan),
+                      DECLARE_UDF_INFO_AUTO(gen_rnd_ssn),
+                      DECLARE_UDF_INFO_AUTO(gen_rnd_uk_nin),
+                      DECLARE_UDF_INFO_AUTO(gen_rnd_us_phone),
+                      DECLARE_UDF_INFO_AUTO(gen_rnd_uuid),
 
-    DECLARE_UDF_INFO(mask_inner, STRING_RESULT),
-    DECLARE_UDF_INFO(mask_outer, STRING_RESULT),
-    DECLARE_UDF_INFO(mask_canada_sin, STRING_RESULT),
-    DECLARE_UDF_INFO(mask_iban, STRING_RESULT),
-    DECLARE_UDF_INFO(mask_pan, STRING_RESULT),
-    DECLARE_UDF_INFO(mask_pan_relaxed, STRING_RESULT),
-    DECLARE_UDF_INFO(mask_ssn, STRING_RESULT),
-    DECLARE_UDF_INFO(mask_uk_nin, STRING_RESULT),
-    DECLARE_UDF_INFO(mask_uuid, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_blocklist, STRING_RESULT),
-    DECLARE_UDF_INFO(gen_dictionary, STRING_RESULT),
-    DECLARE_UDF_INFO(masking_dictionary_remove, STRING_RESULT),
-    DECLARE_UDF_INFO(masking_dictionary_term_add, STRING_RESULT),
-    DECLARE_UDF_INFO(masking_dictionary_term_remove, STRING_RESULT)};
+                      DECLARE_UDF_INFO_AUTO(mask_inner),
+                      DECLARE_UDF_INFO_AUTO(mask_outer),
+                      DECLARE_UDF_INFO_AUTO(mask_canada_sin),
+                      DECLARE_UDF_INFO_AUTO(mask_iban),
+                      DECLARE_UDF_INFO_AUTO(mask_pan),
+                      DECLARE_UDF_INFO_AUTO(mask_pan_relaxed),
+                      DECLARE_UDF_INFO_AUTO(mask_ssn),
+                      DECLARE_UDF_INFO_AUTO(mask_uk_nin),
+                      DECLARE_UDF_INFO_AUTO(mask_uuid),
+                      DECLARE_UDF_INFO_AUTO(gen_blocklist),
+                      DECLARE_UDF_INFO_AUTO(gen_dictionary),
+                      DECLARE_UDF_INFO_AUTO(masking_dictionary_remove),
+                      DECLARE_UDF_INFO_AUTO(masking_dictionary_term_add),
+                      DECLARE_UDF_INFO_AUTO(masking_dictionary_term_remove)};
 
 using udf_bitset_type =
     mysqlpp::udf_bitset<std::tuple_size_v<decltype(known_udfs)>>;

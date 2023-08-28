@@ -21,6 +21,23 @@
 
 namespace mysqlpp {
 
+// A singleton class that is used to customize error reporting behavior
+// of the UDF wrappers framework.
+// User code must ensure that 'udf_error_reporter::instance()' is initialized
+// before any UDF reporting an error is called.
+//
+// It can be set to the default implementation from 'mysys'
+// mysqlpp::udf_error_reporter::instance() = &my_error;
+//
+// or (in case of components) to a custom fuction that uses
+// 'mysql_service_mysql_runtime_error' service
+// static void custom_my_error(int error_id, myf flags, ...) {
+//   va_list args;
+//   va_start(args, flags);
+//   mysql_service_mysql_runtime_error->emit(error_id, flags, args);
+//   va_end(args);
+// }
+// mysqlpp::udf_error_reporter::instance() = &custom_my_error;
 class udf_error_reporter {
  public:
   using function_type = void (*)(int, myf, ...);

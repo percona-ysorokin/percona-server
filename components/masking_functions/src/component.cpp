@@ -112,6 +112,11 @@ static mysql_service_status_t component_init() {
           mysql_service_mysql_command_options,
           mysql_service_mysql_command_factory};
 
+  // here we use a custom error reporting function
+  // 'masking_functions_my_error()' based on the
+  // 'mysql_service_mysql_runtime_error' service instead of the standard
+  // 'my_error()' from 'mysys' to get rid of the 'mysys' dependency for this
+  // component
   mysqlpp::udf_error_reporter::instance() = &masking_functions_my_error;
 
   if (!masking_functions::register_dynamic_privileges()) {

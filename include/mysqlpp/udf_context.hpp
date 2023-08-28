@@ -29,6 +29,8 @@
 
 namespace mysqlpp {
 
+// A helper class which simplifies operations with the arguments and the
+// result of a UDF.
 class udf_context {
   friend class udf_context_charset_extension;
 

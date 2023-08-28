@@ -696,26 +696,28 @@ mysqlpp::udf_result_t<STRING_RESULT> asymmetric_derive_impl::calculate(
 
 }  // end of anonymous namespace
 
-DECLARE_STRING_UDF(create_asymmetric_priv_key_impl, create_asymmetric_priv_key)
-DECLARE_STRING_UDF(create_asymmetric_pub_key_impl, create_asymmetric_pub_key)
-DECLARE_STRING_UDF(asymmetric_encrypt_impl, asymmetric_encrypt)
-DECLARE_STRING_UDF(asymmetric_decrypt_impl, asymmetric_decrypt)
-DECLARE_STRING_UDF(create_digest_impl, create_digest)
-DECLARE_STRING_UDF(asymmetric_sign_impl, asymmetric_sign)
-DECLARE_INT_UDF(asymmetric_verify_impl, asymmetric_verify)
-DECLARE_STRING_UDF(create_dh_parameters_impl, create_dh_parameters)
-DECLARE_STRING_UDF(asymmetric_derive_impl, asymmetric_derive)
+DECLARE_STRING_UDF_AUTO(create_asymmetric_priv_key)
+DECLARE_STRING_UDF_AUTO(create_asymmetric_pub_key)
+DECLARE_STRING_UDF_AUTO(asymmetric_encrypt)
+DECLARE_STRING_UDF_AUTO(asymmetric_decrypt)
+DECLARE_STRING_UDF_AUTO(create_digest)
+DECLARE_STRING_UDF_AUTO(asymmetric_sign)
+DECLARE_INT_UDF_AUTO(asymmetric_verify)
+DECLARE_STRING_UDF_AUTO(create_dh_parameters)
+DECLARE_STRING_UDF_AUTO(asymmetric_derive)
 
+// TODO: in c++20 (where CTAD works for alias templates) this shoud be changed
+// to 'static const udf_info_container known_udfs'
 static const std::array known_udfs{
-    DECLARE_UDF_INFO(create_asymmetric_priv_key, STRING_RESULT),
-    DECLARE_UDF_INFO(create_asymmetric_pub_key, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_encrypt, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_decrypt, STRING_RESULT),
-    DECLARE_UDF_INFO(create_digest, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_sign, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_verify, INT_RESULT),
-    DECLARE_UDF_INFO(create_dh_parameters, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_derive, STRING_RESULT)};
+    DECLARE_UDF_INFO_AUTO(create_asymmetric_priv_key),
+    DECLARE_UDF_INFO_AUTO(create_asymmetric_pub_key),
+    DECLARE_UDF_INFO_AUTO(asymmetric_encrypt),
+    DECLARE_UDF_INFO_AUTO(asymmetric_decrypt),
+    DECLARE_UDF_INFO_AUTO(create_digest),
+    DECLARE_UDF_INFO_AUTO(asymmetric_sign),
+    DECLARE_UDF_INFO_AUTO(asymmetric_verify),
+    DECLARE_UDF_INFO_AUTO(create_dh_parameters),
+    DECLARE_UDF_INFO_AUTO(asymmetric_derive)};
 
 static void encryption_udf_my_error(int error_id, myf flags, ...) {
   va_list args;
@@ -732,6 +734,10 @@ using threshold_bitset_type = std::bitset<number_of_thresholds>;
 static threshold_bitset_type registered_thresholds;
 
 static mysql_service_status_t component_init() {
+  // here, we use a custom error reporting function 'encryption_udf_my_error()'
+  // based on the 'mysql_service_mysql_runtime_error' service instead of
+  // the standard 'my_error()' from 'mysys' to get rid of the 'mysys'
+  // dependency for this component
   mysqlpp::udf_error_reporter::instance() = &encryption_udf_my_error;
   std::size_t index = 0U;
 
