@@ -21,8 +21,14 @@
 
 namespace ext {
 
-// this using declaration left only for compatibility reasons
-// all new code should use std::string_view
+// this using declaration is deprecated and should not be used
+// all new code should use std::string_view directly
+//
+// Originally, when MySQL code was still uising c++14, it used to refer to
+// boost::string_view.
+// In c++17 it is no longer needed and left here only for compatibility
+// with old third party code.
+
 using std::string_view;
 
 }  // namespace ext
