@@ -20,7 +20,7 @@ ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 
 SELECT gen_rnd_iban('UKK');
 ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 2 characters
 SELECT gen_rnd_iban('ЮЮ');
-ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must include only only upper-case characters
+ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must include only latin upper-case characters
 SELECT gen_rnd_iban('UK', -1);
 ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN length must not be a negative number
 SELECT gen_rnd_iban('UK', 0);

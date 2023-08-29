@@ -279,7 +279,7 @@ class gen_rnd_iban_impl {
                          static_cast<int (*)(int)>(&std::isupper)) !=
         std::end(buffer))
       throw std::invalid_argument{
-          "IBAN country code must include only only upper-case characters"};
+          "IBAN country code must include only latin upper-case characters"};
   }
 
  public:
