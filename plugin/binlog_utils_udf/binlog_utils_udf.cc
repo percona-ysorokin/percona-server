@@ -654,7 +654,7 @@ get_first_record_timestamp_by_binlog_impl::calculate(
   auto binlog_name_sv = ctx.get_arg<STRING_RESULT>(0);
 
   auto ev = find_first_event(binlog_name_sv);
-  if (!ev) return {};
+  if (!ev) return {std::nullopt};
   return ev->common_header->when.tv_sec * 1000000LL +
          ev->common_header->when.tv_usec;
 }
@@ -695,7 +695,7 @@ get_last_record_timestamp_by_binlog_impl::calculate(
   auto binlog_name_sv = ctx.get_arg<STRING_RESULT>(0);
 
   auto ev = find_last_event(binlog_name_sv);
-  if (!ev) return {};
+  if (!ev) return {std::nullopt};
   return ev->common_header->when.tv_sec * 1000000LL +
          ev->common_header->when.tv_usec;
 }
