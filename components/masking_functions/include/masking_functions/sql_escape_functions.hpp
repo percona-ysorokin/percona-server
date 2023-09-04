@@ -22,6 +22,18 @@
 
 namespace masking_functions {
 
+// This function converts the specified 'charset_string' 'cs_str', which can
+// have any character set, to 'utf8mb4' and then escape special characters so
+// that this value can be safely used inside MySQL string literals (to prevent
+// SQL injections).
+//
+// This function is only used inside `sql_builder` class implementation and
+// should have been made a private helper function of this class. However,
+// as MySQL still does provide this functionality via 'mysql_query_xxx'
+// services, we had to use one of the `mysys` functions directly, which
+// violates MySQL component building recommendations.
+// In order to isolate this function from other "conformant" code, it is
+// put in a separate translation unit.
 std::string escape_string(const charset_string &cs_str);
 
 }  // namespace masking_functions

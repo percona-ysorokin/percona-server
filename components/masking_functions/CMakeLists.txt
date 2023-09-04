@@ -1,4 +1,5 @@
 # Copyright (c) 2018, 2019, Francisco Miguel Biete Banon. All rights reserved.
+# Copyright (c) 2023 Percona LLC and/or its affiliates. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -43,7 +44,6 @@ set(DATAMASKING_SOURCES
   include/masking_functions/random_string_generators.hpp
   include/masking_functions/registration_routines.hpp
   include/masking_functions/sql_context.hpp
-  include/masking_functions/sql_context_exception.hpp
   include/masking_functions/sql_escape_functions.hpp
   include/masking_functions/string_service_tuple_fwd.hpp
   include/masking_functions/string_service_tuple.hpp

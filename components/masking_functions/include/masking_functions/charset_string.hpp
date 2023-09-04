@@ -1,5 +1,4 @@
-/* Copyright (c) 2018, 2019 Francisco Miguel Biete Banon. All rights reserved.
-   Copyright (c) 2023 Percona LLC and/or its affiliates. All rights reserved.
+/* Copyright (c) 2023 Percona LLC and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -29,6 +28,12 @@
 
 namespace masking_functions {
 
+// A wrapper class that uses MySQL string services under the hood and
+// simplifies operations on strings of different character sets / collations.
+// It supports value semantics and provides a minimal 'std::string'-like
+// interface.
+// 'string_service_tuple' here can be considered as an analogue of
+// 'char_traits' / 'allocator' combination in 'std::string'.
 class charset_string {
  public:
   using collation_type = void *;
@@ -94,6 +99,10 @@ class charset_string {
 
   bool is_empty() const noexcept {
     assert(impl_);
+    // as unicode may potentially include special markers which should not
+    // be considered as real characters (like BiDi markers), instead of
+    // 'get_size_in_bytes()' (which is most probably faster), we use
+    // 'get_size_in_characters()' here
     return get_size_in_characters() == 0;
   }
 

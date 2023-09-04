@@ -24,6 +24,10 @@
 
 namespace masking_functions {
 
+// A wrapper class that uses MySQL connection services under the hood and
+// simplifies query execution operations.
+// It requires an instance of the 'command_service_tuple' class for
+// construction.
 class sql_context {
  public:
   using optional_string = std::optional<std::string>;

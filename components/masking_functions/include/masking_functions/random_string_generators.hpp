@@ -23,45 +23,74 @@
 
 namespace masking_functions {
 
+// A set of functions that generate random strings of specific length / type /
+// format. Used in implementations of Random Data Generation data-masking UDFs.
+
+// An auxiliary enum used to specify desired character type in the
+// 'random_character_class_string' function.
 enum class character_class {
-  lower_alpha,
-  upper_alpha,
-  numeric,
-  alpha,
-  lower_alpha_numeric,
-  upper_alpha_numeric,
-  alpha_numeric
+  lower_alpha,          // [a-z]
+  upper_alpha,          // [A-Z]
+  numeric,              // [0-9]
+  alpha,                // [a-zA-Z]
+  lower_alpha_numeric,  // [a-z0-9]
+  upper_alpha_numeric,  // [A-Z0-9]
+  alpha_numeric         // [a-zA-Z0-9]
 };
 
+// Returns a string containing 'length' random characters of the specified.
+// 'char_class' type
 std::string random_character_class_string(character_class char_class,
                                           std::size_t length);
 
+// Returns a string containing 'length' random 'lower_alpha' characters.
 inline std::string random_lower_alpha_string(std::size_t length) {
   return random_character_class_string(character_class::lower_alpha, length);
 }
 
+// Returns a string containing 'length' random 'upper_alpha' characters.
 inline std::string random_upper_alpha_string(std::size_t length) {
   return random_character_class_string(character_class::upper_alpha, length);
 }
 
+// Returns a string containing 'length' random 'numeric' characters.
 inline std::string random_numeric_string(std::size_t length) {
   return random_character_class_string(character_class::numeric, length);
 }
 
+// Returns a random number from the closed interval ['min', 'max'].
+// The behavior is undefined if 'min' > 'max'.
 std::size_t random_number(std::size_t min, std::size_t max);
 
+// Returns a random American Express / Visa / Mastercard / Discover
+// credit card number that passes basic checksum validation.
+// https://stevemorse.org/ssn/cc.html
 std::string random_credit_card();
 
+// Generates a random Canada Social Insurance Number (SIN) in AAA-BBB-CCC
+// format.
+// E.g. 046-454-286
 std::string random_canada_sin();
 
+// Generates a random International Bank Account Number (IBAN).
+// Returns a string containing the country code 'country'
+// (2 latin uppercase characters) followed by 'length' random digits.
 std::string random_iban(std::string_view country, std::size_t length);
 
+// Generates a random US Social Security Number (SSN) in AAA-BB-CCCC format.
+// E.g. 951-26-0058
 std::string random_ssn();
 
+// Generates a random v4 Universal Unique Identifier (UUID).
 std::string random_uuid();
 
+// Generates a random United Kingdom National Insurance Number (UK NIN)
+// in nine-character format.
+// E.g. QQ123456C
 std::string random_uk_nin();
 
+// Generates a random US phone number in 1-555-AAA-BBBB format.
+// E.g. 1-555-682-5423
 std::string random_us_phone();
 
 }  // namespace masking_functions

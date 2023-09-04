@@ -1,5 +1,4 @@
-/* Copyright (c) 2018, 2019 Francisco Miguel Biete Banon. All rights reserved.
-   Copyright (c) 2023 Percona LLC and/or its affiliates. All rights reserved.
+/* Copyright (c) 2023 Percona LLC and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,6 +20,8 @@
 
 namespace masking_functions {
 
+// An auxiliary class template which allows to make a primitive singleton
+// from an arbitrary type.
 template <typename T>
 struct primitive_singleton {
   using instance_type = T;

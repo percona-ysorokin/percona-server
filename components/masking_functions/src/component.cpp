@@ -101,8 +101,7 @@ static mysql_service_status_t component_init() {
           mysql_service_mysql_string_byte_access,
           mysql_service_mysql_string_reset,
           mysql_service_mysql_string_substr,
-          mysql_service_mysql_string_compare,
-      };
+          mysql_service_mysql_string_compare};
   masking_functions::primitive_singleton<
       masking_functions::command_service_tuple>::instance() =
       masking_functions::command_service_tuple{

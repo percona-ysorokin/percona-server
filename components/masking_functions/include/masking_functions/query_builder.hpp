@@ -23,6 +23,8 @@
 
 namespace masking_functions {
 
+// A helper class which allows to easily construct SQL-statements necessary
+// for data-masking dictionary manipulation.
 class query_builder {
  public:
   static constexpr std::string_view default_result_character_set = "utf8mb4";
