@@ -939,7 +939,7 @@ class masking_dictionary_remove_impl {
 
     auto query =
         global_query_builder::instance().delete_for_dictionary(cs_dictionary);
-    if (sql_ctx.execute(query) == 0) {
+    if (!sql_ctx.execute(query)) {
       return std::nullopt;
     } else {
       return "1";
@@ -991,7 +991,7 @@ class masking_dictionary_term_add_impl {
     auto query = global_query_builder::instance().insert_ignore_record(
         cs_dictionary, cs_term);
 
-    if (sql_ctx.execute(query) == 0) {
+    if (!sql_ctx.execute(query)) {
       return std::nullopt;
     } else {
       return "1";
@@ -1043,7 +1043,7 @@ class masking_dictionary_term_remove_impl {
     auto query =
         global_query_builder::instance().delete_for_dictionary_and_term(
             cs_dictionary, cs_term);
-    if (sql_ctx.execute(query) == 0) {
+    if (!sql_ctx.execute(query)) {
       return std::nullopt;
     } else {
       return "1";
