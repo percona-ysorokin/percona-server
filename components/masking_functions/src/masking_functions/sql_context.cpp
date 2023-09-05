@@ -16,6 +16,7 @@
 #include <cassert>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <type_traits>
 
 #include "masking_functions/sql_context.hpp"
