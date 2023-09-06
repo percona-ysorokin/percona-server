@@ -459,7 +459,7 @@ class mask_inner_impl {
           "Wrong argument list: should be (string, int, int, [char])"};
 
     ctx.mark_result_nullable(true);
-    ctx.mark_result_const(false);
+    ctx.mark_result_const(true);
 
     ctx.mark_arg_nullable(0, false);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -515,7 +515,7 @@ class mask_outer_impl {
           "Wrong argument list: should be (string, int, int [char])"};
 
     ctx.mark_result_nullable(true);
-    ctx.mark_result_const(false);
+    ctx.mark_result_const(true);
 
     ctx.mark_arg_nullable(0, false);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -576,7 +576,7 @@ class mask_impl_base {
           "Wrong argument list: should be (string, [char])"};
 
     ctx.mark_result_nullable(true);
-    ctx.mark_result_const(false);
+    ctx.mark_result_const(true);
 
     ctx.mark_arg_nullable(0, false);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -919,7 +919,7 @@ class masking_dictionary_remove_impl {
           "Wrong argument list: masking_dictionary_remove(string)"};
 
     ctx.mark_result_nullable(true);
-    ctx.mark_result_const(false);
+    ctx.mark_result_const(true);
 
     // arg1 - dictionary
     ctx.mark_arg_nullable(0, false);
@@ -965,7 +965,7 @@ class masking_dictionary_term_add_impl {
           "string)"};
 
     ctx.mark_result_nullable(true);
-    ctx.mark_result_const(false);
+    ctx.mark_result_const(true);
 
     // arg1 - dictionary
     ctx.mark_arg_nullable(0, false);
@@ -1017,7 +1017,7 @@ class masking_dictionary_term_remove_impl {
           "string)"};
 
     ctx.mark_result_nullable(true);
-    ctx.mark_result_const(false);
+    ctx.mark_result_const(true);
 
     // arg1 - dictionary
     ctx.mark_arg_nullable(0, false);

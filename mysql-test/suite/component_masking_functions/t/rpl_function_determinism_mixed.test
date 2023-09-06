@@ -1,0 +1,3 @@
+--source include/have_binlog_format_mixed.inc
+
+--source rpl_function_determinism.inc
