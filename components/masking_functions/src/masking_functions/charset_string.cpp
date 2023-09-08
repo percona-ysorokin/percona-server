@@ -151,6 +151,9 @@ charset_string charset_string::convert_to_collation_copy(
   // with the '\0' character
   // the marker character cannot be '\0' as some multibyte characters may be
   // represented by sequences having trailing '\0' (like '\u0100')
+  //
+  // TODO: this need to be changed to 'convert_to_buffer_v2()' (or something
+  // similar) once Oracle fixes the 'mysql_string_charset_converter' API
   static constexpr char marker_char = '*';
   std::string buffer(buffer_length, marker_char);
 

@@ -31,11 +31,14 @@ std::string query_builder::insert_ignore_record(
   return oss.str();
 }
 
-std::string
-query_builder::select_random_term_for_dictionary_and_opt_term_internal(
+std::string query_builder::select_term_for_dictionary_internal(
     const charset_string &dictionary_name,
     const charset_string *opt_term) const {
   std::ostringstream oss;
+  // In our implementation there is no requirement that the `Term` field in
+  // the `mysql.masking_dictionaries` table must be in `utf8mb4`. So, by
+  // adding CONVERT(Term USING utf8mb4) we support other character sets in
+  // the underlying table as well.
   oss << "SELECT "
       << "CONVERT(" << get_term_field_name() << " USING "
       << default_result_character_set << ") FROM " << get_database_name() << '.'
@@ -44,8 +47,9 @@ query_builder::select_random_term_for_dictionary_and_opt_term_internal(
   if (opt_term != nullptr) {
     oss << " AND " << get_term_field_name() << " = '"
         << escape_string(*opt_term) << '\'';
+  } else {
+    oss << " ORDER BY RAND() LIMIT 1";
   }
-  oss << " ORDER BY RAND() LIMIT 1";
   return oss.str();
 }
 

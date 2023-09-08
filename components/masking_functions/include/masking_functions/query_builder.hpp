@@ -58,13 +58,11 @@ class query_builder {
 
   std::string select_random_term_for_dictionary(
       const charset_string &dictionary_name) const {
-    return select_random_term_for_dictionary_and_opt_term_internal(
-        dictionary_name, nullptr);
+    return select_term_for_dictionary_internal(dictionary_name, nullptr);
   }
-  std::string select_random_term_for_dictionary_and_term(
+  std::string check_term_presence_in_dictionary(
       const charset_string &dictionary_name, const charset_string &term) const {
-    return select_random_term_for_dictionary_and_opt_term_internal(
-        dictionary_name, &term);
+    return select_term_for_dictionary_internal(dictionary_name, &term);
   }
 
   std::string insert_ignore_record(const charset_string &dictionary_name,
@@ -87,7 +85,7 @@ class query_builder {
   std::string dictionary_field_name_;
   std::string term_field_name_;
 
-  std::string select_random_term_for_dictionary_and_opt_term_internal(
+  std::string select_term_for_dictionary_internal(
       const charset_string &dictionary_name,
       const charset_string *opt_term) const;
 

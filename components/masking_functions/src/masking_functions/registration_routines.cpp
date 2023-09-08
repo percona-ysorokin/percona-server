@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <bitset>
-#include <cctype>
+#include <locale>
 
 #include <mysql/components/component_implementation.h>
 
@@ -63,6 +63,8 @@ using global_query_builder =
 constexpr std::string_view masking_dictionaries_privilege_name =
     "MASKING_DICTIONARIES_ADMIN";
 
+// Returns 'true' if current MySQL user has 'MASKING_DICTIONARIES_ADMIN'
+// dynamic privilege
 bool have_masking_admin_privilege() {
   THD *thd;
   if (mysql_service_mysql_current_thread_reader->get(&thd)) {
@@ -82,7 +84,11 @@ bool have_masking_admin_privilege() {
   return false;
 }
 
-masking_functions::charset_string extract_charset_string_from_arg(
+// Creates an instance of the 'charcter_string' class from the
+// 'argno' UDF argument. The argument must be of the 'STRING_RESULT'
+// type and its value must not be NULL. Argument's collation is
+// determined via 'mysql_service_mysql_udf_metadata' MySQL service.
+masking_functions::charset_string make_charset_string_from_arg(
     mysqlpp::udf_context const &ctx, std::size_t argno) {
   assert(argno < ctx.get_number_of_args());
   assert(ctx.get_arg_type(argno) == STRING_RESULT);
@@ -99,6 +105,12 @@ masking_functions::charset_string extract_charset_string_from_arg(
 constexpr std::string_view x_ascii_masking_char = "X";
 constexpr std::string_view star_ascii_masking_char = "*";
 
+// This function determines the value of the masking character used by a
+// number of 'mask_xxx()' UDFs.
+// It tries to obtain the value of the 'argno' UDF argument:
+// if no such argument exists, the provided 'default_ascii_masking_char'
+// is used instead.
+// The result value is returned in a form of 'charset_string'.
 masking_functions::charset_string determine_masking_char(
     mysqlpp::udf_context const &ctx, std::size_t argno,
     std::string_view default_ascii_masking_char) {
@@ -109,7 +121,7 @@ masking_functions::charset_string determine_masking_char(
         global_string_services::instance(), default_ascii_masking_char,
         masking_functions::charset_string::ascii_collation_name);
   } else {
-    masking_char = extract_charset_string_from_arg(ctx, argno);
+    masking_char = make_charset_string_from_arg(ctx, argno);
   }
   if (masking_char.get_size_in_characters() != 1)
     throw std::invalid_argument{"masking character must be of length 1"};
@@ -204,7 +216,7 @@ class gen_rnd_email_impl {
       const mysqlpp::udf_context &ctx) {
     masking_functions::charset_string cs_email_domain;
     if (ctx.get_number_of_args() >= 3) {
-      cs_email_domain = extract_charset_string_from_arg(ctx, 2);
+      cs_email_domain = make_charset_string_from_arg(ctx, 2);
     } else {
       cs_email_domain = masking_functions::charset_string{
           global_string_services::instance(), default_ascii_email_domain,
@@ -266,7 +278,7 @@ class gen_rnd_iban_impl {
   static constexpr std::size_t max_number_of_characters{34U};
   static constexpr std::size_t default_number_of_characters{16U};
 
-  static void validata_ansi_country_code(
+  static void validate_ansi_country_code(
       const masking_functions::charset_string &ascii_country_code) {
     if (ascii_country_code.get_size_in_characters() != country_code_length ||
         ascii_country_code.get_size_in_bytes() != country_code_length) {
@@ -275,9 +287,9 @@ class gen_rnd_iban_impl {
                                   " ASCII characters"};
     }
     const auto buffer = ascii_country_code.get_buffer();
-    if (std::find_if_not(std::begin(buffer), std::end(buffer),
-                         static_cast<int (*)(int)>(&std::isupper)) !=
-        std::end(buffer))
+    if (std::find_if_not(std::begin(buffer), std::end(buffer), [](char ch) {
+          return std::isupper(ch, std::locale::classic());
+        }) != std::end(buffer))
       throw std::invalid_argument{
           "IBAN country code must include only latin upper-case characters"};
   }
@@ -315,25 +327,20 @@ class gen_rnd_iban_impl {
       const mysqlpp::udf_context &ctx) {
     masking_functions::charset_string cs_country_code;
     if (ctx.get_number_of_args() >= 1) {
-      cs_country_code = extract_charset_string_from_arg(ctx, 0);
+      cs_country_code = make_charset_string_from_arg(ctx, 0);
     } else {
       cs_country_code = masking_functions::charset_string{
           global_string_services::instance(), default_ascii_country_code,
           masking_functions::charset_string::default_collation_name};
     }
 
-    if (cs_country_code.get_size_in_characters() != country_code_length) {
-      throw std::invalid_argument{"IBAN country code must be exactly " +
-                                  std::to_string(country_code_length) +
-                                  " characters"};
-    }
     masking_functions::charset_string conversion_buffer;
     const auto &ascii_country_code =
         masking_functions::smart_convert_to_collation(
             cs_country_code,
             masking_functions::charset_string::ascii_collation_name,
             conversion_buffer);
-    validata_ansi_country_code(ascii_country_code);
+    validate_ansi_country_code(ascii_country_code);
 
     const long long iban_length = ctx.get_number_of_args() >= 2
                                       ? *ctx.get_arg<INT_RESULT>(1)
@@ -482,7 +489,7 @@ class mask_inner_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    const auto cs_str = extract_charset_string_from_arg(ctx, 0);
+    const auto cs_str = make_charset_string_from_arg(ctx, 0);
 
     const auto masking_char =
         determine_masking_char(ctx, 3, x_ascii_masking_char);
@@ -538,7 +545,7 @@ class mask_outer_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    const auto cs_str = extract_charset_string_from_arg(ctx, 0);
+    const auto cs_str = make_charset_string_from_arg(ctx, 0);
 
     const auto masking_char =
         determine_masking_char(ctx, 3, x_ascii_masking_char);
@@ -560,6 +567,17 @@ class mask_outer_impl {
   }
 };
 
+// A base class used by a number of concrete 'mask_xxx()' UDF
+// implementations. It provides generic implementation of the 'calculate()'
+// method that relies on 'min_length()', 'max_length()',
+// 'default_ascii_masking_char()' and 'process()' that are supposed to be
+// overloaded in the derived classes. It sets common aguments / result
+// nullness expectations as well as desired argument types
+// ("string [, string]"). It also performs basic argument validation,
+// the length of the first argument must be within the
+// "[min_length(), max_length()]" range, and tries to determine the masking
+// character from the second argument if present. After that it simply
+// delegates its execution to the 'process()' virtual function.
 class mask_impl_base {
  private:
   virtual std::size_t min_length() const = 0;
@@ -593,7 +611,7 @@ class mask_impl_base {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    const auto cs_str = extract_charset_string_from_arg(ctx, 0);
+    const auto cs_str = make_charset_string_from_arg(ctx, 0);
     const auto cs_str_length = cs_str.get_size_in_characters();
 
     if (cs_str_length < min_length() || cs_str_length > max_length()) {
@@ -623,6 +641,13 @@ class mask_impl_base {
 //
 // mask_canada_sin(string, [char])
 //
+// Canada SIN consists of 3 groups of 3 consequtive digits optionally
+// separated with a delimiter
+// E.g. 123456789 or 123-456-789
+//      XXXXXXXXX or XXX-XXX-XXX
+// min_length          : 9
+// max_length          : 11
+// default_masking_char: X
 class mask_canada_sin_impl final : private mask_impl_base {
  public:
   using mask_impl_base::calculate;
@@ -639,10 +664,16 @@ class mask_canada_sin_impl final : private mask_impl_base {
       const masking_functions::charset_string &cs_str,
       const masking_functions::charset_string &masking_char) const override {
     if (cs_str.get_size_in_characters() == max_length()) {
+      // in the case when the length is max_length (11) we expect the
+      // delimiters to be at the predefined positions (after the first 3
+      // digits and before the last 3 digits), we just mask everything except
+      // the delimiters
       auto sresult = masking_functions::mask_inner(cs_str, 4, 4, masking_char);
       sresult = masking_functions::mask_inner(sresult, 0, 8, masking_char);
       return masking_functions::mask_inner(sresult, 8, 0, masking_char);
     } else {
+      // otherwise (no delimiters at all, or just one at an unknown position),
+      // we use 'mask_inner_alphanum()' for the whole range
       return masking_functions::mask_inner_alphanum(cs_str, 0, 0, masking_char);
     }
   }
@@ -651,6 +682,14 @@ class mask_canada_sin_impl final : private mask_impl_base {
 //
 // mask_iban(string, [char])
 //
+// IBAN consists of 2 upper-case latin letters (country code) followed by
+// 13..32 latin alphanumeric characters [A-Z0-9]. It may include up to 8
+// delimiters
+// E.g. ZZ0123456789012 or IE12 BOFI 9000 0112 3456 78
+//      ZZ************* or IE** **** **** **** **** **
+// min_length          : 15
+// max_length          : 42
+// default_masking_char: *
 class mask_iban_impl final : private mask_impl_base {
  public:
   using mask_impl_base::calculate;
@@ -665,6 +704,9 @@ class mask_iban_impl final : private mask_impl_base {
   virtual masking_functions::charset_string process(
       const masking_functions::charset_string &cs_str,
       const masking_functions::charset_string &masking_char) const override {
+    // as positions of the delimiters may vary, we always use the
+    // 'mask_inner_alphanum()' function for everything except for the first 2
+    // characters
     return masking_functions::mask_inner_alphanum(cs_str, 2, 0, masking_char);
   }
 };
@@ -672,6 +714,13 @@ class mask_iban_impl final : private mask_impl_base {
 //
 // mask_pan(string, [char])
 //
+// Card number consists of 14..16 digits with up to 3 delimiters
+// separated with a delimiter
+// E.g. 1234567887654321 or 1234 5678 8765 4321
+//      XXXXXXXXXXXX4321 or XXXX XXXX XXXX 4321
+// min_length          : 14
+// max_length          : 19
+// default_masking_char: X
 class mask_pan_impl final : private mask_impl_base {
  public:
   using mask_impl_base::calculate;
@@ -687,6 +736,9 @@ class mask_pan_impl final : private mask_impl_base {
   virtual masking_functions::charset_string process(
       const masking_functions::charset_string &cs_str,
       const masking_functions::charset_string &masking_char) const override {
+    // as positions of the delimiters may vary, we always use the
+    // 'mask_inner_alphanum()' function for everything except for the last 4
+    // characters
     return masking_functions::mask_inner_alphanum(cs_str, 0, 4, masking_char);
   }
 };
@@ -694,6 +746,13 @@ class mask_pan_impl final : private mask_impl_base {
 //
 // mask_pan_relaxed(string, [char])
 //
+// Card number consists of 14..16 digits with up to 3 delimiters
+// separated with a delimiter
+// E.g. 1234567887654321 or 1234 5678 8765 4321
+//      123456XXXXXX4321 or 1234 56XX XXXX 4321
+// min_length          : 14
+// max_length          : 19
+// default_masking_char: X
 class mask_pan_relaxed_impl final : private mask_impl_base {
  public:
   using mask_impl_base::calculate;
@@ -708,6 +767,9 @@ class mask_pan_relaxed_impl final : private mask_impl_base {
   virtual masking_functions::charset_string process(
       const masking_functions::charset_string &cs_str,
       const masking_functions::charset_string &masking_char) const override {
+    // as positions of the delimiters may vary, we always use the
+    // 'mask_inner_alphanum()' function for everything except the first 6 and
+    // the last 4 characters
     return masking_functions::mask_inner_alphanum(cs_str, 6, 4, masking_char);
   }
 };
@@ -715,6 +777,13 @@ class mask_pan_relaxed_impl final : private mask_impl_base {
 //
 // mask_ssn(string, [char])
 //
+// US SSN consists of 3 groups of 3, 2 and 4 consequtive digits optionally
+// separated with a delimiter
+// E.g. 909636922 or 909-63-6922
+//      *****6922 or ***-**-6922
+// min_length          : 9
+// max_length          : 11
+// default_masking_char: *
 class mask_ssn_impl final : private mask_impl_base {
  public:
   using mask_impl_base::calculate;
@@ -730,9 +799,15 @@ class mask_ssn_impl final : private mask_impl_base {
       const masking_functions::charset_string &cs_str,
       const masking_functions::charset_string &masking_char) const override {
     if (cs_str.get_size_in_characters() == max_length()) {
+      // in the case when the length is max_length (11) we expect the
+      // delimiters to be at the predefined positions (after the first 3
+      // digits and before the last 4 digits), we just mask everything except
+      // the delimiters
       auto sresult = masking_functions::mask_inner(cs_str, 4, 5, masking_char);
       return masking_functions::mask_inner(sresult, 0, 8, masking_char);
     } else {
+      // otherwise (no delimiters at all, or just one at an unknown position),
+      // we use 'mask_inner_alphanum()' for everything except the last 4 digits
       return masking_functions::mask_inner_alphanum(cs_str, 0, 4, masking_char);
     }
   }
@@ -741,6 +816,13 @@ class mask_ssn_impl final : private mask_impl_base {
 //
 // mask_uk_nin(string, [char])
 //
+// UK NIN consists of 3 groups of 3, 2 and 4 or 3 groups of 2, 6 and 1
+// consequtive digits optionaly separated with a delimiter
+// E.g. QQ123456C or QQ 123456 C or QQ1 23 456C
+//      QQ******* or QQ ****** * or QQ* ** ****
+// min_length          : 9
+// max_length          : 11
+// default_masking_char: *
 class mask_uk_nin_impl final : private mask_impl_base {
  public:
   using mask_impl_base::calculate;
@@ -755,6 +837,9 @@ class mask_uk_nin_impl final : private mask_impl_base {
   virtual masking_functions::charset_string process(
       const masking_functions::charset_string &cs_str,
       const masking_functions::charset_string &masking_char) const override {
+    // as positions of the delimiters may vary, we always use the
+    // 'mask_inner_alphanum()' function for everything except for the first 2
+    // characters
     return masking_functions::mask_inner_alphanum(cs_str, 2, 0, masking_char);
   }
 };
@@ -762,6 +847,13 @@ class mask_uk_nin_impl final : private mask_impl_base {
 //
 // mask_uuid(string, [char])
 //
+// UUID consists of 5 groups of 8, 4, 4, 4 and 12 consequtive hexadecimal
+// characters separated with a non-optional dash.
+// E.g. 82d9b7cc-7fad-481b-8eed-a27c11b4a404
+//      ********-****-****-****-************
+// min_length          : 36
+// max_length          : 36
+// default_masking_char: *
 class mask_uuid_impl final : private mask_impl_base {
  public:
   using mask_impl_base::calculate;
@@ -776,6 +868,8 @@ class mask_uuid_impl final : private mask_impl_base {
   virtual masking_functions::charset_string process(
       const masking_functions::charset_string &cs_str,
       const masking_functions::charset_string &masking_char) const override {
+    // the separators are expected to be at the predefined positions,
+    // we just mask everything except the delimiters
     auto sresult =
         masking_functions::mask_inner(cs_str, 0, 36 - 8, masking_char);
     sresult =
@@ -794,6 +888,12 @@ class mask_uuid_impl final : private mask_impl_base {
 //
 // gen_blocklist(string, string, string)
 //
+// This function replaces a term present in one dictionary with a term from a
+// second dictionary and returns the replacement term.
+// It tries to find the term (the first argument) in the dictionary
+// whose name is specified via the second argument.
+// If found, we return a random term from the dictionary whose name is specified
+// via the third argument, otherwise the original term is returned.
 class gen_blocklist_impl {
  public:
   gen_blocklist_impl(mysqlpp::udf_context &ctx) {
@@ -821,17 +921,17 @@ class gen_blocklist_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    const auto cs_term = extract_charset_string_from_arg(ctx, 0);
-    const auto cs_dict_a = extract_charset_string_from_arg(ctx, 1);
-    const auto cs_dict_b = extract_charset_string_from_arg(ctx, 2);
+    const auto cs_term = make_charset_string_from_arg(ctx, 0);
+    const auto cs_dict_a = make_charset_string_from_arg(ctx, 1);
+    const auto cs_dict_b = make_charset_string_from_arg(ctx, 2);
 
     {
       masking_functions::sql_context sql_ctx{
           global_command_services::instance()};
 
       auto query =
-          global_query_builder::instance()
-              .select_random_term_for_dictionary_and_term(cs_dict_a, cs_term);
+          global_query_builder::instance().check_term_presence_in_dictionary(
+              cs_dict_a, cs_term);
       auto sresult = sql_ctx.query_single_value(query);
 
       if (!sresult) {
@@ -863,6 +963,8 @@ class gen_blocklist_impl {
 //
 // gen_dictionary(string)
 //
+// This function returns a random term from the dictionary whose name
+// specified via the first argument.
 class gen_dictionary_impl {
  public:
   gen_dictionary_impl(mysqlpp::udf_context &ctx) {
@@ -885,7 +987,7 @@ class gen_dictionary_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    const auto cs_dictionary = extract_charset_string_from_arg(ctx, 0);
+    const auto cs_dictionary = make_charset_string_from_arg(ctx, 0);
 
     masking_functions::sql_context sql_ctx{global_command_services::instance()};
 
@@ -905,6 +1007,8 @@ class gen_dictionary_impl {
 //
 // masking_dictionary_remove(string)
 //
+// This function removes the dictionary, whose name is specified via the first
+// argument, and all of its terms from the dictionary registry.
 class masking_dictionary_remove_impl {
  public:
   masking_dictionary_remove_impl(mysqlpp::udf_context &ctx) {
@@ -933,7 +1037,7 @@ class masking_dictionary_remove_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    const auto cs_dictionary = extract_charset_string_from_arg(ctx, 0);
+    const auto cs_dictionary = make_charset_string_from_arg(ctx, 0);
 
     masking_functions::sql_context sql_ctx{global_command_services::instance()};
 
@@ -948,8 +1052,10 @@ class masking_dictionary_remove_impl {
 };
 
 //
-// masking_dictionary_term_add(string)
+// masking_dictionary_term_add(string, string)
 //
+// This function adds one term specified via the second argument to the
+// dictionary whose name is specified via the first argument.
 class masking_dictionary_term_add_impl {
  public:
   masking_dictionary_term_add_impl(mysqlpp::udf_context &ctx) {
@@ -983,8 +1089,8 @@ class masking_dictionary_term_add_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    const auto cs_dictionary = extract_charset_string_from_arg(ctx, 0);
-    const auto cs_term = extract_charset_string_from_arg(ctx, 1);
+    const auto cs_dictionary = make_charset_string_from_arg(ctx, 0);
+    const auto cs_term = make_charset_string_from_arg(ctx, 1);
 
     masking_functions::sql_context sql_ctx{global_command_services::instance()};
 
@@ -1000,8 +1106,10 @@ class masking_dictionary_term_add_impl {
 };
 
 //
-// masking_dictionary_term_remove(string)
+// masking_dictionary_term_remove(string, string)
 //
+// This function removes one term specified via the second argument from the
+// dictionary whose name is specified via the first argument.
 class masking_dictionary_term_remove_impl {
  public:
   masking_dictionary_term_remove_impl(mysqlpp::udf_context &ctx) {
@@ -1035,8 +1143,8 @@ class masking_dictionary_term_remove_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    const auto cs_dictionary = extract_charset_string_from_arg(ctx, 0);
-    const auto cs_term = extract_charset_string_from_arg(ctx, 1);
+    const auto cs_dictionary = make_charset_string_from_arg(ctx, 0);
+    const auto cs_term = make_charset_string_from_arg(ctx, 1);
 
     masking_functions::sql_context sql_ctx{global_command_services::instance()};
 

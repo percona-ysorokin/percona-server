@@ -30,10 +30,49 @@
 namespace {
 
 std::default_random_engine &get_thread_local_prng() {
+  // As the construction of the 'std::rundom_device' is a pretty heavy operation
+  // (it includes opening `/dev/urandom` as a file, reading data from it and
+  // closing the file handler) doing this for each individual "random char" call
+  // is a huge overhead. Ideally, one global 'std::default_random_engine' object
+  // per component would be enough but in this case we would have to protect it
+  // with some synchronization primitives. 'thread_local' seems to be a
+  // reasonable compromise here.
+
+  // In the majority of implementations 'std::default_random_engine' is
+  // 'std::minstd_rand'
+  // ('std::linear_congruential_engine<uint_fast32_t, 48271, 0, 2147483647>') -
+  // a Linear Congruential Engine (x[n+1] = (a * x[n] + c) mod m') with the
+  // period equal to 2147483647 (about 2^31). It is not very hard to "hack"
+  // provided that somebody has several consecutive generated numbers.
+  // Potentially it can be substituted with `std::mersenne_twister_engine` which
+  // has a period of 2^19937 but looks like an overkill for such a simple task.
+  // Moreover, we are not using this random number generator for cryptography
+  // where it is vitally important to have a high quality RNG, therefore it
+  // seems OK to stick to a much simpler version.
   static thread_local std::default_random_engine instance{
       std::random_device{}()};
   return instance;
 }
+
+char calculate_luhn_checksum(const std::string &str) noexcept {
+  std::size_t checksum = 0, n;
+  std::size_t check_offset = (str.size() + 1U) % 2U;
+  for (std::size_t i = 0; i < str.size(); i++) {
+    // We can convert to int substracting the ASCII for 0
+    n = static_cast<unsigned char>(str[i] - '0');
+    if ((i + check_offset) % 2U == 0) {
+      n *= 2U;
+      checksum += n > 9U ? (n - 9U) : n;
+    } else {
+      checksum += n;
+    }
+  }
+
+  return checksum % 10 == 0
+             ? '0'
+             : '0' + static_cast<unsigned char>(10U - (checksum % 10));
+}
+
 }  // anonymous namespace
 
 namespace masking_functions {
@@ -102,23 +141,7 @@ std::string random_canada_sin() {
   str.append(random_numeric_string(3));
   str.append(random_numeric_string(2));
 
-  std::size_t check_sum = 0, n;
-  std::size_t check_offset = (str.size() + 1) % 2;
-  for (std::size_t i = 0; i < str.size(); i++) {
-    n = str[i] - '0';  // We can convert to int substracting the ASCII for 0
-    if ((i + check_offset) % 2 == 0) {
-      n *= 2;
-      check_sum += n > 9 ? (n - 9) : n;
-    } else {
-      check_sum += n;
-    }
-  }
-
-  if (check_sum % 10 == 0) {
-    str.append(std::to_string(0));
-  } else {
-    str.append(std::to_string(10 - (check_sum % 10)));
-  }
+  str += calculate_luhn_checksum(str);
 
   str.insert(6, "-");
   str.insert(3, "-");
@@ -151,23 +174,7 @@ std::string random_credit_card() {
       break;
   }
 
-  std::size_t check_sum = 0, n;
-  std::size_t check_offset = (str.size() + 1) % 2;
-  for (std::size_t i = 0; i < str.size(); i++) {
-    n = str[i] - '0';  // We can convert to int substracting the ASCII for 0
-    if ((i + check_offset) % 2 == 0) {
-      n *= 2;
-      check_sum += (n > 9 ? (n - 9) : n);
-    } else {
-      check_sum += n;
-    }
-  }
-
-  if (check_sum % 10 == 0) {
-    str.append(std::to_string(0));
-  } else {
-    str.append(std::to_string(10 - (check_sum % 10)));
-  }
+  str += calculate_luhn_checksum(str);
 
   assert(str.size() == 16 || str.size() == 15);
   return str;

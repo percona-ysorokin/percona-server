@@ -82,6 +82,7 @@ std::string random_iban(std::string_view country, std::size_t length);
 std::string random_ssn();
 
 // Generates a random v4 Universal Unique Identifier (UUID).
+// E.g. 82d9b7cc-7fad-481b-8eed-a27c11b4a404
 std::string random_uuid();
 
 // Generates a random United Kingdom National Insurance Number (UK NIN)

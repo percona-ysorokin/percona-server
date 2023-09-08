@@ -17,21 +17,34 @@
 #include "masking_functions/charset_string_operations.hpp"
 
 #include <cassert>
-#include <cctype>
 #include <cstddef>
+#include <locale>
 #include <stdexcept>
 
 #include "masking_functions/charset_string.hpp"
 
+namespace {
+
+masking_functions::charset_string &append_repeat(
+    masking_functions::charset_string &initial,
+    const masking_functions::charset_string &str, std::size_t n) {
+  assert(initial.get_collation() == str.get_collation());
+  // TODO: rework with logarithmic concatenation
+  // while(...) { if (...) result += str; result += result; }
+  for (std::size_t i = 0; i < n; ++i) initial += str;
+
+  return initial;
+}
+
+}  // namespace
+
 namespace masking_functions {
 
 charset_string repeat(const charset_string &str, std::size_t n) {
-  // TODO: rework with logarithmic concatenation
-  // while(...) { if (...) result += str; result += result; }
   charset_string result{str.get_services(), "", str.get_collation()};
-  for (std::size_t i = 0; i < n; ++i) result += str;
+  append_repeat(result, str, n);
 
-  assert(result.get_size_in_characters() == n);
+  assert(result.get_size_in_characters() == n * str.get_size_in_characters());
 
   return result;
 }
@@ -53,7 +66,7 @@ charset_string mask_inner(const charset_string &str, std::size_t left_margin,
       number_of_characters - left_margin - right_margin;
 
   auto result = str.substr(0, left_margin);
-  result += repeat(converted_mask_char, pads_to_insert);
+  append_repeat(result, converted_mask_char, pads_to_insert);
   if (right_margin != 0) {
     result += str.substr(left_margin + pads_to_insert, right_margin);
   }
@@ -83,7 +96,7 @@ charset_string mask_outer(const charset_string &str, std::size_t left_margin,
   auto result = repeat(converted_mask_char, left_margin);
   result += str.substr(left_margin, inner_part_length);
   if (right_margin != 0) {
-    result += repeat(converted_mask_char, right_margin);
+    append_repeat(result, converted_mask_char, right_margin);
   }
 
   assert(result.get_size_in_characters() == number_of_characters);
@@ -125,7 +138,8 @@ charset_string mask_inner_alphanum(const charset_string &str,
       alnum_flag = !previous_alnum_flag;
     } else {
       const auto ch = str[index];
-      alnum_flag = (ch < 127U && std::isalnum(static_cast<int>(ch)));
+      alnum_flag = (ch < 127U && std::isalnum(static_cast<char>(ch),
+                                              std::locale::classic()));
     }
 
     // for the very first character we need to initialize previous_alnum_flag
@@ -138,7 +152,7 @@ charset_string mask_inner_alphanum(const charset_string &str,
       ++group_length;
     } else {
       if (previous_alnum_flag) {
-        result += repeat(converted_mask_char, group_length);
+        append_repeat(result, converted_mask_char, group_length);
       } else {
         result += str.substr(index - group_length, group_length);
       }

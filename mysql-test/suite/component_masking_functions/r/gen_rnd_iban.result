@@ -14,11 +14,11 @@ SELECT gen_rnd_iban('', NULL);
 ERROR HY000: gen_rnd_iban<string> UDF failed; argument 2 cannot be null
 # constraints checks
 SELECT gen_rnd_iban('');
-ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 2 characters
+ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 2 ASCII characters
 SELECT gen_rnd_iban('U');
-ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 2 characters
+ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 2 ASCII characters
 SELECT gen_rnd_iban('UKK');
-ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 2 characters
+ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must be exactly 2 ASCII characters
 SELECT gen_rnd_iban('ЮЮ');
 ERROR HY000: gen_rnd_iban<string> UDF failed; IBAN country code must include only latin upper-case characters
 SELECT gen_rnd_iban('UK', -1);

@@ -97,8 +97,12 @@ sql_context::optional_string sql_context::query_single_value(
   using mysql_res_ptr =
       std::unique_ptr<mysql_res_type, decltype(mysql_res_deleter)>;
 
-  mysql_res_ptr mysql_res_capsule(mysql_res, std::move(mysql_res_deleter));
+  mysql_res_ptr mysql_res_guard(mysql_res, std::move(mysql_res_deleter));
   uint64_t row_count = 0;
+  // As the 'affected_rows()' method of the 'mysql_command_query' MySQL
+  // service is implementted via 'mysql_affected_rows()' MySQL client
+  // function, it is OK to use it for SELECT statements as well, because
+  // in this case it will work like 'mysql_num_rows()'.
   if ((*get_services().query->affected_rows)(to_mysql_h(impl_.get()),
                                              &row_count) != 0)
     throw std::runtime_error{"Couldn't query row count"};

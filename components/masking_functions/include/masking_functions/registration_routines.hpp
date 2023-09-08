@@ -23,13 +23,13 @@ namespace masking_functions {
 // This function tries to register all the dynamic privileges
 // needed by the 'component_masking_functions' (currently only
 // 'MASKING_DICTIONARIES_ADMIN').
-// Returns 'true' on success, 'fasle' otherwise.
+// Returns 'true' on success, 'false' otherwise.
 // The function can be called several times until it sucseeds.
 bool register_dynamic_privileges();
 // This function tries to unregister all the dynamic privileges
 // needed by the 'component_masking_functions' (currently only
 // 'MASKING_DICTIONARIES_ADMIN').
-// Returns 'true' on success, 'fasle' otherwise.
+// Returns 'true' on success, 'false' otherwise.
 // The function can be called several times until it sucseeds.
 bool unregister_dynamic_privileges();
 
