@@ -8,10 +8,6 @@ ERROR HY000: Can't initialize function 'mask_uuid'; Wrong argument list: should 
 SELECT mask_uuid('', '', '');
 ERROR HY000: Can't initialize function 'mask_uuid'; Wrong argument list: should be (string, [char])
 # argument nullness checks
-SELECT mask_uuid(NULL);
-ERROR HY000: mask_uuid<string> UDF failed; argument 1 cannot be null
-SELECT mask_uuid(NULL, '');
-ERROR HY000: mask_uuid<string> UDF failed; argument 1 cannot be null
 SELECT mask_uuid('', NULL);
 ERROR HY000: mask_uuid<string> UDF failed; argument 2 cannot be null
 # constraints checks
@@ -25,6 +21,9 @@ SELECT mask_uuid('12345678-1234-abcd-5678-1234567890ab', '');
 ERROR HY000: mask_uuid<string> UDF failed; masking character must be of length 1
 SELECT mask_uuid('12345678-1234-abcd-5678-1234567890ab', 'XX');
 ERROR HY000: mask_uuid<string> UDF failed; masking character must be of length 1
+# NULL for NULL checks
+include/assert.inc [mask_uuid() for the NULL primary argument should return NULL]
+include/assert.inc [mask_uuid() for the NULL primary argument and custom mask should return NULL]
 # logic checks
 SET @check_expression_result = mask_uuid('12345678-1234-abcd-5678-1234567890ab');
 include/assert.inc [the result of evaluating 'mask_uuid('12345678-1234-abcd-5678-1234567890ab')' must be equal to '********-****-****-****-************']

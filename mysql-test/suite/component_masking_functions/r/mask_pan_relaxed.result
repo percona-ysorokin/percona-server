@@ -8,10 +8,6 @@ ERROR HY000: Can't initialize function 'mask_pan_relaxed'; Wrong argument list: 
 SELECT mask_pan_relaxed('', '', '');
 ERROR HY000: Can't initialize function 'mask_pan_relaxed'; Wrong argument list: should be (string, [char])
 # argument nullness checks
-SELECT mask_pan_relaxed(NULL);
-ERROR HY000: mask_pan_relaxed<string> UDF failed; argument 1 cannot be null
-SELECT mask_pan_relaxed(NULL, '');
-ERROR HY000: mask_pan_relaxed<string> UDF failed; argument 1 cannot be null
 SELECT mask_pan_relaxed('', NULL);
 ERROR HY000: mask_pan_relaxed<string> UDF failed; argument 2 cannot be null
 # constraints checks
@@ -25,6 +21,9 @@ SELECT mask_pan_relaxed('123456789', '');
 ERROR HY000: mask_pan_relaxed<string> UDF failed; Argument must be between 14 and 19 characters
 SELECT mask_pan_relaxed('123456789', 'XX');
 ERROR HY000: mask_pan_relaxed<string> UDF failed; Argument must be between 14 and 19 characters
+# NULL for NULL checks
+include/assert.inc [mask_pan_relaxed() for the NULL primary argument should return NULL]
+include/assert.inc [mask_pan_relaxed() for the NULL primary argument and custom mask should return NULL]
 # logic checks
 SET @check_expression_result = mask_pan_relaxed('1234567887654321');
 include/assert.inc [the result of evaluating 'mask_pan_relaxed('1234567887654321')' must be equal to '123456XXXXXX4321']

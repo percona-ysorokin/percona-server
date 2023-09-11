@@ -14,11 +14,6 @@ SELECT mask_ssn('', '', '');
 
 --echo # argument nullness checks
 --error ER_UDF_ERROR
-SELECT mask_ssn(NULL);
-
---error ER_UDF_ERROR
-SELECT mask_ssn(NULL, '');
---error ER_UDF_ERROR
 SELECT mask_ssn('', NULL);
 
 --echo # constraints checks
@@ -32,6 +27,15 @@ SELECT mask_ssn('123456789012');
 SELECT mask_ssn('123456789', '');
 --error ER_UDF_ERROR
 SELECT mask_ssn('123456789', 'XX');
+
+
+--echo # NULL for NULL checks
+--let $assert_cond = mask_ssn(NULL) IS NULL
+--let $assert_text = mask_ssn() for the NULL primary argument should return NULL
+--source include/assert.inc
+--let $assert_cond = mask_ssn(NULL, "*") IS NULL
+--let $assert_text = mask_ssn() for the NULL primary argument and custom mask should return NULL
+--source include/assert.inc
 
 
 --echo # logic checks

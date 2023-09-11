@@ -19,14 +19,10 @@ SELECT mask_inner('', 42, 42, '', '');
 
 --echo # argument nullness checks
 --error ER_UDF_ERROR
-SELECT mask_inner(NULL, 42, 42);
---error ER_UDF_ERROR
 SELECT mask_inner('', NULL, 42);
 --error ER_UDF_ERROR
 SELECT mask_inner('', 42, NULL);
 
---error ER_UDF_ERROR
-SELECT mask_inner(NULL, 42, 42, '');
 --error ER_UDF_ERROR
 SELECT mask_inner('', NULL, 42, '');
 --error ER_UDF_ERROR
@@ -44,6 +40,15 @@ SELECT mask_inner('foo', 0, -1);
 SELECT mask_inner('foo', 1, 1, '');
 --error ER_UDF_ERROR
 SELECT mask_inner('foo', 1, 1, ''XX);
+
+
+--echo # NULL for NULL checks
+--let $assert_cond = mask_inner(NULL, 42, 42) IS NULL
+--let $assert_text = mask_inner() for the NULL primary argument should return NULL
+--source include/assert.inc
+--let $assert_cond = mask_inner(NULL, 42, 42, "*") IS NULL
+--let $assert_text = mask_inner() for the NULL primary argument and custom mask should return NULL
+--source include/assert.inc
 
 
 --echo # logic checks

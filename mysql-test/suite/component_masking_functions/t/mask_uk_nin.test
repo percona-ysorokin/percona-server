@@ -14,11 +14,6 @@ SELECT mask_uk_nin('', '', '');
 
 --echo # argument nullness checks
 --error ER_UDF_ERROR
-SELECT mask_uk_nin(NULL);
-
---error ER_UDF_ERROR
-SELECT mask_uk_nin(NULL, '');
---error ER_UDF_ERROR
 SELECT mask_uk_nin('', NULL);
 
 --echo # constraints checks
@@ -32,6 +27,15 @@ SELECT mask_uk_nin('QQ 123456 CD');
 SELECT mask_uk_nin('QQ123456C', '');
 --error ER_UDF_ERROR
 SELECT mask_uk_nin('QQ123456C', 'XX');
+
+
+--echo # NULL for NULL checks
+--let $assert_cond = mask_uk_nin(NULL) IS NULL
+--let $assert_text = mask_uk_nin() for the NULL primary argument should return NULL
+--source include/assert.inc
+--let $assert_cond = mask_uk_nin(NULL, "*") IS NULL
+--let $assert_text = mask_uk_nin() for the NULL primary argument and custom mask should return NULL
+--source include/assert.inc
 
 
 --echo # logic checks

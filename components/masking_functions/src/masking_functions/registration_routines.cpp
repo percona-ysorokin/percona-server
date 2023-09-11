@@ -458,6 +458,10 @@ class gen_rnd_uuid_impl final : private rnd_impl_base {
 //
 // mask_inner(string, int, int, [char])
 //
+// This function masks every character in the provided string <first
+// argument> except for the first <second argument> and the last <third
+// argument> characters.
+// Optional <forth argument> is used as a masking character.
 class mask_inner_impl {
  public:
   mask_inner_impl(mysqlpp::udf_context &ctx) {
@@ -468,7 +472,7 @@ class mask_inner_impl {
     ctx.mark_result_nullable(true);
     ctx.mark_result_const(true);
 
-    ctx.mark_arg_nullable(0, false);
+    ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
 
     ctx.mark_arg_nullable(1, false);
@@ -489,6 +493,8 @@ class mask_inner_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
+    if (ctx.is_arg_null(0)) return std::nullopt;
+
     const auto cs_str = make_charset_string_from_arg(ctx, 0);
 
     const auto masking_char =
@@ -514,6 +520,9 @@ class mask_inner_impl {
 //
 // mask_outer(string, int, int, [char])
 //
+// This function masks the first <second argument> and the last <third
+// argument> characters in the provided string <first argument>.
+// Optional <forth argument> is used as a masking character.
 class mask_outer_impl {
  public:
   mask_outer_impl(mysqlpp::udf_context &ctx) {
@@ -524,7 +533,7 @@ class mask_outer_impl {
     ctx.mark_result_nullable(true);
     ctx.mark_result_const(true);
 
-    ctx.mark_arg_nullable(0, false);
+    ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
 
     ctx.mark_arg_nullable(1, false);
@@ -545,6 +554,8 @@ class mask_outer_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
+    if (ctx.is_arg_null(0)) return std::nullopt;
+
     const auto cs_str = make_charset_string_from_arg(ctx, 0);
 
     const auto masking_char =
@@ -596,7 +607,7 @@ class mask_impl_base {
     ctx.mark_result_nullable(true);
     ctx.mark_result_const(true);
 
-    ctx.mark_arg_nullable(0, false);
+    ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
 
     if (ctx.get_number_of_args() >= 2) {
@@ -611,6 +622,8 @@ class mask_impl_base {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
+    if (ctx.is_arg_null(0)) return std::nullopt;
+
     const auto cs_str = make_charset_string_from_arg(ctx, 0);
     const auto cs_str_length = cs_str.get_size_in_characters();
 
@@ -904,13 +917,15 @@ class gen_blocklist_impl {
     ctx.mark_result_nullable(true);
     ctx.mark_result_const(false);
 
-    // arg1 - dictionary
-    ctx.mark_arg_nullable(0, false);
+    // arg0 - term
+    ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
 
+    // arg1 - dictionary 1 (from)
     ctx.mark_arg_nullable(1, false);
     ctx.set_arg_type(1, STRING_RESULT);
 
+    // arg2 - dictionary 2 (to)
     ctx.mark_arg_nullable(2, false);
     ctx.set_arg_type(2, STRING_RESULT);
 
@@ -921,6 +936,8 @@ class gen_blocklist_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
+    if (ctx.is_arg_null(0)) return std::nullopt;
+
     const auto cs_term = make_charset_string_from_arg(ctx, 0);
     const auto cs_dict_a = make_charset_string_from_arg(ctx, 1);
     const auto cs_dict_b = make_charset_string_from_arg(ctx, 2);
@@ -975,7 +992,7 @@ class gen_dictionary_impl {
     ctx.mark_result_nullable(true);
     ctx.mark_result_const(false);
 
-    // arg1 - dictionary
+    // arg0 - dictionary
     ctx.mark_arg_nullable(0, false);
     ctx.set_arg_type(0, STRING_RESULT);
 
@@ -1025,7 +1042,7 @@ class masking_dictionary_remove_impl {
     ctx.mark_result_nullable(true);
     ctx.mark_result_const(true);
 
-    // arg1 - dictionary
+    // arg0 - dictionary
     ctx.mark_arg_nullable(0, false);
     ctx.set_arg_type(0, STRING_RESULT);
 
@@ -1073,11 +1090,11 @@ class masking_dictionary_term_add_impl {
     ctx.mark_result_nullable(true);
     ctx.mark_result_const(true);
 
-    // arg1 - dictionary
+    // arg0 - dictionary
     ctx.mark_arg_nullable(0, false);
     ctx.set_arg_type(0, STRING_RESULT);
 
-    // arg2 - term
+    // arg1 - term
     ctx.mark_arg_nullable(1, false);
     ctx.set_arg_type(1, STRING_RESULT);
 
@@ -1127,11 +1144,11 @@ class masking_dictionary_term_remove_impl {
     ctx.mark_result_nullable(true);
     ctx.mark_result_const(true);
 
-    // arg1 - dictionary
+    // arg0 - dictionary
     ctx.mark_arg_nullable(0, false);
     ctx.set_arg_type(0, STRING_RESULT);
 
-    // arg2 - term
+    // arg1 - term
     ctx.mark_arg_nullable(1, false);
     ctx.set_arg_type(1, STRING_RESULT);
 

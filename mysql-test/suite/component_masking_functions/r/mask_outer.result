@@ -12,14 +12,10 @@ ERROR HY000: Can't initialize function 'mask_outer'; Wrong argument list: should
 SELECT mask_outer('', 42, 42, '', '');
 ERROR HY000: Can't initialize function 'mask_outer'; Wrong argument list: should be (string, int, int [char])
 # argument nullness checks
-SELECT mask_outer(NULL, 42, 42);
-ERROR HY000: mask_outer<string> UDF failed; argument 1 cannot be null
 SELECT mask_outer('', NULL, 42);
 ERROR HY000: mask_outer<string> UDF failed; argument 2 cannot be null
 SELECT mask_outer('', 42, NULL);
 ERROR HY000: mask_outer<string> UDF failed; argument 3 cannot be null
-SELECT mask_outer(NULL, 42, 42, '');
-ERROR HY000: mask_outer<string> UDF failed; argument 1 cannot be null
 SELECT mask_outer('', NULL, 42, '');
 ERROR HY000: mask_outer<string> UDF failed; argument 2 cannot be null
 SELECT mask_outer('', 42, NULL, '');
@@ -35,6 +31,9 @@ SELECT mask_outer('foo', 1, 1, '');
 ERROR HY000: mask_outer<string> UDF failed; masking character must be of length 1
 SELECT mask_outer('foo', 1, 1, ''XX);
 ERROR HY000: mask_outer<string> UDF failed; masking character must be of length 1
+# NULL for NULL checks
+include/assert.inc [mask_outer() for the NULL primary argument should return NULL]
+include/assert.inc [mask_outer() for the NULL primary argument and custom mask should return NULL]
 # logic checks
 SET @check_expression_result = mask_outer('qwerty', 0, 1);
 include/assert.inc [the result of evaluating 'mask_outer('qwerty', 0, 1)' must be equal to 'qwertX']

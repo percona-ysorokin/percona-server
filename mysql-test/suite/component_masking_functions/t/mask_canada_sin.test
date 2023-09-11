@@ -14,11 +14,6 @@ SELECT mask_canada_sin('', '', '');
 
 --echo # argument nullness checks
 --error ER_UDF_ERROR
-SELECT mask_canada_sin(NULL);
-
---error ER_UDF_ERROR
-SELECT mask_canada_sin(NULL, '');
---error ER_UDF_ERROR
 SELECT mask_canada_sin('', NULL);
 
 --echo # constraints checks
@@ -32,6 +27,15 @@ SELECT mask_canada_sin('123456789012');
 SELECT mask_canada_sin('123456789', '');
 --error ER_UDF_ERROR
 SELECT mask_canada_sin('123456789', 'XX');
+
+
+--echo # NULL for NULL checks
+--let $assert_cond = mask_canada_sin(NULL) IS NULL
+--let $assert_text = mask_canada_sin() for the NULL primary argument should return NULL
+--source include/assert.inc
+--let $assert_cond = mask_canada_sin(NULL, "*") IS NULL
+--let $assert_text = mask_canada_sin() for the NULL primary argument and custom mask should return NULL
+--source include/assert.inc
 
 
 --echo # logic checks

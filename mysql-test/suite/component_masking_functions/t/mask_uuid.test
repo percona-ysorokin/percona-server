@@ -14,11 +14,6 @@ SELECT mask_uuid('', '', '');
 
 --echo # argument nullness checks
 --error ER_UDF_ERROR
-SELECT mask_uuid(NULL);
-
---error ER_UDF_ERROR
-SELECT mask_uuid(NULL, '');
---error ER_UDF_ERROR
 SELECT mask_uuid('', NULL);
 
 --echo # constraints checks
@@ -32,6 +27,15 @@ SELECT mask_uuid('12345678-1234-abcd-5678-1234567890abc');
 SELECT mask_uuid('12345678-1234-abcd-5678-1234567890ab', '');
 --error ER_UDF_ERROR
 SELECT mask_uuid('12345678-1234-abcd-5678-1234567890ab', 'XX');
+
+
+--echo # NULL for NULL checks
+--let $assert_cond = mask_uuid(NULL) IS NULL
+--let $assert_text = mask_uuid() for the NULL primary argument should return NULL
+--source include/assert.inc
+--let $assert_cond = mask_uuid(NULL, "*") IS NULL
+--let $assert_text = mask_uuid() for the NULL primary argument and custom mask should return NULL
+--source include/assert.inc
 
 
 --echo # logic checks

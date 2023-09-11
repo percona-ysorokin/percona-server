@@ -8,10 +8,6 @@ ERROR HY000: Can't initialize function 'mask_ssn'; Wrong argument list: should b
 SELECT mask_ssn('', '', '');
 ERROR HY000: Can't initialize function 'mask_ssn'; Wrong argument list: should be (string, [char])
 # argument nullness checks
-SELECT mask_ssn(NULL);
-ERROR HY000: mask_ssn<string> UDF failed; argument 1 cannot be null
-SELECT mask_ssn(NULL, '');
-ERROR HY000: mask_ssn<string> UDF failed; argument 1 cannot be null
 SELECT mask_ssn('', NULL);
 ERROR HY000: mask_ssn<string> UDF failed; argument 2 cannot be null
 # constraints checks
@@ -25,6 +21,9 @@ SELECT mask_ssn('123456789', '');
 ERROR HY000: mask_ssn<string> UDF failed; masking character must be of length 1
 SELECT mask_ssn('123456789', 'XX');
 ERROR HY000: mask_ssn<string> UDF failed; masking character must be of length 1
+# NULL for NULL checks
+include/assert.inc [mask_ssn() for the NULL primary argument should return NULL]
+include/assert.inc [mask_ssn() for the NULL primary argument and custom mask should return NULL]
 # logic checks
 SET @check_expression_result = mask_ssn('123456789');
 include/assert.inc [the result of evaluating 'mask_ssn('123456789')' must be equal to '*****6789']

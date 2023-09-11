@@ -14,11 +14,6 @@ SELECT mask_iban('', '', '');
 
 --echo # argument nullness checks
 --error ER_UDF_ERROR
-SELECT mask_iban(NULL);
-
---error ER_UDF_ERROR
-SELECT mask_iban(NULL, '');
---error ER_UDF_ERROR
 SELECT mask_iban('', NULL);
 
 --echo # constraints checks
@@ -34,6 +29,15 @@ SELECT mask_iban('ZZ 1234 1234 1234 1234 1234 1234 1234 12345');
 SELECT mask_iban('ZZ12345678901234', '');
 --error ER_UDF_ERROR
 SELECT mask_iban('ZZ12345678901234', 'XX');
+
+
+--echo # NULL for NULL checks
+--let $assert_cond = mask_iban(NULL) IS NULL
+--let $assert_text = mask_iban() for the NULL primary argument should return NULL
+--source include/assert.inc
+--let $assert_cond = mask_iban(NULL, "*") IS NULL
+--let $assert_text = mask_iban() for the NULL primary argument and custom mask should return NULL
+--source include/assert.inc
 
 
 --echo # logic checks

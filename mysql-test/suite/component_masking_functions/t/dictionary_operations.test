@@ -53,8 +53,6 @@ SELECT masking_dictionary_remove('', '');
 SELECT gen_dictionary(NULL);
 
 --error ER_UDF_ERROR
-SELECT gen_blocklist(NULL, 'de_cities', 'us_cities');
---error ER_UDF_ERROR
 SELECT gen_blocklist('Berlin', NULL, 'us_cities');
 --error ER_UDF_ERROR
 SELECT gen_blocklist('Berlin', 'de_cities', NULL);
@@ -66,6 +64,12 @@ SELECT gen_blocklist('Berlin', 'de_cities', 'us_cities');
 
 --error ER_COMMAND_SERVICE_BACKEND_FAILED
 SELECT gen_dictionary('us_cities');
+
+
+--echo # NULL for NULL checks
+--let $assert_cond = gen_blocklist(NULL, "de_cities", "us_cities") IS NULL
+--let $assert_text = gen_blocklist() for the NULL primary argument should return NULL
+--source include/assert.inc
 
 
 --echo # checking the case when mysql.masking_dictionaries has invalid structure

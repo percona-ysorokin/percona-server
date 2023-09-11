@@ -8,10 +8,6 @@ ERROR HY000: Can't initialize function 'mask_uk_nin'; Wrong argument list: shoul
 SELECT mask_uk_nin('', '', '');
 ERROR HY000: Can't initialize function 'mask_uk_nin'; Wrong argument list: should be (string, [char])
 # argument nullness checks
-SELECT mask_uk_nin(NULL);
-ERROR HY000: mask_uk_nin<string> UDF failed; argument 1 cannot be null
-SELECT mask_uk_nin(NULL, '');
-ERROR HY000: mask_uk_nin<string> UDF failed; argument 1 cannot be null
 SELECT mask_uk_nin('', NULL);
 ERROR HY000: mask_uk_nin<string> UDF failed; argument 2 cannot be null
 # constraints checks
@@ -25,6 +21,9 @@ SELECT mask_uk_nin('QQ123456C', '');
 ERROR HY000: mask_uk_nin<string> UDF failed; masking character must be of length 1
 SELECT mask_uk_nin('QQ123456C', 'XX');
 ERROR HY000: mask_uk_nin<string> UDF failed; masking character must be of length 1
+# NULL for NULL checks
+include/assert.inc [mask_uk_nin() for the NULL primary argument should return NULL]
+include/assert.inc [mask_uk_nin() for the NULL primary argument and custom mask should return NULL]
 # logic checks
 SET @check_expression_result = mask_uk_nin('QQ123456C');
 include/assert.inc [the result of evaluating 'mask_uk_nin('QQ123456C')' must be equal to 'QQ*******']
