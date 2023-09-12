@@ -30,7 +30,7 @@
 namespace {
 
 std::default_random_engine &get_thread_local_prng() {
-  // As the construction of the 'std::rundom_device' is a pretty heavy operation
+  // As the construction of the 'std::random_device' is a pretty heavy operation
   // (it includes opening `/dev/urandom` as a file, reading data from it and
   // closing the file handler) doing this for each individual "random char" call
   // is a huge overhead. Ideally, one global 'std::default_random_engine' object

@@ -97,15 +97,6 @@ class charset_string {
 
   std::size_t get_size_in_bytes() const noexcept;
 
-  bool is_empty() const noexcept {
-    assert(impl_);
-    // as unicode may potentially include special markers which should not
-    // be considered as real characters (like BiDi markers), instead of
-    // 'get_size_in_bytes()' (which is most probably faster), we use
-    // 'get_size_in_characters()' here
-    return get_size_in_characters() == 0;
-  }
-
   std::string_view get_buffer() const noexcept {
     assert(impl_);
     return get_internal().first;

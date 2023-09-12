@@ -139,6 +139,9 @@ void set_return_value_collation_from_arg(
 //
 // gen_range(int, int)
 //
+// Generates a random integer in the [<first argument>..<second argument>]
+// range inclusive.
+// If <first argument> is less then <second argument>, NULL is returned.
 class gen_range_impl {
  public:
   gen_range_impl(mysqlpp::udf_context &ctx) {
@@ -170,6 +173,13 @@ class gen_range_impl {
 //
 // gen_rnd_email([int], [int], [string])
 //
+// Generates a random email in the following format:
+// <name>.<surname>@<domain>.
+// <name> - a randomly-generated sequence of lower-case latin letters ([a-z])
+// of length <first argument> (5 if not present)
+// <surname> - a randomly-generated sequence of lower-case latin letters
+// ([a-z]) of length <second argument> (7 if not present)
+// <domain> is taken from the <third argument> ('example.com' if not present)
 class gen_rnd_email_impl {
  private:
   static constexpr std::string_view default_ascii_email_domain = "example.com";
@@ -270,6 +280,13 @@ class gen_rnd_email_impl {
 //
 // gen_rnd_iban([string], [int])
 //
+// Generates a random International Bank Account Number (IBAN).
+// Returns a string containing the country code <first argument>
+// (2 latin uppercase characters) followed by (<second argument> - 2) random
+// digits.
+// E.g. ZZ0123456789012
+// This function does not calculate proper IBAN checksum (3rd and 4th
+// digits) - those positions have randomly-generated digits.
 class gen_rnd_iban_impl {
  private:
   static constexpr std::string_view default_ascii_country_code{"ZZ"};
@@ -392,6 +409,10 @@ class rnd_impl_base {
 //
 // gen_rnd_canada_sin()
 //
+// Generates a Canada Social Insurance Number (SIN) in AAA-BBB-CCC format
+// that passes checksum validation.
+// E.g. 123-456-789
+
 class gen_rnd_canada_sin_impl final : private rnd_impl_base {
  public:
   using rnd_impl_base::rnd_impl_base;
@@ -403,6 +424,9 @@ class gen_rnd_canada_sin_impl final : private rnd_impl_base {
 //
 // gen_rnd_pan()
 //
+// Generates a random American Express / Visa / Mastercard / Discover
+// credit card number that passes basic checksum validation.
+// E.g. 1234567887654321
 class gen_rnd_pan_impl final : private rnd_impl_base {
  public:
   using rnd_impl_base::rnd_impl_base;
@@ -414,6 +438,9 @@ class gen_rnd_pan_impl final : private rnd_impl_base {
 //
 // gen_rnd_ssn()
 //
+// Generates a random US Social Security Number (SSN) in AAA-BB-CCCC format,
+// where AAA is in the 900..999 range (meaning not used / reserved).
+// E.g. 951-26-0058
 class gen_rnd_ssn_impl final : private rnd_impl_base {
  public:
   using rnd_impl_base::rnd_impl_base;
@@ -425,6 +452,9 @@ class gen_rnd_ssn_impl final : private rnd_impl_base {
 //
 // gen_rnd_uk_nin()
 //
+// Generates a random United Kingdom National Insurance Number (UK NIN)
+// in nine-character format that always starts with 'AA' and ends with 'C'.
+// E.g. AA123456C
 class gen_rnd_uk_nin_impl final : private rnd_impl_base {
  public:
   using rnd_impl_base::rnd_impl_base;
@@ -436,6 +466,8 @@ class gen_rnd_uk_nin_impl final : private rnd_impl_base {
 //
 // gen_rnd_us_phone()
 //
+// Generates a random US phone number in 1-555-AAA-BBBB format.
+// E.g. 1-555-682-5423
 class gen_rnd_us_phone_impl final : private rnd_impl_base {
  public:
   using rnd_impl_base::rnd_impl_base;
@@ -447,6 +479,8 @@ class gen_rnd_us_phone_impl final : private rnd_impl_base {
 //
 // gen_rnd_uuid()
 //
+// Generates a random v4 Universal Unique Identifier (UUID).
+// E.g. 82d9b7cc-7fad-481b-8eed-a27c11b4a404
 class gen_rnd_uuid_impl final : private rnd_impl_base {
  public:
   using rnd_impl_base::rnd_impl_base;
@@ -727,8 +761,8 @@ class mask_iban_impl final : private mask_impl_base {
 //
 // mask_pan(string, [char])
 //
-// Card number consists of 14..16 digits with up to 3 delimiters
-// separated with a delimiter
+// Card number consists of 14..16 digits possibly separated with up to 3
+// delimiters.
 // E.g. 1234567887654321 or 1234 5678 8765 4321
 //      XXXXXXXXXXXX4321 or XXXX XXXX XXXX 4321
 // min_length          : 14
@@ -759,8 +793,8 @@ class mask_pan_impl final : private mask_impl_base {
 //
 // mask_pan_relaxed(string, [char])
 //
-// Card number consists of 14..16 digits with up to 3 delimiters
-// separated with a delimiter
+// Card number consists of 14..16 digits possibly separated with up to 3
+// delimiters.
 // E.g. 1234567887654321 or 1234 5678 8765 4321
 //      123456XXXXXX4321 or 1234 56XX XXXX 4321
 // min_length          : 14
@@ -881,20 +915,7 @@ class mask_uuid_impl final : private mask_impl_base {
   virtual masking_functions::charset_string process(
       const masking_functions::charset_string &cs_str,
       const masking_functions::charset_string &masking_char) const override {
-    // the separators are expected to be at the predefined positions,
-    // we just mask everything except the delimiters
-    auto sresult =
-        masking_functions::mask_inner(cs_str, 0, 36 - 8, masking_char);
-    sresult =
-        masking_functions::mask_inner(sresult, 9, 36 - 9 - 4, masking_char);
-    sresult = masking_functions::mask_inner(sresult, 9 + 5, 36 - 9 - 5 - 4,
-                                            masking_char);
-    sresult = masking_functions::mask_inner(sresult, 9 + 5 + 5,
-                                            36 - 9 - 5 - 5 - 4, masking_char);
-    sresult =
-        masking_functions::mask_inner(sresult, 9 + 5 + 5 + 5, 0, masking_char);
-
-    return sresult;
+    return masking_functions::mask_inner_alphanum(cs_str, 0, 0, masking_char);
   }
 };
 
@@ -1040,6 +1061,9 @@ class masking_dictionary_remove_impl {
           "Wrong argument list: masking_dictionary_remove(string)"};
 
     ctx.mark_result_nullable(true);
+    // Calling this UDF two or more times has exactly the same effect as just
+    // calling it once. So, we mark the result as 'const' here so that the
+    // optimizer could use this info to eliminate unnecessary calls.
     ctx.mark_result_const(true);
 
     // arg0 - dictionary
@@ -1088,6 +1112,9 @@ class masking_dictionary_term_add_impl {
           "string)"};
 
     ctx.mark_result_nullable(true);
+    // Calling this UDF two or more times has exactly the same effect as just
+    // calling it once. So, we mark the result as 'const' here so that the
+    // optimizer could use this info to eliminate unnecessary calls.
     ctx.mark_result_const(true);
 
     // arg0 - dictionary
@@ -1142,6 +1169,9 @@ class masking_dictionary_term_remove_impl {
           "string)"};
 
     ctx.mark_result_nullable(true);
+    // Calling this UDF two or more times has exactly the same effect as just
+    // calling it once. So, we mark the result as 'const' here so that the
+    // optimizer could use this info to eliminate unnecessary calls.
     ctx.mark_result_const(true);
 
     // arg0 - dictionary

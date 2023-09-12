@@ -75,6 +75,8 @@ std::string random_canada_sin();
 // Generates a random International Bank Account Number (IBAN).
 // Returns a string containing the country code 'country'
 // (2 latin uppercase characters) followed by 'length' random digits.
+// This function does not calculate proper IBAN checksum (3rd and 4th
+// digits) - those positions have randomly-generated digits.
 std::string random_iban(std::string_view country, std::size_t length);
 
 // Generates a random US Social Security Number (SSN) in AAA-BB-CCCC format.
@@ -87,7 +89,7 @@ std::string random_uuid();
 
 // Generates a random United Kingdom National Insurance Number (UK NIN)
 // in nine-character format.
-// E.g. QQ123456C
+// E.g. AA123456C
 std::string random_uk_nin();
 
 // Generates a random US phone number in 1-555-AAA-BBBB format.
