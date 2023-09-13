@@ -71,6 +71,15 @@ sql_context::sql_context(const command_service_tuple &services)
   if ((*get_services().factory->connect)(local_mysql_h) != 0) {
     throw std::runtime_error{"Couldn't establish server connection"};
   }
+
+  // In order to make sure that internal INSERT / DELETE queries which
+  // manipulate 'mysql.masking_dictionaries' are not affected by the global
+  // value of '@@global.autocommit' (we want all operations to be committed
+  // immediately), we are setting the value of the 'autocommit' session
+  // variable here explicitly to 'ON'.
+  if ((*get_services().factory->autocommit)(to_mysql_h(impl_.get()), true)) {
+    throw std::runtime_error{"Couldn't set autocommit"};
+  }
 }
 
 sql_context::optional_string sql_context::query_single_value(
