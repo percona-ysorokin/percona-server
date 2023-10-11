@@ -297,7 +297,6 @@ bool create_config(
         &metadata) {
   metadata =
       std::make_unique<std::vector<std::pair<std::string, std::string>>>();
-  if (metadata == nullptr) return true;
   keyring_vault::config::Config_pod config_pod;
   bool global_config_available = false;
   if (g_config_pod != nullptr) {
