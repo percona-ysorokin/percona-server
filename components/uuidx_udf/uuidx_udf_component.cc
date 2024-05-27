@@ -33,26 +33,21 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 #include <algorithm>
 
 #include <mysql/components/services/mysql_runtime_error.h>
+#include <mysql/components/component_implementation.h>
 
-#include <mysql/components/component_implementation.h>
-#include <mysql/components/service_implementation.h>
-#include <mysql/components/component_implementation.h>
+#include <mysql/components/services/component_sys_var_service.h>
+#include <mysql/components/services/mysql_current_thread_reader.h>
+#include <mysql/components/services/mysql_runtime_error.h>
 #include <mysql/components/services/udf_registration.h>
 #include <mysql/components/services/udf_metadata.h>
-
-#include <mysqlpp/common_types.hpp>
-#include <mysqlpp/udf_context.hpp>
-#include <mysqlpp/udf_exception.hpp>
-#include <mysqlpp/udf_traits.hpp>
-#include <mysqlpp/udf_wrappers.hpp>
-#include <mysqlpp/udf_registration.hpp>
 #include <mysqlpp/udf_context_charset_extension.hpp>
+
+#include <mysqlpp/udf_registration.hpp>
+#include <mysqlpp/udf_wrappers.hpp>
 
 // defined as a macro because needed both raw and stringized
 #define CURRENT_COMPONENT_NAME uuidx_udf
 #define CURRENT_COMPONENT_NAME_STR BOOST_PP_STRINGIZE(CURRENT_COMPONENT_NAME)
-
-#define UUID_LENGTH 37
 
 REQUIRES_SERVICE_PLACEHOLDER(udf_registration);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_udf_metadata);
@@ -187,8 +182,8 @@ class is_max_uuid_impl {
 
       try {
         boost::uuids::uuid u = gen(uxs.data());
-        for(std::uint8_t d: u.data){
-          if (d != 0xFF){
+        for(size_t i = 0; i < sizeof(u.data); i++){
+          if (u.data[i] != 0xFF){
              verification_result = false;
              break;  
           }  

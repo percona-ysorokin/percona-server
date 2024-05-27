@@ -61,7 +61,7 @@ inline Ch* to_chars( uuid const& u, Ch (&buffer)[ N ] ) noexcept
 
 // only provided for compatibility; deprecated
 template<class Ch>
-BOOST_DEPRECATED( "Use Ch[37] instead of Ch[36] to allow for the null terminator" )
+// BOOST_DEPRECATED( "Use Ch[37] instead of Ch[36] to allow for the null terminator" )
 inline Ch* to_chars( uuid const& u, Ch (&buffer)[ 36 ] ) noexcept
 {
     detail::to_chars( u, buffer + 0 );
