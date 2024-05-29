@@ -45,6 +45,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 #include <mysqlpp/udf_registration.hpp>
 #include <mysqlpp/udf_wrappers.hpp>
 
+#include "ts_helpers.h"
+
 // defined as a macro because needed both raw and stringized
 #define CURRENT_COMPONENT_NAME uuidx_udf
 #define CURRENT_COMPONENT_NAME_STR BOOST_PP_STRINGIZE(CURRENT_COMPONENT_NAME)
@@ -53,7 +55,7 @@ REQUIRES_SERVICE_PLACEHOLDER(udf_registration);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_udf_metadata);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_runtime_error);
 
-constexpr static const char *return_charset = "utf8mb4";
+constexpr static const char *return_charset = "ascii";
 constexpr static const char *nil_uuid = "00000000-0000-0000-0000-000000000000";
 constexpr static const char *max_uuid = "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF";
 
@@ -62,23 +64,29 @@ class uuidx_version_impl {
 
     uuidx_version_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
-      ctx.mark_result_nullable(false);
-      // arg0 - @uuid_string
-      ctx.mark_arg_nullable(0, false);
-      ctx.set_arg_type(0, STRING_RESULT);
+      ctx.mark_result_nullable(true);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      }       
+      // arg0 - @uuid_string   
+      ctx.mark_arg_nullable(0, true);
+      ctx.set_arg_type(0, STRING_RESULT);      
     }
 
     mysqlpp::udf_result_t<INT_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
 
-      int version = -1;
+      int version = 0;
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-
+      if (uxs.empty()){ // NULL or empty string goes here
+         return NULL;
+      }
       try {
         boost::uuids::uuid u = gen(uxs.data());
         version = u.version();
-      } catch (std::exception &ex){}
-
+      } catch (std::exception &ex){
+        throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID string.", ER_WRONG_ARGUMENTS};
+      }
       return version;
     }
 };
@@ -89,10 +97,13 @@ class uuidx_variant_impl {
 
     uuidx_variant_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
-      ctx.mark_result_nullable(false);
+      ctx.mark_result_nullable(true);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      }       
       // arg0 - @uuid_string
-      ctx.mark_arg_nullable(0, false);
-      ctx.set_arg_type(0, STRING_RESULT);
+      ctx.mark_arg_nullable(0, true);
+      ctx.set_arg_type(0, STRING_RESULT);      
     }
 
     mysqlpp::udf_result_t<INT_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
@@ -100,11 +111,15 @@ class uuidx_variant_impl {
       int variant = -1;
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-
+      if (uxs.empty()){ // NULL or empty string goes here
+         return NULL;
+      }
       try {
         boost::uuids::uuid u = gen(uxs.data());
         variant = u.variant();
-      } catch (std::exception &ex){}
+      } catch (std::exception &ex){
+        throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID string.", ER_WRONG_ARGUMENTS};
+      }
 
       return variant;
     }
@@ -115,10 +130,13 @@ class is_uuidx_impl {
 
     is_uuidx_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
-      ctx.mark_result_nullable(false);
+      ctx.mark_result_nullable(true);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      }       
       // arg0 - @uuid_string
-      ctx.mark_arg_nullable(0, false);
-      ctx.set_arg_type(0, STRING_RESULT);
+      ctx.mark_arg_nullable(0, true);
+      ctx.set_arg_type(0, STRING_RESULT);      
     }
 
     mysqlpp::udf_result_t<INT_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
@@ -126,7 +144,9 @@ class is_uuidx_impl {
       bool verification_result = false;
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-
+      if (uxs.empty()){ // NULL or empty string goes here
+         return NULL;
+      }
       try {
         gen(uxs.data());
         verification_result = true;
@@ -141,10 +161,13 @@ class is_nil_uuid_impl {
 
     is_nil_uuid_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
-      ctx.mark_result_nullable(false);
+      ctx.mark_result_nullable(true);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      }       
       // arg0 - @uuid_string
-      ctx.mark_arg_nullable(0, false);
-      ctx.set_arg_type(0, STRING_RESULT);
+      ctx.mark_arg_nullable(0, true);
+      ctx.set_arg_type(0, STRING_RESULT);      
     }
 
     mysqlpp::udf_result_t<INT_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
@@ -152,11 +175,15 @@ class is_nil_uuid_impl {
       bool verification_result = false;
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-
+      if (uxs.empty()){ // NULL or empty string goes here
+         return NULL;
+      }
       try {
         boost::uuids::uuid u = gen(uxs.data());
         verification_result = u.is_nil();
-      } catch (std::exception &ex){}
+      } catch (std::exception &ex){
+        throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID string.", ER_WRONG_ARGUMENTS};
+      }
 
       return {verification_result ? 1LL : 0LL};
     }
@@ -168,10 +195,13 @@ class is_max_uuid_impl {
 
     is_max_uuid_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
-      ctx.mark_result_nullable(false);
+      ctx.mark_result_nullable(true);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      }       
       // arg0 - @uuid_string
-      ctx.mark_arg_nullable(0, false);
-      ctx.set_arg_type(0, STRING_RESULT);
+      ctx.mark_arg_nullable(0, true);
+      ctx.set_arg_type(0, STRING_RESULT);     
     }
 
     mysqlpp::udf_result_t<INT_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
@@ -179,7 +209,9 @@ class is_max_uuid_impl {
       bool verification_result = true;
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-
+      if (uxs.empty()){ // NULL or empty string goes here
+         return NULL;
+      }
       try {
         boost::uuids::uuid u = gen(uxs.data());
         for(size_t i = 0; i < sizeof(u.data); i++){
@@ -188,11 +220,168 @@ class is_max_uuid_impl {
              break;  
           }  
         }
-        verification_result = u.is_nil();
-      } catch (std::exception &ex){}
+      } catch (std::exception &ex){
+        throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID string.", ER_WRONG_ARGUMENTS};
+      }
 
       return {verification_result ? 1LL : 0LL};
     }
+};
+class uuid1_impl {
+  public:
+
+  uuid1_impl(mysqlpp::udf_context &ctx) {
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
+    mysqlpp::udf_context_charset_extension charset_ext{
+    mysql_service_mysql_udf_metadata};
+    charset_ext.set_return_value_charset(ctx, return_charset);    
+  }
+
+  mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
+    static thread_local boost::uuids::time_generator_v1 gen_v1;
+    return boost::uuids::to_string(gen_v1());
+  }
+};
+
+
+boost::uuids::uuid get_uuid_namespace(int name_index){
+    boost::uuids::uuid ns;
+    switch(name_index){
+      case 0: ns = boost::uuids::ns::dns();
+      break;
+      case 1: ns = boost::uuids::ns::url();
+      break;
+      case 2: ns = boost::uuids::ns::oid();
+      break;
+      case 3: ns = boost::uuids::ns::x500dn();
+      break;
+      default: ns = boost::uuids::ns::url();
+    }    
+    return ns;
+}
+
+class uuid3_impl {
+  public:
+
+  uuid3_impl(mysqlpp::udf_context &ctx) {
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+    size_t narg = ctx.get_number_of_args();
+    if(narg > 0){
+      // arg0 - @uuid string
+      ctx.mark_arg_nullable(0, true);
+      ctx.set_arg_type(0, STRING_RESULT);
+    }else{
+      throw mysqlpp::udf_exception{"Function requires exactly one or two arguments.", ER_EXCESS_ARGUMENTS};
+    }
+    
+    if(narg > 1){
+      // arg1 - @uuid namespace: DNS: 0, URL: 1, OID: 2, X.500: 3, default is 0, or DNS
+      ctx.mark_arg_nullable(1, true);
+      ctx.set_arg_type(0, INT_RESULT);
+    }
+
+    mysqlpp::udf_context_charset_extension charset_ext{
+    mysql_service_mysql_udf_metadata};
+    charset_ext.set_return_value_charset(ctx, return_charset);    
+  }
+
+  mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
+    int ns_index = 0;
+    auto the_string = ctx.get_arg<STRING_RESULT>(0);
+    // static thread_local
+    if(ctx.get_number_of_args() > 1){
+      auto ns = ctx.get_arg<INT_RESULT>(1);
+      ns_index = ns.value_or(1);
+    }
+    boost::uuids::name_generator_md5 gen_v3(get_uuid_namespace(ns_index));
+    std::string s(the_string);
+    return boost::uuids::to_string(gen_v3(s));
+  }
+};
+
+class uuid4_impl {
+  public:
+
+  uuid4_impl(mysqlpp::udf_context &ctx) {
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
+    mysqlpp::udf_context_charset_extension charset_ext{
+    mysql_service_mysql_udf_metadata};
+    charset_ext.set_return_value_charset(ctx, return_charset);    
+  }
+
+  mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
+    // static thread_local
+    boost::uuids::random_generator gen_v4;
+    return boost::uuids::to_string(gen_v4());
+  }
+};
+
+class uuid5_impl {
+  public:
+
+  uuid5_impl(mysqlpp::udf_context &ctx) {
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+    size_t narg = ctx.get_number_of_args();
+    if(narg > 0){
+      // arg0 - @uuid string
+      ctx.mark_arg_nullable(0, true);
+      ctx.set_arg_type(0, STRING_RESULT);
+    }else{
+      throw mysqlpp::udf_exception{"Function requires exactly one or two arguments.", ER_EXCESS_ARGUMENTS};
+    }
+    
+    if(narg > 1){
+      // arg1 - @uuid namespace: DNS: 0, URL: 1, OID: 2, X.500: 3, default is 0, or DNS
+      ctx.mark_arg_nullable(1, true);
+      ctx.set_arg_type(0, INT_RESULT);
+    }
+
+    mysqlpp::udf_context_charset_extension charset_ext{
+    mysql_service_mysql_udf_metadata};
+    charset_ext.set_return_value_charset(ctx, return_charset);    
+  }
+
+  mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
+    int ns_index = 0;
+    auto the_string = ctx.get_arg<STRING_RESULT>(0);
+    // static thread_local
+    if(ctx.get_number_of_args() > 1){
+      auto ns = ctx.get_arg<INT_RESULT>(1);
+      ns_index = ns.value_or(1);
+    }
+    boost::uuids::name_generator_sha1 gen_v5(get_uuid_namespace(ns_index));
+    std::string s(the_string);
+    return boost::uuids::to_string(gen_v5(s));
+  }
+};
+
+class uuid6_impl {
+  public:
+
+  uuid6_impl(mysqlpp::udf_context &ctx) {
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
+    mysqlpp::udf_context_charset_extension charset_ext{
+    mysql_service_mysql_udf_metadata};
+    charset_ext.set_return_value_charset(ctx, return_charset);    
+  }
+
+  mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
+    static thread_local boost::uuids::time_generator_v6 gen_v6;
+    return boost::uuids::to_string(gen_v6());
+  }
 };
 
 class uuid7_impl {
@@ -202,8 +391,12 @@ class uuid7_impl {
 
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
+    size_t narg = ctx.get_number_of_args();
     // arg0 - @time_offset_ms, optional
-    if (ctx.get_number_of_args() == 1) {
+    if(narg>1){
+        throw mysqlpp::udf_exception{"Function requires zero or one arguments.", ER_EXCESS_ARGUMENTS};
+    } 
+    if (narg == 1) {
       ctx.mark_arg_nullable(0, false);
       ctx.set_arg_type(0, INT_RESULT);
     }
@@ -242,13 +435,13 @@ class uuid7_impl {
   }
 };
 
-class uuid4_impl {
+class nil_uuidx_impl {
   public:
 
-  uuid4_impl(mysqlpp::udf_context &ctx) {
+  nil_uuidx_impl(mysqlpp::udf_context &ctx) {
 
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
+    ctx.mark_result_const(true);
+    ctx.mark_result_nullable(false);
 
     mysqlpp::udf_context_charset_extension charset_ext{
     mysql_service_mysql_udf_metadata};
@@ -256,29 +449,16 @@ class uuid4_impl {
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
-    // static thread_local
-    boost::uuids::random_generator gen_v4;
-    auto generated = gen_v4();
-    return boost::uuids::to_string(generated);
+    return "00000000-0000-0000-0000-000000000000";
   }
 };
-
-// this is a kind of universal UUID genertator that allows generation of obsoletted versions
-//TODO: implement
-class uuidx_impl {
+class max_uuidx_impl {
   public:
 
-  uuidx_impl(mysqlpp::udf_context &ctx) {
+  max_uuidx_impl(mysqlpp::udf_context &ctx) {
 
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
-      // arg0 - @uuid_version
-    ctx.mark_arg_nullable(0, false);
-    ctx.set_arg_type(0, INT_RESULT);
-
-      // arg0 - @uuid_version
-    ctx.mark_arg_nullable(1, true);
-    ctx.set_arg_type(0, STRING_RESULT);
+    ctx.mark_result_const(true);
+    ctx.mark_result_nullable(false);
 
     mysqlpp::udf_context_charset_extension charset_ext{
     mysql_service_mysql_udf_metadata};
@@ -286,9 +466,7 @@ class uuidx_impl {
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
-    static thread_local boost::uuids::random_generator gen_v4;
-    auto generated = gen_v4();
-    return boost::uuids::to_string(generated);
+    return "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF";
   }
 };
 
@@ -298,6 +476,9 @@ class uuidx_to_bin_impl {
     uuidx_to_bin_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
       ctx.mark_result_nullable(false);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      } 
       // arg0 - @uuid_string
       ctx.mark_arg_nullable(0, false);
       ctx.set_arg_type(0, STRING_RESULT);
@@ -306,6 +487,9 @@ class uuidx_to_bin_impl {
     mysqlpp::udf_result_t<STRING_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      if (uxs.empty()){ // NULL or empty string goes here
+         return "";
+      }      
       char result[17];
       boost::uuids::uuid u;
       try {
@@ -322,7 +506,6 @@ class uuidx_to_bin_impl {
     }
 };
 
-//TODO: implement
 class bin_to_uuidx_impl {
   public:
 
@@ -330,9 +513,12 @@ class bin_to_uuidx_impl {
 
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
+    if(ctx.get_number_of_args()!=1){
+      throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+    }     
       // arg0 - @uuid_version
     ctx.mark_arg_nullable(0, false);
-    ctx.set_arg_type(0, INT_RESULT);
+    ctx.set_arg_type(0, STRING_RESULT);
 
     mysqlpp::udf_context_charset_extension charset_ext{
     mysql_service_mysql_udf_metadata};
@@ -340,45 +526,23 @@ class bin_to_uuidx_impl {
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
-    static thread_local boost::uuids::random_generator gen_v4;
-    auto generated = gen_v4();
-    return boost::uuids::to_string(generated);
+    auto ubs = ctx.get_arg<STRING_RESULT>(0);
+    if (ubs.empty()){ // NULL or empty string goes here
+         return "";
+    }
+    size_t i = 0;
+    boost::uuids::uuid u;
+    for(auto dp = ubs.begin(); dp!=ubs.end(); ++dp ){
+       u.data[i] = *dp;
+       i++;
+       if(i>16) break; //ignore more data
+    }
+    if(i!=15) { // not enpough data
+       throw mysqlpp::udf_exception{"Not enough data for UUID, must be 16 bytes exactly", ER_WRONG_ARGUMENTS};
+    }
+    return boost::uuids::to_string(u);
   }
 };
-
-// Return human readable format like
-// 2023-08-11 08:08:03.373
-std::string get_timestamp(uint64_t milliseconds) {
-    std::time_t seconds = milliseconds / 1000;
-    std::tm timeinfo;
-#ifdef _WIN32
-    localtime_s(&timeinfo, &seconds); // Use localtime_s for Windows
-#else
-    localtime_r(&seconds, &timeinfo); // Use localtime_r for Linux/Unix
-#endif
-
-    std::ostringstream oss;
-    oss << std::put_time(&timeinfo, "%Y-%m-%d %H:%M:%S")
-        << '.' << std::setfill('0') << std::setw(3) << milliseconds % 1000;
-    return oss.str();
-}
-
-// Return longer human readable format like
-// Fri Aug 11 08:08:03 2023 CEST
-std::string get_timestamp_long(uint64_t milliseconds) {
-    std::time_t seconds = milliseconds / 1000;
-    std::tm timeinfo;
-#ifdef _WIN32
-    localtime_s(&timeinfo, &seconds); // Use localtime_s for Windows
-#else
-    localtime_r(&seconds, &timeinfo); // Use localtime_r for Linux/Unix
-#endif
-
-    std::ostringstream oss;
-    oss << std::put_time(&timeinfo, "%c %Z");
-
-    return oss.str();
-}
 
 class uuid7_to_timestamp_impl {
   public:
@@ -386,9 +550,16 @@ class uuid7_to_timestamp_impl {
     uuid7_to_timestamp_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
       ctx.mark_result_nullable(false);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      }       
       // arg0 - @uuid_string
       ctx.mark_arg_nullable(0, false);
       ctx.set_arg_type(0, STRING_RESULT);
+
+      mysqlpp::udf_context_charset_extension charset_ext{
+      mysql_service_mysql_udf_metadata};
+      charset_ext.set_return_value_charset(ctx, return_charset);       
     }
 
     mysqlpp::udf_result_t<STRING_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
@@ -398,8 +569,13 @@ class uuid7_to_timestamp_impl {
       long ms = 0;
       try {
         u = gen(uxs.data());
+        if(u.version() !=7 ){
+          throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID 7 string.", ER_WRONG_ARGUMENTS};
+        }
         ms = u.time_point_v7().time_since_epoch().count();
-      } catch (std::exception &ex){}
+      } catch (std::exception &ex){
+        throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID string.", ER_WRONG_ARGUMENTS};
+      }
       return  get_timestamp(ms);
     }    
 };
@@ -410,9 +586,16 @@ class uuid7_to_timestamp_tz_impl {
     uuid7_to_timestamp_tz_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
       ctx.mark_result_nullable(false);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      }       
       // arg0 - @uuid_string
       ctx.mark_arg_nullable(0, false);
       ctx.set_arg_type(0, STRING_RESULT);
+
+      mysqlpp::udf_context_charset_extension charset_ext{
+      mysql_service_mysql_udf_metadata};
+      charset_ext.set_return_value_charset(ctx, return_charset);        
     }
 
     mysqlpp::udf_result_t<STRING_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
@@ -423,7 +606,12 @@ class uuid7_to_timestamp_tz_impl {
       try {
         u = gen(uxs.data());
         ms = u.time_point_v7().time_since_epoch().count();
-      } catch (std::exception &ex){}
+        if(u.version() !=7 ){
+          throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID 7 string.", ER_WRONG_ARGUMENTS};
+        }        
+      } catch (std::exception &ex){                
+          throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID 7 string.", ER_WRONG_ARGUMENTS};
+      }
       return  get_timestamp_long(ms);
     }    
 };
@@ -434,6 +622,9 @@ class uuid7_to_unixtime_impl {
     uuid7_to_unixtime_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
       ctx.mark_result_nullable(false);
+      if(ctx.get_number_of_args()!=1){
+        throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
+      }       
       // arg0 - @uuid_string
       ctx.mark_arg_nullable(0, false);
       ctx.set_arg_type(0, STRING_RESULT);
@@ -447,7 +638,12 @@ class uuid7_to_unixtime_impl {
       try {
         u = gen(uxs.data());
         ms = u.time_point_v7().time_since_epoch().count();
-      } catch (std::exception &ex){}
+        if(u.version() !=7 ){
+          throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID 7 string.", ER_WRONG_ARGUMENTS};
+        }         
+      } catch (std::exception &ex){
+        throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID 7 string.", ER_WRONG_ARGUMENTS};
+      }
       return ms;
     }    
 };
@@ -457,9 +653,15 @@ DECLARE_INT_UDF_AUTO(uuidx_variant);
 DECLARE_INT_UDF_AUTO(is_uuidx);
 DECLARE_INT_UDF_AUTO(is_nil_uuid);
 DECLARE_INT_UDF_AUTO(is_max_uuid);
-DECLARE_STRING_UDF_AUTO(uuid7);
+// Invoke g++ -latomic
+DECLARE_STRING_UDF_AUTO(uuid1);
+DECLARE_STRING_UDF_AUTO(uuid3);
 DECLARE_STRING_UDF_AUTO(uuid4);
-DECLARE_STRING_UDF_AUTO(uuidx);
+DECLARE_STRING_UDF_AUTO(uuid5);
+DECLARE_STRING_UDF_AUTO(uuid6);
+DECLARE_STRING_UDF_AUTO(uuid7);
+DECLARE_STRING_UDF_AUTO(nil_uuidx);
+DECLARE_STRING_UDF_AUTO(max_uuidx);
 DECLARE_STRING_UDF_AUTO(uuidx_to_bin);
 DECLARE_STRING_UDF_AUTO(bin_to_uuidx);
 DECLARE_STRING_UDF_AUTO(uuid7_to_timestamp);
@@ -473,9 +675,14 @@ static const std::array known_udfs{
   DECLARE_UDF_INFO_AUTO(is_uuidx),
   DECLARE_UDF_INFO_AUTO(is_nil_uuid),
   DECLARE_UDF_INFO_AUTO(is_max_uuid),
+  DECLARE_UDF_INFO_AUTO(uuid1),
+  DECLARE_UDF_INFO_AUTO(uuid3),
   DECLARE_UDF_INFO_AUTO(uuid4),
-  DECLARE_UDF_INFO_AUTO(uuid7),
-  DECLARE_UDF_INFO_AUTO(uuidx),  
+  DECLARE_UDF_INFO_AUTO(uuid5),
+  DECLARE_UDF_INFO_AUTO(uuid6),  
+  DECLARE_UDF_INFO_AUTO(uuid7),  
+  DECLARE_UDF_INFO_AUTO(nil_uuidx),
+  DECLARE_UDF_INFO_AUTO(max_uuidx),        
   DECLARE_UDF_INFO_AUTO(uuidx_to_bin),
   DECLARE_UDF_INFO_AUTO(bin_to_uuidx),
   DECLARE_UDF_INFO_AUTO(uuid7_to_timestamp),

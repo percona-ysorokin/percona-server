@@ -1,6 +1,30 @@
 #
 # Implement RFC 9562 standard for UUIDs
 #
-SELECT is_uuid('{12345678-1234-5678-1234-567812345678}');
-is_uuid('{12345678-1234-5678-1234-567812345678}')
+# install uuidx component
+INSTALL COMPONENT 'file://component_uuidx_udf';
+# uuidx_version()
+SELECT uuidx_version('{12345678-1234-5678-1234-567812345678}');
+uuidx_version('{12345678-1234-5678-1234-567812345678}')
+5
+# is_uuidx() with right uuid
+SELECT is_uuidx('{12345678-1234-5678-1234-567812345678}');
+is_uuidx('{12345678-1234-5678-1234-567812345678}')
 1
+# is_uuidx() with bad uuid
+SELECT is_uuidx('{12345xyz-1234-5678-1234-567812345678}');
+is_uuidx('{12345xyz-1234-5678-1234-567812345678}')
+0
+# is_nil_uuid()
+SELECT is_nil_uuid('{12345678-1234-5678-1234-567812345678}');
+is_nil_uuid('{12345678-1234-5678-1234-567812345678}')
+0
+# is_nil_uuid()
+SELECT is_nil_uuid('{00000000-0000-0000-0000-000000000000}');
+is_nil_uuid('{00000000-0000-0000-0000-000000000000}')
+1
+# uninstall uuidx component
+UNINSTALL COMPONENT 'file://component_uuidx_udf';
+#
+# end of test
+#

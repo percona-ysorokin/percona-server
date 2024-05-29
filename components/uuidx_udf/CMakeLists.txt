@@ -29,4 +29,6 @@ MYSQL_ADD_COMPONENT(uuidx_udf
   MODULE_ONLY
 )
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
+
 target_include_directories(component_uuidx_udf SYSTEM PRIVATE ${BOOST_PATCHES_DIR} ${BOOST_INCLUDE_DIR})
