@@ -612,7 +612,7 @@ class uuid7_to_timestamp_tz_impl {
       } catch (std::exception &ex){                
           throw mysqlpp::udf_exception{"Invalid argument. Should be valid UUID 7 string.", ER_WRONG_ARGUMENTS};
       }
-      return  get_timestamp_long(ms);
+      return  get_timestamp_with_tz(ms);
     }    
 };
 
