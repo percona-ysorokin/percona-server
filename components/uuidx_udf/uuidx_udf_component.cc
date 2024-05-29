@@ -156,10 +156,10 @@ class is_uuidx_impl {
     }
 };
 
-class is_nil_uuid_impl {
+class is_nil_uuidx_impl {
   public:
 
-    is_nil_uuid_impl(mysqlpp::udf_context &ctx) {
+    is_nil_uuidx_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
       ctx.mark_result_nullable(true);
       if(ctx.get_number_of_args()!=1){
@@ -190,10 +190,10 @@ class is_nil_uuid_impl {
 };
 
 
-class is_max_uuid_impl {
+class is_max_uuidx_impl {
   public:
 
-    is_max_uuid_impl(mysqlpp::udf_context &ctx) {
+    is_max_uuidx_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
       ctx.mark_result_nullable(true);
       if(ctx.get_number_of_args()!=1){
@@ -660,8 +660,8 @@ class uuid7_to_unixtime_impl {
 DECLARE_INT_UDF_AUTO(uuidx_version);
 DECLARE_INT_UDF_AUTO(uuidx_variant);
 DECLARE_INT_UDF_AUTO(is_uuidx);
-DECLARE_INT_UDF_AUTO(is_nil_uuid);
-DECLARE_INT_UDF_AUTO(is_max_uuid);
+DECLARE_INT_UDF_AUTO(is_nil_uuidx);
+DECLARE_INT_UDF_AUTO(is_max_uuidx);
 // Invoke g++ -latomic
 DECLARE_STRING_UDF_AUTO(uuid1);
 DECLARE_STRING_UDF_AUTO(uuid3);
@@ -682,8 +682,8 @@ static const std::array known_udfs{
   DECLARE_UDF_INFO_AUTO(uuidx_version),
   DECLARE_UDF_INFO_AUTO(uuidx_variant),
   DECLARE_UDF_INFO_AUTO(is_uuidx),
-  DECLARE_UDF_INFO_AUTO(is_nil_uuid),
-  DECLARE_UDF_INFO_AUTO(is_max_uuid),
+  DECLARE_UDF_INFO_AUTO(is_nil_uuidx),
+  DECLARE_UDF_INFO_AUTO(is_max_uuidx),
   DECLARE_UDF_INFO_AUTO(uuid1),
   DECLARE_UDF_INFO_AUTO(uuid3),
   DECLARE_UDF_INFO_AUTO(uuid4),
