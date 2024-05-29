@@ -535,9 +535,9 @@ class bin_to_uuidx_impl {
     for(auto dp = ubs.begin(); dp!=ubs.end(); ++dp ){
        u.data[i] = *dp;
        i++;
-       if(i>16) break; //ignore more data
+       if(i >15) break; //ignore more data
     }
-    if(i!=15) { // not enpough data
+    if(i < 16) { // not enpough data
        throw mysqlpp::udf_exception{"Not enough data for UUID, must be 16 bytes exactly", ER_WRONG_ARGUMENTS};
     }
     return boost::uuids::to_string(u);
