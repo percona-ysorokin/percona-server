@@ -565,6 +565,9 @@ class uuid7_to_timestamp_impl {
     mysqlpp::udf_result_t<STRING_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      if (uxs.empty()){ // NULL or empty string goes here
+         return "";
+      }   
       boost::uuids::uuid u;
       long ms = 0;
       try {
@@ -585,7 +588,7 @@ class uuid7_to_timestamp_tz_impl {
 
     uuid7_to_timestamp_tz_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
-      ctx.mark_result_nullable(false);
+      ctx.mark_result_nullable(true);
       if(ctx.get_number_of_args()!=1){
         throw mysqlpp::udf_exception{"Function requires exactly one argument.", ER_EXCESS_ARGUMENTS};
       }       
@@ -601,6 +604,9 @@ class uuid7_to_timestamp_tz_impl {
     mysqlpp::udf_result_t<STRING_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      if (uxs.empty()){ // NULL or empty string goes here
+         return "";
+      }      
       boost::uuids::uuid u;
       long ms = 0;
       try {
@@ -633,6 +639,9 @@ class uuid7_to_unixtime_impl {
     mysqlpp::udf_result_t<INT_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      if (uxs.empty()){ // NULL or empty string goes here
+         return NULL;
+      }
       boost::uuids::uuid u;
       long ms = 0;
       try {
