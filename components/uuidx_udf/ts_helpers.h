@@ -18,39 +18,33 @@
 #include <iostream>
 #include <iomanip>
 #include <cstdint>
+#include <chrono>
 
 /** Returns timestamp in the format like:
     2024-05-29 18:04:14.201  
 */
 inline std::string get_timestamp(uint64_t milliseconds) {
-    std::time_t seconds = milliseconds / 1000;
-    std::tm timeinfo;
-#ifdef _WIN32
-    localtime_s(&timeinfo, &seconds); 
-#else
-    localtime_r(&seconds, &timeinfo); 
-#endif
+    
+    std::chrono::system_clock::time_point tm{std::chrono::milliseconds{milliseconds}};
+    auto in_time_t = std::chrono::system_clock::to_time_t(tm);
 
     std::ostringstream oss;
-    oss << std::put_time(&timeinfo, "%Y-%m-%d %H:%M:%S")
-        << '.' << std::setfill('0') << std::setw(3) << milliseconds % 1000;
-    return oss.str();
+    oss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S")
+         << '.' << std::setfill('0') << std::setw(3) << milliseconds % 1000;
+    return oss.str();    
 }
+
 /** Returns timestamp in the format like:
     Wed May 29 18:05:07 2024 EEST
 */
 
 inline std::string get_timestamp_with_tz(uint64_t milliseconds) {
-    std::time_t seconds = milliseconds / 1000;
-    std::tm timeinfo;
-#ifdef _WIN32
-    localtime_s(&timeinfo, &seconds); 
-#else
-    localtime_r(&seconds, &timeinfo); 
-#endif
+
+    std::chrono::system_clock::time_point tm{std::chrono::milliseconds{milliseconds}};
+    auto in_time_t = std::chrono::system_clock::to_time_t(tm);
 
     std::ostringstream oss;
-    oss << std::put_time(&timeinfo, "%c %Z");
+    oss << std::put_time(std::localtime(&in_time_t), "%c %Z");
 
     return oss.str();
 }
