@@ -14,21 +14,21 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-if(WITH_UUIDX_UDF)
-  message(STATUS "Building UUIDX UDF component")
+if(WITH_UUID_VX_UDF)
+  message(STATUS "Building UUID_VX UDF component")
 else()
-  message(STATUS "Not building UUIDX UDF component")
+  message(STATUS "Not building UUID_VX UDF component")
   return()
 endif()
 
 # We are not interesting in profiling tests.
 DISABLE_MISSING_PROFILE_WARNING()
 
-MYSQL_ADD_COMPONENT(uuidx_udf
-  uuidx_udf_component.cc
+MYSQL_ADD_COMPONENT(uuid_vx_udf
+  uuid_vx_udf_component.cc
   MODULE_ONLY
 )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
 
-target_include_directories(component_uuidx_udf SYSTEM PRIVATE ${BOOST_PATCHES_DIR} ${BOOST_INCLUDE_DIR})
+target_include_directories(component_uuid_vx_udf SYSTEM PRIVATE ${BOOST_PATCHES_DIR} ${BOOST_INCLUDE_DIR})

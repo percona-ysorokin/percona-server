@@ -45,8 +45,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 #include <mysqlpp/udf_registration.hpp>
 #include <mysqlpp/udf_wrappers.hpp>
 
-#include "ts_helpers.h"
-
 // defined as a macro because needed both raw and stringized
 #define CURRENT_COMPONENT_NAME uuidx_udf
 #define CURRENT_COMPONENT_NAME_STR BOOST_PP_STRINGIZE(CURRENT_COMPONENT_NAME)
@@ -575,7 +573,11 @@ class bin_to_uuid_vx_impl {
 
 class ts_based_uuid {
   public:
-  u_int64_t get_ts(std::string_view uxs) {
+
+  /**
+   * Returns time in ms since epoch
+  */
+  inline u_int64_t get_ts(std::string_view uxs) {
       boost::uuids::string_generator gen;   
       boost::uuids::uuid u;
       long ms = 0;
@@ -585,17 +587,46 @@ class ts_based_uuid {
           throw std::invalid_argument{err_msg_valid_v167_uuid};
       }        
       switch(u.version()){
-        case 1: ms = u.timestamp_v1();
+        case 1: ms = u.time_point_v1().time_since_epoch().count(); //it is bug inside of boost, gives wrong value
         break;
-        case 6: ms = u.timestamp_v6();
+        case 6: ms = u.time_point_v6().time_since_epoch().count(); //it is bug inside of boost, gives wrong value
         break;
-        case 7: ms = u.timestamp_v7();
+        case 7: ms = u.time_point_v7().time_since_epoch().count(); //ok
         break;
         default: {
           throw std::invalid_argument{err_msg_valid_v167_uuid};
         }
       } 
       return ms;   
+  }
+
+/** Returns timestamp in the format like:
+    2024-05-29 18:04:14.201  
+*/
+  inline std::string get_timestamp(uint64_t milliseconds) {
+    
+    std::chrono::system_clock::time_point tm{std::chrono::milliseconds{milliseconds}};
+    auto in_time_t = std::chrono::system_clock::to_time_t(tm);
+
+    std::ostringstream oss;
+    oss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S")
+         << '.' << std::setfill('0') << std::setw(3) << milliseconds % 1000;
+    return oss.str();    
+  }
+
+/** Returns timestamp in the format like:
+    Wed May 29 18:05:07 2024 EEST
+*/
+
+  inline std::string get_timestamp_with_tz(uint64_t milliseconds) {
+
+    std::chrono::system_clock::time_point tm{std::chrono::milliseconds{milliseconds}};
+    auto in_time_t = std::chrono::system_clock::to_time_t(tm);
+
+    std::ostringstream oss;
+    oss << std::put_time(std::localtime(&in_time_t), "%c %Z");
+
+    return oss.str();
   }
 };
 
