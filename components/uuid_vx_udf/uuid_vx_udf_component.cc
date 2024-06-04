@@ -63,6 +63,7 @@ namespace {
   constexpr static const char *err_msg_no_arguments = "Function requires no arguments.";
   constexpr static const char *err_msg_one_or_two_arguments = "Function requires one or two arguments.";
   constexpr static const char *err_msg_zero_or_one_argument = "Function requires zero or one arguments.";
+  constexpr static const char *err_msg_uuid_namespace_idx = "UUID namespace index must be in range 0-3.";
 }
 
 #define UUID_SIZE 16
@@ -228,7 +229,7 @@ class is_max_uuid_vx_impl {
       bool verification_result = true;
       boost::uuids::string_generator gen;
 
-      if (ctx.is_arg_null(0)){ // NULL or empty string goes here
+      if (ctx.is_arg_null(0)){
          return {};
       }
       auto uxs = ctx.get_arg<STRING_RESULT>(0);      
@@ -319,7 +320,7 @@ class uuid_v3_impl : string_based_uuid {
       auto ns = ctx.get_arg<INT_RESULT>(1);
       ns_index = ns.value_or(1);
       if(ns_index < 0 || ns_index > 3){
-         throw std::invalid_argument("UUID namespace must be in range 0-3");
+         throw std::invalid_argument(err_msg_uuid_namespace_idx);
       }
     }
     boost::uuids::name_generator_md5 gen_v3(get_uuid_namespace(ns_index));
@@ -388,7 +389,7 @@ class uuid_v5_impl : string_based_uuid {
       auto ns = ctx.get_arg<INT_RESULT>(1);
       ns_index = ns.value_or(1);
       if(ns_index < 0 || ns_index > 3){
-         throw std::invalid_argument("UUID namespace must be in range 0-3");
+         throw std::invalid_argument(err_msg_uuid_namespace_idx);
       }      
     }
     boost::uuids::name_generator_sha1 gen_v5(get_uuid_namespace(ns_index));
@@ -619,7 +620,7 @@ class ts_based_uuid {
     auto in_time_t = std::chrono::system_clock::to_time_t(tm);
 
     std::ostringstream oss;
-    oss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S")
+    oss << std::put_time(std::gmtime(&in_time_t), "%Y-%m-%d %H:%M:%S")
          << '.' << std::setfill('0') << std::setw(3) << milliseconds % 1000;
     return oss.str();    
   }
@@ -634,7 +635,7 @@ class ts_based_uuid {
     auto in_time_t = std::chrono::system_clock::to_time_t(tm);
 
     std::ostringstream oss;
-    oss << std::put_time(std::localtime(&in_time_t), "%c %Z");
+    oss << std::put_time(std::gmtime(&in_time_t), "%c %Z");
 
     return oss.str();
   }
@@ -655,9 +656,7 @@ class uuid_vx_to_timestamp_impl : ts_based_uuid {
 
       mysqlpp::udf_context_charset_extension charset_ext{mysql_service_mysql_udf_metadata};
       charset_ext.set_return_value_charset(ctx, string_charset);       
-      charset_ext.set_arg_value_charset(ctx, 0, uuid_charset);       
-
-      
+      charset_ext.set_arg_value_charset(ctx, 0, uuid_charset);             
     }
 
     mysqlpp::udf_result_t<STRING_RESULT> calculate( const mysqlpp::udf_context  &ctx ){
@@ -726,11 +725,12 @@ DECLARE_INT_UDF_AUTO(uuid_vx_variant);
 DECLARE_INT_UDF_AUTO(is_uuid_vx);
 DECLARE_INT_UDF_AUTO(is_nil_uuid_vx);
 DECLARE_INT_UDF_AUTO(is_max_uuid_vx);
-// Invoke g++ -latomic
+// requires invoke of g++ with -latomic
 DECLARE_STRING_UDF_AUTO(uuid_v1);
 DECLARE_STRING_UDF_AUTO(uuid_v3);
 DECLARE_STRING_UDF_AUTO(uuid_v4);
 DECLARE_STRING_UDF_AUTO(uuid_v5);
+// requires invoke of g++ with -latomic
 DECLARE_STRING_UDF_AUTO(uuid_v6);
 DECLARE_STRING_UDF_AUTO(uuid_v7);
 DECLARE_STRING_UDF_AUTO(nil_uuid_vx);

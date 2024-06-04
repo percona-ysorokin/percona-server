@@ -147,6 +147,8 @@ SELECT bin_to_uuid_vx('123');
 --error ER_UDF_ERROR
 SELECT uuid_vx_to_bin('123');
 
+--echo #all functions outupts timestamps in GMT timezone
+
 --echo #time-based UUID timestamps test
 --echo #v1 (wrong values, boost bug, check if test fails)
 SELECT uuid_vx_version('93c39787-225d-11ef-bfac-f5e814172db8');

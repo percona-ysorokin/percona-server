@@ -130,9 +130,9 @@ SELECT is_uuid_vx(uuid_v3('test.com',3));
 is_uuid_vx(uuid_v3('test.com',3))
 1
 SELECT is_uuid_vx(uuid_v3('test.com',4));
-ERROR HY000: uuid_v3<string> UDF failed; UUID namespace must be in range 0-3
+ERROR HY000: uuid_v3<string> UDF failed; UUID namespace index must be in range 0-3.
 SELECT is_uuid_vx(uuid_v3('test.com',-1));
-ERROR HY000: uuid_v3<string> UDF failed; UUID namespace must be in range 0-3
+ERROR HY000: uuid_v3<string> UDF failed; UUID namespace index must be in range 0-3.
 SELECT uuid_v3();
 ERROR HY000: Can't initialize function 'uuid_v3'; Function requires one or two arguments.
 #uuid_v4() generation and check 
@@ -163,9 +163,9 @@ SELECT is_uuid_vx(uuid_v5('test.com',3));
 is_uuid_vx(uuid_v5('test.com',3))
 1
 SELECT is_uuid_vx(uuid_v5('test.com',4));
-ERROR HY000: uuid_v5<string> UDF failed; UUID namespace must be in range 0-3
+ERROR HY000: uuid_v5<string> UDF failed; UUID namespace index must be in range 0-3.
 SELECT is_uuid_vx(uuid_v5('test.com',-1));
-ERROR HY000: uuid_v5<string> UDF failed; UUID namespace must be in range 0-3
+ERROR HY000: uuid_v5<string> UDF failed; UUID namespace index must be in range 0-3.
 SELECT uuid_v5();
 ERROR HY000: Can't initialize function 'uuid_v5'; Function requires one or two arguments.
 SELECT is_uuid(uuid_v6());
@@ -218,9 +218,10 @@ SELECT uuid_vx_to_bin(NULL);
 uuid_vx_to_bin(NULL)
 NULL
 SELECT bin_to_uuid_vx('123');
-ERROR HY000: bin_to_uuid_vx<string> UDF failed; The UUID must be 16 bytes exactly
+ERROR HY000: bin_to_uuid_vx<string> UDF failed; The UUID must be 16 bytes exactly.
 SELECT uuid_vx_to_bin('123');
 ERROR HY000: uuid_vx_to_bin<string> UDF failed; Invalid argument. Should be valid UUID string.
+#all functions outupts timestamps in GMT timezone
 #time-based UUID timestamps test
 #v1 (wrong values, boost bug, check if test fails)
 SELECT uuid_vx_version('93c39787-225d-11ef-bfac-f5e814172db8');
@@ -228,10 +229,10 @@ uuid_vx_version('93c39787-225d-11ef-bfac-f5e814172db8')
 1
 SELECT uuid_vx_to_timestamp('93c39787-225d-11ef-bfac-f5e814172db8');
 uuid_vx_to_timestamp('93c39787-225d-11ef-bfac-f5e814172db8')
-2057-01-21 14:14:31.695
+2057-01-21 11:14:31.695
 SELECT uuid_vx_to_timestamp_tz('93c39787-225d-11ef-bfac-f5e814172db8');
 uuid_vx_to_timestamp_tz('93c39787-225d-11ef-bfac-f5e814172db8')
-Sun Jan 21 14:14:31 2057 GMT
+Sun Jan 21 11:14:31 2057 GMT
 SELECT uuid_vx_to_unixtime('93c39787-225d-11ef-bfac-f5e814172db8');
 uuid_vx_to_unixtime('93c39787-225d-11ef-bfac-f5e814172db8')
 139367898778146695
@@ -241,10 +242,10 @@ uuid_vx_version('1ef225dd-aded-6cfa-8604-ff7079a99e49')
 6
 SELECT uuid_vx_to_timestamp('1ef225dd-aded-6cfa-8604-ff7079a99e49');
 uuid_vx_to_timestamp('1ef225dd-aded-6cfa-8604-ff7079a99e49')
-2057-02-04 09:37:20.282
+2057-02-04 06:37:20.282
 SELECT uuid_vx_to_timestamp_tz('1ef225dd-aded-6cfa-8604-ff7079a99e49');
 uuid_vx_to_timestamp_tz('1ef225dd-aded-6cfa-8604-ff7079a99e49')
-Sun Feb  4 09:37:20 2057 GMT
+Sun Feb  4 06:37:20 2057 GMT
 SELECT uuid_vx_to_unixtime('1ef225dd-aded-6cfa-8604-ff7079a99e49');
 uuid_vx_to_unixtime('1ef225dd-aded-6cfa-8604-ff7079a99e49')
 139367899971116282
@@ -254,10 +255,10 @@ uuid_vx_version('018fe2cf-8209-71fe-8034-fa62177f35c7')
 7
 SELECT uuid_vx_to_timestamp('018fe2cf-8209-71fe-8034-fa62177f35c7');
 uuid_vx_to_timestamp('018fe2cf-8209-71fe-8034-fa62177f35c7')
-2024-06-04 13:33:21.161
+2024-06-04 10:33:21.161
 SELECT uuid_vx_to_timestamp_tz('018fe2cf-8209-71fe-8034-fa62177f35c7');
 uuid_vx_to_timestamp_tz('018fe2cf-8209-71fe-8034-fa62177f35c7')
-Tue Jun  4 13:33:21 2024 GMT
+Tue Jun  4 10:33:21 2024 GMT
 SELECT uuid_vx_to_unixtime('018fe2cf-8209-71fe-8034-fa62177f35c7');
 uuid_vx_to_unixtime('018fe2cf-8209-71fe-8034-fa62177f35c7')
 1717497201161

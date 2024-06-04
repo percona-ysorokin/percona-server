@@ -29,6 +29,6 @@ MYSQL_ADD_COMPONENT(uuid_vx_udf
   MODULE_ONLY
 )
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
+target_link_libraries(component_uuid_vx_udf PRIVATE "atomic")
 
 target_include_directories(component_uuid_vx_udf SYSTEM PRIVATE ${BOOST_PATCHES_DIR} ${BOOST_INCLUDE_DIR})
