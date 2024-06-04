@@ -293,18 +293,20 @@ class uuid_v3_impl : string_based_uuid {
     charset_ext.set_return_value_charset(ctx, uuid_charset);     
     
     size_t narg = ctx.get_number_of_args();
-    if(narg == 1){
+    if(narg > 0 && narg < 3 ){
       // arg0 - @uuid string
       ctx.mark_arg_nullable(0, true);
       ctx.set_arg_type(0, STRING_RESULT);
       charset_ext.set_arg_value_charset(ctx, 0, string_charset); 
-    } else if(narg == 2){
-      // arg1 - @uuid namespace: DNS: 0, URL: 1, OID: 2, X.500: 3, default is 0, or DNS
-      ctx.mark_arg_nullable(1, true);
-      ctx.set_arg_type(0, INT_RESULT);
+      if(narg == 2){
+        // arg1 - @uuid namespace: DNS: 0, URL: 1, OID: 2, X.500: 3, default is 0, or DNS
+        ctx.mark_arg_nullable(1, false);
+        ctx.set_arg_type(1, INT_RESULT);
+      }
     } else {
       throw mysqlpp::udf_exception{err_msg_one_or_two_arguments, ER_EXCESS_ARGUMENTS};
     }  
+
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate( const mysqlpp::udf_context  &ctx){
@@ -316,6 +318,9 @@ class uuid_v3_impl : string_based_uuid {
     if(ctx.get_number_of_args() > 1){
       auto ns = ctx.get_arg<INT_RESULT>(1);
       ns_index = ns.value_or(1);
+      if(ns_index < 0 || ns_index > 3){
+         throw std::invalid_argument("UUID namespace must be in range 0-3");
+      }
     }
     boost::uuids::name_generator_md5 gen_v3(get_uuid_namespace(ns_index));
     std::string s(the_string);
@@ -330,6 +335,9 @@ class uuid_v4_impl {
 
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(false);
+    if(ctx.get_number_of_args() >0) {
+      throw mysqlpp::udf_exception{err_msg_no_arguments, ER_EXCESS_ARGUMENTS};
+    }
 
     mysqlpp::udf_context_charset_extension charset_ext{
     mysql_service_mysql_udf_metadata};
@@ -337,7 +345,6 @@ class uuid_v4_impl {
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate([[maybe_unused]] const mysqlpp::udf_context  &ctx){
-    // static thread_local
     boost::uuids::random_generator gen_v4;
     return boost::uuids::to_string(gen_v4());
   }
@@ -355,18 +362,19 @@ class uuid_v5_impl : string_based_uuid {
     charset_ext.set_return_value_charset(ctx, uuid_charset);     
     
     size_t narg = ctx.get_number_of_args();
-    if(narg == 1){
+    if(narg > 0 && narg < 3 ){
       // arg0 - @uuid string
       ctx.mark_arg_nullable(0, true);
       ctx.set_arg_type(0, STRING_RESULT);
       charset_ext.set_arg_value_charset(ctx, 0, string_charset); 
-    } else if(narg == 2){
-      // arg1 - @uuid namespace: DNS: 0, URL: 1, OID: 2, X.500: 3, default is 0, or DNS
-      ctx.mark_arg_nullable(1, true);
-      ctx.set_arg_type(0, INT_RESULT);
+      if(narg == 2){
+        // arg1 - @uuid namespace: DNS: 0, URL: 1, OID: 2, X.500: 3, default is 0, or DNS
+        ctx.mark_arg_nullable(1, false);
+        ctx.set_arg_type(1, INT_RESULT);
+      }
     } else {
       throw mysqlpp::udf_exception{err_msg_one_or_two_arguments, ER_EXCESS_ARGUMENTS};
-    }    
+    }     
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(const mysqlpp::udf_context  &ctx){
@@ -379,6 +387,9 @@ class uuid_v5_impl : string_based_uuid {
     if(ctx.get_number_of_args() == 2){
       auto ns = ctx.get_arg<INT_RESULT>(1);
       ns_index = ns.value_or(1);
+      if(ns_index < 0 || ns_index > 3){
+         throw std::invalid_argument("UUID namespace must be in range 0-3");
+      }      
     }
     boost::uuids::name_generator_sha1 gen_v5(get_uuid_namespace(ns_index));
     std::string s(the_string);
@@ -526,7 +537,7 @@ class uuid_vx_to_bin_impl {
         }
         result[UUID_SIZE]=0;
       } catch (std::exception &ex){
-        result[0] = '\0';
+         throw std::invalid_argument(err_msg_valid_uuid);
       }
 
       return result;
@@ -557,16 +568,15 @@ class bin_to_uuid_vx_impl {
          return {};
     }
     auto ubs = ctx.get_arg<STRING_RESULT>(0);
-    size_t i = 0;
+    if(ubs.size() != UUID_SIZE) {
+        throw std::invalid_argument("The UUID must be 16 bytes exactly.");
+    }    
+   
     boost::uuids::uuid u;
-    for(auto dp = ubs.begin(); dp!=ubs.end(); ++dp ){
-       u.data[i] = *dp;
-       i++;
-       if(i >15) break; //ignore more data
+    for(size_t i = 0; i < UUID_SIZE; i++){
+      u.data[i] = ubs.at(i);
     }
-    if(i < 16) { // not enpough data
-        throw std::invalid_argument("Not enough data for UUID, must be 16 bytes exactly");
-    }
+
     return boost::uuids::to_string(u);
   }
 };
