@@ -533,8 +533,8 @@ class uuid_vx_to_bin_impl {
       boost::uuids::uuid u;
       try {
         u = gen(uxs.data()); 
-        for(size_t i =0; i<u.size(); i++){
-          result[i] = (char)u.data[i];
+        for(size_t i = 0; i < UUID_SIZE; i++){
+          result[i] = (uint8_t)u.data[i];
         }
         result[UUID_SIZE]=0;
       } catch (std::exception &ex){
@@ -582,7 +582,7 @@ class bin_to_uuid_vx_impl {
   }
 };
 
-class ts_based_uuid {
+class timestamp_based_uuid {
   public:
 
   /**
@@ -611,8 +611,10 @@ class ts_based_uuid {
       return ms;   
   }
 
-/** Returns timestamp in the format like:
-    2024-05-29 18:04:14.201  
+/** 
+ * Returns timestamp in the format like:
+ * 2024-05-29 18:04:14.201
+ * TZ is always GMT  
 */
   inline std::string get_timestamp(uint64_t milliseconds) {
     
@@ -626,7 +628,8 @@ class ts_based_uuid {
   }
 
 /** Returns timestamp in the format like:
-    Wed May 29 18:05:07 2024 EEST
+ *  Wed May 29 18:05:07 2024 GMT
+ *  TZ is always GMT  
 */
 
   inline std::string get_timestamp_with_tz(uint64_t milliseconds) {
@@ -641,7 +644,7 @@ class ts_based_uuid {
   }
 };
 
-class uuid_vx_to_timestamp_impl : ts_based_uuid {
+class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
   public:
 
     uuid_vx_to_timestamp_impl(mysqlpp::udf_context &ctx) {
@@ -668,7 +671,7 @@ class uuid_vx_to_timestamp_impl : ts_based_uuid {
     }    
 };
 
-class uuid_vx_to_timestamp_tz_impl : ts_based_uuid{
+class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid{
   public:
 
     uuid_vx_to_timestamp_tz_impl(mysqlpp::udf_context &ctx) {
@@ -697,13 +700,13 @@ class uuid_vx_to_timestamp_tz_impl : ts_based_uuid{
     }    
 };
 
-class uuid_vx_to_unixtime_impl : ts_based_uuid {
+class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
   public:
 
     uuid_vx_to_unixtime_impl(mysqlpp::udf_context &ctx) {
       ctx.mark_result_const(false);
       ctx.mark_result_nullable(true);
-      if(ctx.get_number_of_args()!=1){
+      if( ctx.get_number_of_args() !=1 ){
         throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
       }       
       // arg0 - @uuid_string
