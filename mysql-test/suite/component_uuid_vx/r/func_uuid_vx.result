@@ -218,7 +218,7 @@ SELECT uuid_vx_to_bin(NULL);
 uuid_vx_to_bin(NULL)
 NULL
 SELECT bin_to_uuid_vx('123');
-ERROR HY000: bin_to_uuid_vx<string> UDF failed; The UUID must be 16 bytes exactly.
+ERROR HY000: bin_to_uuid_vx<string> UDF failed; The string should be 32 hex chars (16 bytes) exactly.
 SELECT uuid_vx_to_bin('123');
 ERROR HY000: uuid_vx_to_bin<string> UDF failed; Invalid argument. Should be valid UUID string.
 #all functions outupts timestamps in GMT timezone
