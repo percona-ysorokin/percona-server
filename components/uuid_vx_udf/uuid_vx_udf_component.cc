@@ -58,7 +58,7 @@ REQUIRES_SERVICE_PLACEHOLDER(udf_registration);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_udf_metadata);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_runtime_error);
 namespace {
-constexpr static const char *string_charset = "utf8mb3";
+constexpr static const char *string_charset = "utf8mb4";
 constexpr static const char *uuid_charset = "ascii";
 constexpr static const char *nil_uuid = "00000000-0000-0000-0000-000000000000";
 constexpr static const char *max_uuid = "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF";
