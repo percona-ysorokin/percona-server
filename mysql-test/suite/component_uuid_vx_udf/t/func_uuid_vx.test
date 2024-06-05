@@ -201,4 +201,3 @@ UNINSTALL COMPONENT 'file://component_uuid_vx_udf';
 --echo #
 --echo # end of test
 --echo #
-

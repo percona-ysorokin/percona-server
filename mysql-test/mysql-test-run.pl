@@ -299,8 +299,8 @@ our @DEFAULT_SUITES = qw(
   binlog_57_decryption
   percona-pam-for-mysql
   component_masking_functions
-  data_masking
   component_uuid_vx_udf
+  data_masking
   procfs
   rocksdb
   rocksdb_rpl
