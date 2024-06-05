@@ -14,6 +14,8 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
+option(WITH_UUID_VX_UDF "Build UUID_VX UDF plugin" ON)
+
 if(WITH_UUID_VX_UDF)
   message(STATUS "Building UUID_VX UDF component")
 else()
@@ -29,6 +31,8 @@ MYSQL_ADD_COMPONENT(uuid_vx_udf
   MODULE_ONLY
 )
 
-target_link_libraries(component_uuid_vx_udf PRIVATE "atomic")
-
 target_include_directories(component_uuid_vx_udf SYSTEM PRIVATE ${BOOST_PATCHES_DIR} ${BOOST_INCLUDE_DIR})
+
+if(NOT APPLE)
+  target_link_libraries(component_uuid_vx_udf PRIVATE atomic)
+endif()
