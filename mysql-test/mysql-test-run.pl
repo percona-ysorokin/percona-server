@@ -300,6 +300,7 @@ our @DEFAULT_SUITES = qw(
   percona-pam-for-mysql
   component_masking_functions
   data_masking
+  component_uuid_vx_udf
   procfs
   rocksdb
   rocksdb_rpl
