@@ -21,9 +21,22 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
 /******************************************************************************/
-/* Implemantation of UUID by RFC 9562 https://www.rfc-editor.org/rfc/rfc9562  */
+/* Implementation of UUID by RFC 9562 https://www.rfc-editor.org/rfc/rfc9562  */
 /* using Boost uuid library (header-only) version > 1.86                      */
 /******************************************************************************/
+
+#include <algorithm>
+#include <array>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <string>
+
+#include <boost/preprocessor/stringize.hpp>
+
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 #include <mysql/components/component_implementation.h>
 #include <mysql/components/services/component_sys_var_service.h>
@@ -32,19 +45,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 #include <mysql/components/services/udf_metadata.h>
 #include <mysql/components/services/udf_registration.h>
 
-#include <algorithm>
-#include <array>
-#include <boost/preprocessor/stringize.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <ctime>
-#include <iomanip>
-#include <iostream>
 #include <mysqlpp/udf_context_charset_extension.hpp>
 #include <mysqlpp/udf_registration.hpp>
 #include <mysqlpp/udf_wrappers.hpp>
-#include <string>
+
 
 // defined as a macro because needed both raw and stringized
 #define CURRENT_COMPONENT_NAME uuidx_udf
