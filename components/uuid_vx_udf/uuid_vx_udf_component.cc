@@ -20,6 +20,11 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
+/******************************************************************************/
+/* Implemantation of UUID by RFC 9562 https://www.rfc-editor.org/rfc/rfc9562  */
+/* using Boost uuid library (header-only) version > 1.86                      */
+/******************************************************************************/
+
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -64,9 +69,18 @@ namespace {
   constexpr static const char *err_msg_one_or_two_arguments = "Function requires one or two arguments.";
   constexpr static const char *err_msg_zero_or_one_argument = "Function requires zero or one arguments.";
   constexpr static const char *err_msg_uuid_namespace_idx = "UUID namespace index must be in range 0-3.";
+  constexpr static const char *err_msg_16bytes = "The string should be 32 hex chars (16 bytes) exactly.";
 }
 
 #define UUID_SIZE 16
+
+/**
+ * Implementation of UUID_VX_VERSION() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID in formatted or hexadecimal form. In other case function throws error.
+ * If the argument is not valid UUID string, function throws error.
+ * If the argument is NULL, function returns NULL.
+*/
 class uuid_vx_version_impl {
   public:
 
@@ -103,7 +117,13 @@ class uuid_vx_version_impl {
     }
 };
 
-
+/**
+ * Implementation of UUID_VX_VARIANT() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID in formatted or hexadecimal form. In other case function throws error.
+ * If the argument is not valid UUID string, function throws error.
+ * If the argument is NULL, function returns NULL.
+*/
 class uuid_vx_variant_impl {
   public:
 
@@ -138,6 +158,13 @@ class uuid_vx_variant_impl {
     }
 };
 
+/**
+ * Implementation of IS_UUID_VX() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID in formatted or hexadecimal form. In other case function throws error.
+ * If the argumant can be parsed as UUID of any version, function returns "true".
+ * If the argumant can not be parsed as UUID of any version, function returns "false".
+*/
 class is_uuid_vx_impl {
   public:
 
@@ -172,6 +199,14 @@ class is_uuid_vx_impl {
     }
 };
 
+/**
+ * Implementation of IS_NIL_UUID_VX() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID in formatted or hexadecimal form. In other case function throws error.
+ * If the argumant can be parsed as UUID of any version, and the argument is NIL UUID,
+ * the function returns "true". If the argument is valid UUID but is not NIL UUID,
+ * the function returns "false". In other cases functions throws an error.
+*/
 class is_nil_uuid_vx_impl {
   public:
 
@@ -207,7 +242,14 @@ class is_nil_uuid_vx_impl {
     }
 };
 
-
+/**
+ * Implementation of IS_MAX_UUID_VX() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID in formatted or hexadecimal form. In other case function throws error.
+ * If the argumant can be parsed as UUID of any version, and the argument is MAX UUID,
+ * the function returns "true". If the argument is valid UUID but is not MAX UUID,
+ * the function returns "false". In other cases functions throws an error.
+*/
 class is_max_uuid_vx_impl {
   public:
 
@@ -243,6 +285,12 @@ class is_max_uuid_vx_impl {
       return {verification_result ? 1LL : 0LL};
     }
 };
+
+/**
+ * Implementation of UUID_V1() function.
+ * The function takes no arguments. It generates time stamp
+ * based UUID of version 1.
+*/
 class uuid_v1_impl {
   public:
 
@@ -263,9 +311,12 @@ class uuid_v1_impl {
   }
 };
 
+/**
+ * Helper class for string-based uuids
+*/
 class string_based_uuid {
   public:
-  boost::uuids::uuid get_uuid_namespace(int name_index){
+  inline boost::uuids::uuid get_uuid_namespace(int name_index){
     boost::uuids::uuid ns;
     switch(name_index){
       case 0: ns = boost::uuids::ns::dns();
@@ -275,13 +326,20 @@ class string_based_uuid {
       case 2: ns = boost::uuids::ns::oid();
       break;
       case 3: ns = boost::uuids::ns::x500dn();
-      break; // we have 4 ns in the standard by now. In any other case we just use url()
+      break; // we have 4 NS in the standard by now. In any other case we just use url()
       default: ns = boost::uuids::ns::url();
     }    
     return ns;
   }
 };
 
+/**
+ * Implementation of UUID_V3() function.
+ * The function takes 1 or 2 arguments. It generates string
+ * based UUID of version 3. The firest argument is string to hash with
+ * MD5 argorythm. The second optional argument is name spase for UUID.
+ * DNS: 0, URL: 1, OID: 2, X.500: 3, default is 1, or URL
+*/
 class uuid_v3_impl : string_based_uuid {
   public:
 
@@ -300,7 +358,6 @@ class uuid_v3_impl : string_based_uuid {
       ctx.set_arg_type(0, STRING_RESULT);
       charset_ext.set_arg_value_charset(ctx, 0, string_charset); 
       if(narg == 2){
-        // arg1 - @uuid namespace: DNS: 0, URL: 1, OID: 2, X.500: 3, default is 0, or DNS
         ctx.mark_arg_nullable(1, false);
         ctx.set_arg_type(1, INT_RESULT);
       }
@@ -329,6 +386,11 @@ class uuid_v3_impl : string_based_uuid {
   }
 };
 
+/**
+ * Implementation of UUID_V4() function.
+ * The function no arguments. It generates random number
+ * based UUID of version 4. 
+*/
 class uuid_v4_impl {
   public:
 
@@ -351,6 +413,13 @@ class uuid_v4_impl {
   }
 };
 
+/**
+ * Implementation of UUID_V5() function.
+ * The function takes 1 or 2 arguments. It generates string
+ * based UUID of version 5. The firest argument is string to hash with
+ * SHA1 argorythm. The second optional argument is name spase for UUID.
+ * DNS: 0, URL: 1, OID: 2, X.500: 3, default is 1, or URL
+*/
 class uuid_v5_impl : string_based_uuid {
   public:
 
@@ -369,7 +438,6 @@ class uuid_v5_impl : string_based_uuid {
       ctx.set_arg_type(0, STRING_RESULT);
       charset_ext.set_arg_value_charset(ctx, 0, string_charset); 
       if(narg == 2){
-        // arg1 - @uuid namespace: DNS: 0, URL: 1, OID: 2, X.500: 3, default is 0, or DNS
         ctx.mark_arg_nullable(1, false);
         ctx.set_arg_type(1, INT_RESULT);
       }
@@ -398,6 +466,11 @@ class uuid_v5_impl : string_based_uuid {
   }
 };
 
+/**
+ * Implementation of UUID_V6() function.
+ * The function takes no arguments. It generates time stamp
+ * based UUID of version 6.
+*/
 class uuid_v6_impl {
   public:
 
@@ -419,6 +492,14 @@ class uuid_v6_impl {
   }
 };
 
+/**
+ * Implementation of UUID_V7() function.
+ * The function takes no arguments or one optional integer argument. 
+ * It generates time stamp based UUID of version 7.
+ * If the argument is present, it is interpreted as time shift. Function generated UUID
+ * and then shifts it's timestamp for specified number of miliseconds, forth (positiove)
+ * or back (negative) in time.
+*/
 class uuid_v7_impl {
   public:
 
@@ -458,6 +539,7 @@ class uuid_v7_impl {
 /**
  * This function just shifts timestamp (ms part only) for uuid version 7.
  * ofs_ms argumant is of type "long" so it will not cause integer overflow.
+ * @return time-shifted UUID v7
 */
   boost::uuids::uuid add_ts_offset(boost::uuids::uuid u, long ofs_ms){
     std::uint64_t time_ms = u.time_point_v7().time_since_epoch().count();
@@ -470,6 +552,11 @@ class uuid_v7_impl {
   }
 };
 
+/**
+ * Implementation of NIL_UUID_VX() function.
+ * The function takes no argumentst. 
+ * It generates time NIL UUID.
+*/
 class nil_uuid_vx_impl {
   public:
 
@@ -489,6 +576,12 @@ class nil_uuid_vx_impl {
     return nil_uuid;
   }
 };
+
+/**
+ * Implementation of MAX_UUID_VX() function.
+ * The function takes no argumentst. 
+ * It generates time MAX UUID.
+*/
 class max_uuid_vx_impl {
   public:
 
@@ -509,6 +602,12 @@ class max_uuid_vx_impl {
   }
 };
 
+/**
+ * Implementation of UUID_VX_TO_BIN() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID in formatted or hexadecimal form. In other case function throws error.
+ * If the argumant can be parsed as UUID of any version, the function returns it's binary representation.
+*/
 class uuid_vx_to_bin_impl {
   public:
 
@@ -545,6 +644,12 @@ class uuid_vx_to_bin_impl {
     }
 };
 
+/**
+ * Implementation of BIN_TO_UUID_VX() function.
+ * The function takes exactly one string argument. The argument must be a 
+ * hexadecimal of exactly 32 chars (16 bytes). In other case function throws error.
+ * The function returns UUID with binary data from the argument.
+*/
 class bin_to_uuid_vx_impl {
   public:
 
@@ -570,7 +675,7 @@ class bin_to_uuid_vx_impl {
     }
     auto ubs = ctx.get_arg<STRING_RESULT>(0);
     if(ubs.size() != UUID_SIZE) {
-        throw std::invalid_argument("The UUID must be 16 bytes exactly.");
+        throw std::invalid_argument(err_msg_16bytes);
     }    
    
     boost::uuids::uuid u;
@@ -582,6 +687,9 @@ class bin_to_uuid_vx_impl {
   }
 };
 
+/**
+ *  Helper class for timestamp extracting functions
+ */
 class timestamp_based_uuid {
   public:
 
@@ -612,10 +720,10 @@ class timestamp_based_uuid {
   }
 
 /** 
- * Returns timestamp in the format like:
- * 2024-05-29 18:04:14.201
+ * Returns formatted timestamp string from the unix time in milliseconds.
  * TZ is always GMT  
-*/
+ * @return String timestamp representation tin the form like 2024-05-29 18:04:14.201
+ */
   inline std::string get_timestamp(uint64_t milliseconds) {
     
     std::chrono::system_clock::time_point tm{std::chrono::milliseconds{milliseconds}};
@@ -627,11 +735,11 @@ class timestamp_based_uuid {
     return oss.str();    
   }
 
-/** Returns timestamp in the format like:
- *  Wed May 29 18:05:07 2024 GMT
- *  TZ is always GMT  
-*/
-
+/** 
+ * Returns formatted timestamp with TZ string from the unix time in milliseconds.
+ * TZ is always GMT  
+ * @return String timestamp representation tin the form like Wed May 29 18:05:07 2024 GMT
+ */
   inline std::string get_timestamp_with_tz(uint64_t milliseconds) {
 
     std::chrono::system_clock::time_point tm{std::chrono::milliseconds{milliseconds}};
@@ -644,6 +752,13 @@ class timestamp_based_uuid {
   }
 };
 
+/**
+ * Implementation of UUID_VX_TO_TIMESTAMP() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID of version 1,6 or 7 in formatted or hexadecimal form. In other case function throws error.
+ * If the argumant can be parsed as UUID, the function returns it's timestamp in the form
+ * like 2024-05-29 18:04:14.201.
+*/
 class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
   public:
 
@@ -671,6 +786,13 @@ class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
     }    
 };
 
+/**
+ * Implementation of UUID_VX_TO_TIMESTAMP_TZ() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID of version 1,6 or 7 in formatted or hexadecimal form. In other case function throws error.
+ * If the argumant can be parsed as UUID, the function returns it's timestamp in the form
+ * like Wed May 29 18:05:07 2024 GMT.
+*/
 class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid{
   public:
 
@@ -700,6 +822,12 @@ class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid{
     }    
 };
 
+/**
+ * Implementation of UUID_VX_TO_TIMESTAMP_TZ() function.
+ * The function takes exactly one string argument. The argument must be a valid
+ * UUID of version 1,6 or 7 in formatted or hexadecimal form. In other case function throws error.
+ * If the argumant can be parsed as UUID, the function returns it's timestamp in ms since epoch.
+*/
 class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
   public:
 
@@ -766,16 +894,16 @@ static const std::array known_udfs{
   DECLARE_UDF_INFO_AUTO(uuid_vx_to_unixtime)    
 };
 
+using udf_bitset_type =
+    mysqlpp::udf_bitset<std::tuple_size_v<decltype(known_udfs)>>;
+static udf_bitset_type registered_udfs;
+
 static void uuidx_udf_my_error(int error_id, myf flags, ...) {
   va_list args;
   va_start(args, flags);
   mysql_service_mysql_runtime_error->emit(error_id, flags, args);
   va_end(args);
 }
-
-using udf_bitset_type =
-    mysqlpp::udf_bitset<std::tuple_size_v<decltype(known_udfs)>>;
-static udf_bitset_type registered_udfs;
 
 /**
   Initialization entry method for Component used when loading the Component.
@@ -785,12 +913,9 @@ static udf_bitset_type registered_udfs;
   @retval non-zero failure
 */
 static mysql_service_status_t component_uuidx_udf_init() {
-
   mysqlpp::udf_error_reporter::instance() = &uuidx_udf_my_error;
-
   mysqlpp::register_udfs(mysql_service_udf_registration, known_udfs,
                          registered_udfs);
-
   return registered_udfs.all() ? 0 : 1;
 }
 
