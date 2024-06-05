@@ -51,7 +51,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
 
 // defined as a macro because needed both raw and stringized
-#define CURRENT_COMPONENT_NAME uuidx_udf
+#define CURRENT_COMPONENT_NAME uuid_vx_udf
 #define CURRENT_COMPONENT_NAME_STR BOOST_PP_STRINGIZE(CURRENT_COMPONENT_NAME)
 
 REQUIRES_SERVICE_PLACEHOLDER(udf_registration);
