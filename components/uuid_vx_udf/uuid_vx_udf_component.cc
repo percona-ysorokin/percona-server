@@ -94,7 +94,7 @@ template <typename Exception>
   throw Exception{std::string{err_msg}};
 }
 
-#define UUID_SIZE 16
+constexpr std::size_t uuid_size_in_bytes = boost::uuids::uuid::static_size();
 
 /**
  * Implementation of UUID_VX_VERSION() function.
@@ -647,14 +647,14 @@ class uuid_vx_to_bin_impl {
     if (ctx.is_arg_null(0)) {
       return {};
     }
-    char result[UUID_SIZE + 1];
+    char result[uuid_size_in_bytes + 1];
     boost::uuids::uuid u;
     try {
       u = gen(uxs.data());
-      for (size_t i = 0; i < UUID_SIZE; i++) {
+      for (size_t i = 0; i < uuid_size_in_bytes; i++) {
         result[i] = (uint8_t)u.data[i];
       }
-      result[UUID_SIZE] = 0;
+      result[uuid_size_in_bytes] = 0;
     } catch (std::exception &ex) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
     }
@@ -693,12 +693,12 @@ class bin_to_uuid_vx_impl {
       return {};
     }
     auto ubs = ctx.get_arg<STRING_RESULT>(0);
-    if (ubs.size() != UUID_SIZE) {
+    if (ubs.size() != uuid_size_in_bytes) {
       raise<std::invalid_argument>(err_msg_16bytes);
     }
 
     boost::uuids::uuid u;
-    for (size_t i = 0; i < UUID_SIZE; i++) {
+    for (size_t i = 0; i < uuid_size_in_bytes; i++) {
       u.data[i] = ubs.at(i);
     }
 
