@@ -206,16 +206,14 @@ class is_uuid_vx_impl {
     bool verification_result = false;
     boost::uuids::string_generator gen;
 
-    if (ctx.is_arg_null(0)) {
-      return {};
+    if ( ! ctx.is_arg_null(0) ) {
+      auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      try {
+        gen(uxs.data());
+        verification_result = true;
+      } catch (std::exception &ex) {
+      }
     }
-    auto uxs = ctx.get_arg<STRING_RESULT>(0);
-    try {
-      gen(uxs.data());
-      verification_result = true;
-    } catch (std::exception &ex) {
-    }
-
     return {verification_result ? 1LL : 0LL};
   }
 };
@@ -248,17 +246,15 @@ class is_nil_uuid_vx_impl {
   mysqlpp::udf_result_t<INT_RESULT> calculate(const mysqlpp::udf_context &ctx) {
     bool verification_result = false;
     boost::uuids::string_generator gen;
-    if (ctx.is_arg_null(0)) {
-      return {};
+    if ( ! ctx.is_arg_null(0) ) {
+      auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      try {
+        boost::uuids::uuid u = gen(uxs.data());
+        verification_result = u.is_nil();
+      } catch (std::exception &ex) {
+        raise<std::invalid_argument>(err_msg_valid_uuid);
+      }
     }
-    auto uxs = ctx.get_arg<STRING_RESULT>(0);
-    try {
-      boost::uuids::uuid u = gen(uxs.data());
-      verification_result = u.is_nil();
-    } catch (std::exception &ex) {
-      raise<std::invalid_argument>(err_msg_valid_uuid);
-    }
-
     return {verification_result ? 1LL : 0LL};
   }
 };
@@ -292,16 +288,15 @@ class is_max_uuid_vx_impl {
     bool verification_result = true;
     boost::uuids::string_generator gen;
 
-    if (ctx.is_arg_null(0)) {
-      return {};
-    }
-    auto uxs = ctx.get_arg<STRING_RESULT>(0);
-    try {
-      boost::uuids::uuid u = gen(uxs.data());
-      verification_result =
-          !std::all_of(u.begin(), u.end(), [](uint8_t d) { return d == 0xFF; });
-    } catch (std::exception &ex) {
-      raise<std::invalid_argument>(err_msg_valid_uuid);
+    if ( ! ctx.is_arg_null(0) ) {
+      auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      try {
+        boost::uuids::uuid u = gen(uxs.data());
+        verification_result =
+          ! std::all_of(u.begin(), u.end(), [](uint8_t d) { return d == 0xFF; });
+      } catch (std::exception &ex) {
+        raise<std::invalid_argument>(err_msg_valid_uuid);
+      }
     }
 
     return {verification_result ? 1LL : 0LL};
