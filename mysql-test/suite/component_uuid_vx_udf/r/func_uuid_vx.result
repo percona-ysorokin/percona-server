@@ -28,10 +28,10 @@ uuid_vx_version(NULL)
 NULL
 #uuid_vx_version() with '' arg
 SELECT uuid_vx_version('');
-ERROR HY000: uuid_vx_version<int> UDF failed; Invalid argument. Should be valid UUID string.
+ERROR HY000: uuid_vx_version<int> UDF failed; Invalid argument. Should be a valid UUID string.
 #uuid_vx_version() with bad arg
 SELECT uuid_vx_version('12354xy');
-ERROR HY000: uuid_vx_version<int> UDF failed; Invalid argument. Should be valid UUID string.
+ERROR HY000: uuid_vx_version<int> UDF failed; Invalid argument. Should be a valid UUID string.
 SELECT uuid_vx_version();
 ERROR HY000: Can't initialize function 'uuid_vx_version'; Function requires exactly one argument.
 # uuid_vx_variant()
@@ -44,10 +44,10 @@ uuid_vx_variant(NULL)
 NULL
 #uuid_vx_variant() with '' arg
 SELECT uuid_vx_variant('');
-ERROR HY000: uuid_vx_variant<int> UDF failed; Invalid argument. Should be valid UUID string.
+ERROR HY000: uuid_vx_variant<int> UDF failed; Invalid argument. Should be a valid UUID string.
 #uuid_vx_variant() with bad arg
 SELECT uuid_vx_variant('12354xy');
-ERROR HY000: uuid_vx_variant<int> UDF failed; Invalid argument. Should be valid UUID string.
+ERROR HY000: uuid_vx_variant<int> UDF failed; Invalid argument. Should be a valid UUID string.
 SELECT uuid_vx_variant();
 ERROR HY000: Can't initialize function 'uuid_vx_variant'; Function requires exactly one argument.
 # is_uuid_vx() with right uuid
@@ -61,7 +61,7 @@ is_uuid_vx('{12345xyz-1234-5678-1234-567812345678}')
 # is_uuid_vx() with NULL uuid
 SELECT is_uuid_vx(NULL);
 is_uuid_vx(NULL)
-NULL
+0
 # is_uuid_vx() with empty string
 SELECT is_uuid_vx('');
 is_uuid_vx('')
@@ -79,10 +79,10 @@ is_nil_uuid_vx('{00000000-0000-0000-0000-000000000000}')
 # is_nil_uuid_vx() with NULL uuid
 SELECT is_nil_uuid_vx(NULL);
 is_nil_uuid_vx(NULL)
-NULL
+0
 # is_nil_uuid_vx() with empty string
 SELECT is_nil_uuid_vx('');
-ERROR HY000: is_nil_uuid_vx<int> UDF failed; Invalid argument. Should be valid UUID string.
+ERROR HY000: is_nil_uuid_vx<int> UDF failed; Invalid argument. Should be a valid UUID string.
 SELECT is_nil_uuid_vx();
 ERROR HY000: Can't initialize function 'is_nil_uuid_vx'; Function requires exactly one argument.
 # is_max_uuid_vx() with good not-nil uuid
@@ -96,10 +96,10 @@ is_max_uuid_vx('{FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}')
 # is_max_uuid_vx() with NULL uuid
 SELECT is_max_uuid_vx(NULL);
 is_max_uuid_vx(NULL)
-NULL
+0
 # is_max_uuid_vx() with empty string
 SELECT is_max_uuid_vx('');
-ERROR HY000: is_max_uuid_vx<int> UDF failed; Invalid argument. Should be valid UUID string.
+ERROR HY000: is_max_uuid_vx<int> UDF failed; Invalid argument. Should be a valid UUID string.
 SELECT is_max_uuid_vx();
 ERROR HY000: Can't initialize function 'is_max_uuid_vx'; Function requires exactly one argument.
 #uuid_v1() generation and check 
@@ -130,9 +130,9 @@ SELECT is_uuid_vx(uuid_v3('test.com',3));
 is_uuid_vx(uuid_v3('test.com',3))
 1
 SELECT is_uuid_vx(uuid_v3('test.com',4));
-ERROR HY000: uuid_v3<string> UDF failed; UUID namespace index must be in range 0-3.
+ERROR HY000: uuid_v3<string> UDF failed; UUID namespace index must be in the 0..3 range.
 SELECT is_uuid_vx(uuid_v3('test.com',-1));
-ERROR HY000: uuid_v3<string> UDF failed; UUID namespace index must be in range 0-3.
+ERROR HY000: uuid_v3<string> UDF failed; UUID namespace index must be in the 0..3 range.
 SELECT uuid_v3();
 ERROR HY000: Can't initialize function 'uuid_v3'; Function requires one or two arguments.
 #uuid_v4() generation and check 
@@ -163,9 +163,9 @@ SELECT is_uuid_vx(uuid_v5('test.com',3));
 is_uuid_vx(uuid_v5('test.com',3))
 1
 SELECT is_uuid_vx(uuid_v5('test.com',4));
-ERROR HY000: uuid_v5<string> UDF failed; UUID namespace index must be in range 0-3.
+ERROR HY000: uuid_v5<string> UDF failed; UUID namespace index must be in the 0..3 range.
 SELECT is_uuid_vx(uuid_v5('test.com',-1));
-ERROR HY000: uuid_v5<string> UDF failed; UUID namespace index must be in range 0-3.
+ERROR HY000: uuid_v5<string> UDF failed; UUID namespace index must be in the 0..3 range.
 SELECT uuid_v5();
 ERROR HY000: Can't initialize function 'uuid_v5'; Function requires one or two arguments.
 SELECT is_uuid(uuid_v6());
@@ -218,9 +218,9 @@ SELECT uuid_vx_to_bin(NULL);
 uuid_vx_to_bin(NULL)
 NULL
 SELECT bin_to_uuid_vx('123');
-ERROR HY000: bin_to_uuid_vx<string> UDF failed; The string should be 32 hex chars (16 bytes) exactly.
+ERROR HY000: bin_to_uuid_vx<string> UDF failed; The string should be exactly 32 hex characters (16 bytes).
 SELECT uuid_vx_to_bin('123');
-ERROR HY000: uuid_vx_to_bin<string> UDF failed; Invalid argument. Should be valid UUID string.
+ERROR HY000: uuid_vx_to_bin<string> UDF failed; Invalid argument. Should be a valid UUID string.
 #all functions outupts timestamps in GMT timezone
 #time-based UUID timestamps test
 #v1 (wrong values, boost bug, check if test fails)
@@ -264,11 +264,11 @@ uuid_vx_to_unixtime('018fe2cf-8209-71fe-8034-fa62177f35c7')
 1717497201161
 #wrong UUID argument
 SELECT  uuid_vx_to_unixtime('123');
-ERROR HY000: uuid_vx_to_unixtime<int> UDF failed; Invalid argument. Should be valid UUID versions 1,6,7 in a string representation.
+ERROR HY000: uuid_vx_to_unixtime<int> UDF failed; Invalid argument. Should be a valid UUID of version 1,6,7 in a string representation.
 SELECT  uuid_vx_to_timestamp_tz('123');
-ERROR HY000: uuid_vx_to_timestamp_tz<string> UDF failed; Invalid argument. Should be valid UUID versions 1,6,7 in a string representation.
+ERROR HY000: uuid_vx_to_timestamp_tz<string> UDF failed; Invalid argument. Should be a valid UUID of version 1,6,7 in a string representation.
 SELECT  uuid_vx_to_timestamp('123');
-ERROR HY000: uuid_vx_to_timestamp<string> UDF failed; Invalid argument. Should be valid UUID versions 1,6,7 in a string representation.
+ERROR HY000: uuid_vx_to_timestamp<string> UDF failed; Invalid argument. Should be a valid UUID of version 1,6,7 in a string representation.
 #NULL UUID argument
 SELECT  uuid_vx_to_unixtime(NULL);
 uuid_vx_to_unixtime(NULL)
