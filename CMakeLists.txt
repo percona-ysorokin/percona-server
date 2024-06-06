@@ -2175,8 +2175,6 @@ IF(WITH_ENCRYPTION_UDF)
   ADD_SUBDIRECTORY(extra/opensslpp)
 ENDIF()
 
-OPTION(WITH_UUID_VX_UDF "Build UUID_VX UDF plugin" ON)
-
 # Utility target to build every executable tagged with ADD_TEST.
 ADD_CUSTOM_TARGET(unittest_all)
 

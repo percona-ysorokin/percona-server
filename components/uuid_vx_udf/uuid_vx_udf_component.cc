@@ -21,9 +21,23 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
 /******************************************************************************/
-/* Implemantation of UUID by RFC 9562 https://www.rfc-editor.org/rfc/rfc9562  */
+/* Implementation of UUID by RFC 9562 https://www.rfc-editor.org/rfc/rfc9562  */
 /* using Boost uuid library (header-only) version > 1.86                      */
 /******************************************************************************/
+
+#include <algorithm>
+#include <array>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <string>
+#include <string_view>
+
+#include <boost/preprocessor/stringize.hpp>
+
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 #include <mysql/components/component_implementation.h>
 #include <mysql/components/services/component_sys_var_service.h>
@@ -32,50 +46,53 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 #include <mysql/components/services/udf_metadata.h>
 #include <mysql/components/services/udf_registration.h>
 
-#include <algorithm>
-#include <array>
-#include <boost/preprocessor/stringize.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <ctime>
-#include <iomanip>
-#include <iostream>
 #include <mysqlpp/udf_context_charset_extension.hpp>
 #include <mysqlpp/udf_registration.hpp>
 #include <mysqlpp/udf_wrappers.hpp>
-#include <string>
+
 
 // defined as a macro because needed both raw and stringized
-#define CURRENT_COMPONENT_NAME uuidx_udf
+#define CURRENT_COMPONENT_NAME uuid_vx_udf
 #define CURRENT_COMPONENT_NAME_STR BOOST_PP_STRINGIZE(CURRENT_COMPONENT_NAME)
 
 REQUIRES_SERVICE_PLACEHOLDER(udf_registration);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_udf_metadata);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_runtime_error);
+
 namespace {
-constexpr static const char *string_charset = "utf8mb3";
-constexpr static const char *uuid_charset = "ascii";
-constexpr static const char *nil_uuid = "00000000-0000-0000-0000-000000000000";
-constexpr static const char *max_uuid = "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF";
-constexpr static const char *err_msg_one_argument =
-    "Function requires exactly one argument.";
-constexpr static const char *err_msg_valid_uuid =
-    "Invalid argument. Should be valid UUID string.";
-constexpr static const char *err_msg_valid_v167_uuid =
-    "Invalid argument. Should be valid UUID versions 1,6,7 in a string "
-    "representation.";
-constexpr static const char *err_msg_no_arguments =
-    "Function requires no arguments.";
-constexpr static const char *err_msg_one_or_two_arguments =
-    "Function requires one or two arguments.";
-constexpr static const char *err_msg_zero_or_one_argument =
-    "Function requires zero or one arguments.";
-constexpr static const char *err_msg_uuid_namespace_idx =
-    "UUID namespace index must be in range 0-3.";
-constexpr static const char *err_msg_16bytes =
-    "The string should be 32 hex chars (16 bytes) exactly.";
-}  // namespace
+
+// declaring the following two constants as char arrays (rather than
+// std::string_view) because they are used in c-style interfaces and need
+// to be null terminated
+constexpr char string_charset[]{"utf8mb4"};
+constexpr char uuid_charset[]{"ascii"};
+
+constexpr std::string_view nil_uuid{"00000000-0000-0000-0000-000000000000"};
+// TODO: should we convert this to lower-case to match with generated values
+constexpr std::string_view max_uuid{"FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"};
+
+constexpr std::string_view err_msg_one_argument{
+    "Function requires exactly one argument."};
+constexpr std::string_view err_msg_valid_uuid{
+    "Invalid argument. Should be a valid UUID string."};
+constexpr std::string_view err_msg_valid_v167_uuid{
+    "Invalid argument. Should be a valid UUID of version 1,6,7 in a string "
+    "representation."};
+constexpr std::string_view err_msg_no_arguments{
+    "Function requires no arguments."};
+constexpr std::string_view err_msg_one_or_two_arguments{
+    "Function requires one or two arguments."};
+constexpr std::string_view err_msg_zero_or_one_argument{
+    "Function requires zero or one arguments."};
+constexpr std::string_view err_msg_uuid_namespace_idx{
+    "UUID namespace index must be in the 0..3 range."};
+constexpr std::string_view err_msg_16bytes{
+    "The string should be exactly 32 hex characters (16 bytes)."};
+
+template <typename Exception>
+[[noreturn]] void raise(std::string_view err_msg) {
+  throw Exception{std::string{err_msg}};
+}
 
 #define UUID_SIZE 16
 
@@ -92,7 +109,7 @@ class uuid_vx_version_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -115,7 +132,7 @@ class uuid_vx_version_impl {
       boost::uuids::uuid u = gen(uxs.data());
       version = u.version();
     } catch (const std::exception &ex) {
-      throw std::invalid_argument{err_msg_valid_uuid};
+      raise<std::invalid_argument>(err_msg_valid_uuid);
     }
     return version;
   }
@@ -134,7 +151,7 @@ class uuid_vx_variant_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -155,7 +172,7 @@ class uuid_vx_variant_impl {
       boost::uuids::uuid u = gen(uxs.data());
       variant = u.variant();
     } catch (const std::exception &ex) {
-      throw std::invalid_argument{err_msg_valid_uuid};
+      raise<std::invalid_argument>(err_msg_valid_uuid);
     }
     return variant;
   }
@@ -165,8 +182,8 @@ class uuid_vx_variant_impl {
  * Implementation of IS_UUID_VX() function.
  * The function takes exactly one string argument. The argument must be a valid
  * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argumant can be parsed as UUID of any version, function returns
- * "true". If the argumant can not be parsed as UUID of any version, function
+ * If the argument can be parsed as UUID of any version, function returns
+ * "true". If the argument can not be parsed as UUID of any version, function
  * returns "false".
  */
 class is_uuid_vx_impl {
@@ -175,7 +192,7 @@ class is_uuid_vx_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -207,7 +224,7 @@ class is_uuid_vx_impl {
  * Implementation of IS_NIL_UUID_VX() function.
  * The function takes exactly one string argument. The argument must be a valid
  * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argumant can be parsed as UUID of any version, and the argument is NIL
+ * If the argument can be parsed as UUID of any version, and the argument is NIL
  * UUID, the function returns "true". If the argument is valid UUID but is not
  * NIL UUID, the function returns "false". In other cases functions throws an
  * error.
@@ -218,7 +235,7 @@ class is_nil_uuid_vx_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -239,7 +256,7 @@ class is_nil_uuid_vx_impl {
       boost::uuids::uuid u = gen(uxs.data());
       verification_result = u.is_nil();
     } catch (std::exception &ex) {
-      throw std::invalid_argument{err_msg_valid_uuid};
+      raise<std::invalid_argument>(err_msg_valid_uuid);
     }
 
     return {verification_result ? 1LL : 0LL};
@@ -250,7 +267,7 @@ class is_nil_uuid_vx_impl {
  * Implementation of IS_MAX_UUID_VX() function.
  * The function takes exactly one string argument. The argument must be a valid
  * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argumant can be parsed as UUID of any version, and the argument is MAX
+ * If the argument can be parsed as UUID of any version, and the argument is MAX
  * UUID, the function returns "true". If the argument is valid UUID but is not
  * MAX UUID, the function returns "false". In other cases functions throws an
  * error.
@@ -261,7 +278,7 @@ class is_max_uuid_vx_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -284,7 +301,7 @@ class is_max_uuid_vx_impl {
       verification_result =
           !std::all_of(u.begin(), u.end(), [](uint8_t d) { return d == 0xFF; });
     } catch (std::exception &ex) {
-      throw std::invalid_argument{err_msg_valid_uuid};
+      raise<std::invalid_argument>(err_msg_valid_uuid);
     }
 
     return {verification_result ? 1LL : 0LL};
@@ -302,7 +319,7 @@ class uuid_v1_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 0) {
-      throw mysqlpp::udf_exception{err_msg_no_arguments, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_no_arguments);
     }
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
@@ -347,8 +364,8 @@ class string_based_uuid {
 /**
  * Implementation of UUID_V3() function.
  * The function takes 1 or 2 arguments. It generates string
- * based UUID of version 3. The firest argument is string to hash with
- * MD5 argorythm. The second optional argument is name spase for UUID.
+ * based UUID of version 3. The first argument is string to hash with
+ * MD5 algorithm. The second optional argument is name space for UUID.
  * DNS: 0, URL: 1, OID: 2, X.500: 3, default is 1, or URL
  */
 class uuid_v3_impl : string_based_uuid {
@@ -372,8 +389,7 @@ class uuid_v3_impl : string_based_uuid {
         ctx.set_arg_type(1, INT_RESULT);
       }
     } else {
-      throw mysqlpp::udf_exception{err_msg_one_or_two_arguments,
-                                   ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_or_two_arguments);
     }
   }
 
@@ -388,7 +404,7 @@ class uuid_v3_impl : string_based_uuid {
       auto ns = ctx.get_arg<INT_RESULT>(1);
       ns_index = ns.value_or(1);
       if (ns_index < 0 || ns_index > 3) {
-        throw std::invalid_argument(err_msg_uuid_namespace_idx);
+        raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
       }
     }
     boost::uuids::name_generator_md5 gen_v3(get_uuid_namespace(ns_index));
@@ -408,7 +424,7 @@ class uuid_v4_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() > 0) {
-      throw mysqlpp::udf_exception{err_msg_no_arguments, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_no_arguments);
     }
 
     mysqlpp::udf_context_charset_extension charset_ext{
@@ -426,8 +442,8 @@ class uuid_v4_impl {
 /**
  * Implementation of UUID_V5() function.
  * The function takes 1 or 2 arguments. It generates string
- * based UUID of version 5. The firest argument is string to hash with
- * SHA1 argorythm. The second optional argument is name spase for UUID.
+ * based UUID of version 5. The first argument is string to hash with
+ * SHA1 algorithm. The second optional argument is name space for UUID.
  * DNS: 0, URL: 1, OID: 2, X.500: 3, default is 1, or URL
  */
 class uuid_v5_impl : string_based_uuid {
@@ -451,8 +467,7 @@ class uuid_v5_impl : string_based_uuid {
         ctx.set_arg_type(1, INT_RESULT);
       }
     } else {
-      throw mysqlpp::udf_exception{err_msg_one_or_two_arguments,
-                                   ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_or_two_arguments);
     }
   }
 
@@ -468,7 +483,7 @@ class uuid_v5_impl : string_based_uuid {
       auto ns = ctx.get_arg<INT_RESULT>(1);
       ns_index = ns.value_or(1);
       if (ns_index < 0 || ns_index > 3) {
-        throw std::invalid_argument(err_msg_uuid_namespace_idx);
+        raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
       }
     }
     boost::uuids::name_generator_sha1 gen_v5(get_uuid_namespace(ns_index));
@@ -488,7 +503,7 @@ class uuid_v6_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() != 0) {
-      throw mysqlpp::udf_exception{err_msg_no_arguments, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_no_arguments);
     }
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
@@ -508,7 +523,7 @@ class uuid_v6_impl {
  * It generates time stamp based UUID of version 7.
  * If the argument is present, it is interpreted as time shift. Function
  * generated UUID and then shifts it's timestamp for specified number of
- * miliseconds, forth (positiove) or back (negative) in time.
+ * miliseconds, forth (positive) or back (negative) in time.
  */
 class uuid_v7_impl {
  public:
@@ -518,8 +533,7 @@ class uuid_v7_impl {
     size_t narg = ctx.get_number_of_args();
     // arg0 - @time_offset_ms, optional
     if (narg > 1) {
-      throw mysqlpp::udf_exception{err_msg_zero_or_one_argument,
-                                   ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_zero_or_one_argument);
     }
     if (narg == 1) {
       ctx.mark_arg_nullable(0, false);
@@ -549,7 +563,7 @@ class uuid_v7_impl {
  private:
   /**
    * This function just shifts timestamp (ms part only) for uuid version 7.
-   * ofs_ms argumant is of type "long" so it will not cause integer overflow.
+   * ofs_ms argument is of type "long" so it will not cause integer overflow.
    * @return time-shifted UUID v7
    */
   boost::uuids::uuid add_ts_offset(boost::uuids::uuid u, long ofs_ms) {
@@ -565,7 +579,7 @@ class uuid_v7_impl {
 
 /**
  * Implementation of NIL_UUID_VX() function.
- * The function takes no argumentst.
+ * The function takes no arguments.
  * It generates time NIL UUID.
  */
 class nil_uuid_vx_impl {
@@ -574,7 +588,7 @@ class nil_uuid_vx_impl {
     ctx.mark_result_const(true);
     ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() != 0) {
-      throw mysqlpp::udf_exception{err_msg_no_arguments, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_no_arguments);
     }
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
@@ -583,13 +597,13 @@ class nil_uuid_vx_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       [[maybe_unused]] const mysqlpp::udf_context &ctx) {
-    return nil_uuid;
+    return std::string{nil_uuid};
   }
 };
 
 /**
  * Implementation of MAX_UUID_VX() function.
- * The function takes no argumentst.
+ * The function takes no arguments.
  * It generates time MAX UUID.
  */
 class max_uuid_vx_impl {
@@ -598,7 +612,7 @@ class max_uuid_vx_impl {
     ctx.mark_result_const(true);
     ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() != 0) {
-      throw mysqlpp::udf_exception{err_msg_no_arguments, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_no_arguments);
     }
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
@@ -607,7 +621,7 @@ class max_uuid_vx_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       [[maybe_unused]] const mysqlpp::udf_context &ctx) {
-    return max_uuid;
+    return std::string{max_uuid};
   }
 };
 
@@ -615,7 +629,7 @@ class max_uuid_vx_impl {
  * Implementation of UUID_VX_TO_BIN() function.
  * The function takes exactly one string argument. The argument must be a valid
  * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argumant can be parsed as UUID of any version, the function returns
+ * If the argument can be parsed as UUID of any version, the function returns
  * it's binary representation.
  */
 class uuid_vx_to_bin_impl {
@@ -624,7 +638,7 @@ class uuid_vx_to_bin_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -647,7 +661,7 @@ class uuid_vx_to_bin_impl {
       }
       result[UUID_SIZE] = 0;
     } catch (std::exception &ex) {
-      throw std::invalid_argument(err_msg_valid_uuid);
+      raise<std::invalid_argument>(err_msg_valid_uuid);
     }
 
     return result;
@@ -666,7 +680,7 @@ class bin_to_uuid_vx_impl {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_version
     ctx.mark_arg_nullable(0, true);
@@ -685,7 +699,7 @@ class bin_to_uuid_vx_impl {
     }
     auto ubs = ctx.get_arg<STRING_RESULT>(0);
     if (ubs.size() != UUID_SIZE) {
-      throw std::invalid_argument(err_msg_16bytes);
+      raise<std::invalid_argument>(err_msg_16bytes);
     }
 
     boost::uuids::uuid u;
@@ -712,7 +726,7 @@ class timestamp_based_uuid {
     try {
       u = gen(uxs.data());
     } catch (std::exception &ex) {
-      throw std::invalid_argument{err_msg_valid_v167_uuid};
+      raise<std::invalid_argument>(err_msg_valid_v167_uuid);
     }
     switch (u.version()) {
       case 1:
@@ -729,7 +743,7 @@ class timestamp_based_uuid {
         ms = u.time_point_v7().time_since_epoch().count();  // ok
         break;
       default: {
-        throw std::invalid_argument{err_msg_valid_v167_uuid};
+        raise<std::invalid_argument>(err_msg_valid_v167_uuid);
       }
     }
     return ms;
@@ -774,7 +788,7 @@ class timestamp_based_uuid {
  * Implementation of UUID_VX_TO_TIMESTAMP() function.
  * The function takes exactly one string argument. The argument must be a valid
  * UUID of version 1,6 or 7 in formatted or hexadecimal form. In other case
- * function throws error. If the argumant can be parsed as UUID, the function
+ * function throws error. If the argument can be parsed as UUID, the function
  * returns it's timestamp in the form like 2024-05-29 18:04:14.201.
  */
 class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
@@ -783,7 +797,7 @@ class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -809,7 +823,7 @@ class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
  * Implementation of UUID_VX_TO_TIMESTAMP_TZ() function.
  * The function takes exactly one string argument. The argument must be a valid
  * UUID of version 1,6 or 7 in formatted or hexadecimal form. In other case
- * function throws error. If the argumant can be parsed as UUID, the function
+ * function throws error. If the argument can be parsed as UUID, the function
  * returns it's timestamp in the form like Wed May 29 18:05:07 2024 GMT.
  */
 class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
@@ -818,7 +832,7 @@ class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_no_arguments, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_no_arguments);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -845,7 +859,7 @@ class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
  * Implementation of UUID_VX_TO_TIMESTAMP_TZ() function.
  * The function takes exactly one string argument. The argument must be a valid
  * UUID of version 1,6 or 7 in formatted or hexadecimal form. In other case
- * function throws error. If the argumant can be parsed as UUID, the function
+ * function throws error. If the argument can be parsed as UUID, the function
  * returns it's timestamp in ms since epoch.
  */
 class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
@@ -854,7 +868,7 @@ class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
-      throw mysqlpp::udf_exception{err_msg_one_argument, ER_EXCESS_ARGUMENTS};
+      raise<std::invalid_argument>(err_msg_one_argument);
     }
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
@@ -870,26 +884,28 @@ class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
   }
 };
 
-DECLARE_INT_UDF_AUTO(uuid_vx_version);
-DECLARE_INT_UDF_AUTO(uuid_vx_variant);
-DECLARE_INT_UDF_AUTO(is_uuid_vx);
-DECLARE_INT_UDF_AUTO(is_nil_uuid_vx);
-DECLARE_INT_UDF_AUTO(is_max_uuid_vx);
+}  // namespace
+
+DECLARE_INT_UDF_AUTO(uuid_vx_version)
+DECLARE_INT_UDF_AUTO(uuid_vx_variant)
+DECLARE_INT_UDF_AUTO(is_uuid_vx)
+DECLARE_INT_UDF_AUTO(is_nil_uuid_vx)
+DECLARE_INT_UDF_AUTO(is_max_uuid_vx)
 // requires invoke of g++ with -latomic
-DECLARE_STRING_UDF_AUTO(uuid_v1);
-DECLARE_STRING_UDF_AUTO(uuid_v3);
-DECLARE_STRING_UDF_AUTO(uuid_v4);
-DECLARE_STRING_UDF_AUTO(uuid_v5);
+DECLARE_STRING_UDF_AUTO(uuid_v1)
+DECLARE_STRING_UDF_AUTO(uuid_v3)
+DECLARE_STRING_UDF_AUTO(uuid_v4)
+DECLARE_STRING_UDF_AUTO(uuid_v5)
 // requires invoke of g++ with -latomic
-DECLARE_STRING_UDF_AUTO(uuid_v6);
-DECLARE_STRING_UDF_AUTO(uuid_v7);
-DECLARE_STRING_UDF_AUTO(nil_uuid_vx);
-DECLARE_STRING_UDF_AUTO(max_uuid_vx);
-DECLARE_STRING_UDF_AUTO(uuid_vx_to_bin);
-DECLARE_STRING_UDF_AUTO(bin_to_uuid_vx);
-DECLARE_STRING_UDF_AUTO(uuid_vx_to_timestamp);
-DECLARE_STRING_UDF_AUTO(uuid_vx_to_timestamp_tz);
-DECLARE_INT_UDF_AUTO(uuid_vx_to_unixtime);
+DECLARE_STRING_UDF_AUTO(uuid_v6)
+DECLARE_STRING_UDF_AUTO(uuid_v7)
+DECLARE_STRING_UDF_AUTO(nil_uuid_vx)
+DECLARE_STRING_UDF_AUTO(max_uuid_vx)
+DECLARE_STRING_UDF_AUTO(uuid_vx_to_bin)
+DECLARE_STRING_UDF_AUTO(bin_to_uuid_vx)
+DECLARE_STRING_UDF_AUTO(uuid_vx_to_timestamp)
+DECLARE_STRING_UDF_AUTO(uuid_vx_to_timestamp_tz)
+DECLARE_INT_UDF_AUTO(uuid_vx_to_unixtime)
 
 // array of defined UFDs
 static const std::array known_udfs{
