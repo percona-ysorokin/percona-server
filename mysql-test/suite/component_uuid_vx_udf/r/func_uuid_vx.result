@@ -61,7 +61,7 @@ is_uuid_vx('{12345xyz-1234-5678-1234-567812345678}')
 # is_uuid_vx() with NULL uuid
 SELECT is_uuid_vx(NULL);
 is_uuid_vx(NULL)
-0
+NULL
 # is_uuid_vx() with empty string
 SELECT is_uuid_vx('');
 is_uuid_vx('')
@@ -79,7 +79,7 @@ is_nil_uuid_vx('{00000000-0000-0000-0000-000000000000}')
 # is_nil_uuid_vx() with NULL uuid
 SELECT is_nil_uuid_vx(NULL);
 is_nil_uuid_vx(NULL)
-0
+NULL
 # is_nil_uuid_vx() with empty string
 SELECT is_nil_uuid_vx('');
 ERROR HY000: is_nil_uuid_vx<int> UDF failed; Invalid argument. Should be a valid UUID string.
@@ -88,15 +88,15 @@ ERROR HY000: Can't initialize function 'is_nil_uuid_vx'; Function requires exact
 # is_max_uuid_vx() with good not-nil uuid
 SELECT is_max_uuid_vx('{12345678-1234-5678-1234-567812345678}');
 is_max_uuid_vx('{12345678-1234-5678-1234-567812345678}')
-1
+0
 # is_max_uuid_vx() with max uuid
 SELECT is_max_uuid_vx('{FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}');
 is_max_uuid_vx('{FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}')
-0
+1
 # is_max_uuid_vx() with NULL uuid
 SELECT is_max_uuid_vx(NULL);
 is_max_uuid_vx(NULL)
-0
+NULL
 # is_max_uuid_vx() with empty string
 SELECT is_max_uuid_vx('');
 ERROR HY000: is_max_uuid_vx<int> UDF failed; Invalid argument. Should be a valid UUID string.

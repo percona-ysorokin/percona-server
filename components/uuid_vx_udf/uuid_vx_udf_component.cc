@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 #include <boost/preprocessor/stringize.hpp>
 
@@ -99,9 +100,12 @@ constexpr std::size_t uuid_size_in_bytes = boost::uuids::uuid::static_size();
 /**
  * Implementation of UUID_VX_VERSION() function.
  * The function takes exactly one string argument. The argument must be a valid
- * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argument is not valid UUID string, function throws error.
- * If the argument is NULL, function returns NULL.
+ * UUID in formatted or hexadecimal form. In other cases the function throws an
+ * error.
+ * - If the argument is not a valid UUID string, function throws an error.
+ * - If the argument is NULL, the function returns NULL.
+ * - If the argument is a valid UUID string but has an unknown (out of 1..8
+ * range) value in the 'version' field, the function returns -1.
  */
 class uuid_vx_version_impl {
  public:
@@ -120,30 +124,36 @@ class uuid_vx_version_impl {
   }
 
   mysqlpp::udf_result_t<INT_RESULT> calculate(const mysqlpp::udf_context &ctx) {
-    int version = 0;
-    boost::uuids::string_generator gen;
-    auto uxs = ctx.get_arg<STRING_RESULT>(0);
-
     if (ctx.is_arg_null(0)) {
       return {};
     }
 
+    boost::uuids::uuid::version_type version{
+        boost::uuids::uuid::version_unknown};
+
     try {
+      boost::uuids::string_generator gen;
+      auto uxs = ctx.get_arg<STRING_RESULT>(0);
       boost::uuids::uuid u = gen(uxs.data());
       version = u.version();
-    } catch (const std::exception &ex) {
+    } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
     }
-    return version;
+    return static_cast<std::underlying_type_t<decltype(version)>>(version);
   }
 };
 
 /**
  * Implementation of UUID_VX_VARIANT() function.
  * The function takes exactly one string argument. The argument must be a valid
- * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argument is not valid UUID string, function throws error.
- * If the argument is NULL, function returns NULL.
+ * UUID in formatted or hexadecimal form. In other cases the function throws an
+ * error.
+ * - If the argument is not a valid UUID string, the function throws an error.
+ * - If the argument is NULL, the function returns NULL.
+ * - Returns 0 for "NCS backward compatibility"
+ * - Returns 1 for "RFC 4122"
+ * - Returns 2 for "Microsoft Corporation backward compatibility"
+ * - Returns 3 for future definitions
  */
 class uuid_vx_variant_impl {
  public:
@@ -162,16 +172,18 @@ class uuid_vx_variant_impl {
   }
 
   mysqlpp::udf_result_t<INT_RESULT> calculate(const mysqlpp::udf_context &ctx) {
-    int variant = -1;
-    boost::uuids::string_generator gen;
     if (ctx.is_arg_null(0)) {
       return {};
     }
-    auto uxs = ctx.get_arg<STRING_RESULT>(0);
+
+    boost::uuids::uuid::variant_type variant{
+        boost::uuids::uuid::variant_future};
     try {
+      boost::uuids::string_generator gen;
+      auto uxs = ctx.get_arg<STRING_RESULT>(0);
       boost::uuids::uuid u = gen(uxs.data());
       variant = u.variant();
-    } catch (const std::exception &ex) {
+    } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
     }
     return variant;
@@ -181,10 +193,13 @@ class uuid_vx_variant_impl {
 /**
  * Implementation of IS_UUID_VX() function.
  * The function takes exactly one string argument. The argument must be a valid
- * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argument can be parsed as UUID of any version, function returns
- * "true". If the argument can not be parsed as UUID of any version, function
- * returns "false".
+ * UUID in formatted or hexadecimal form. In other cases the function throws an
+ * error.
+ * - If the argument is NULL, the function returns NULL.
+ * - If the argument can be parsed as a UUID of any version, the function
+ * returns 1.
+ * - If the argument can not be parsed as a UUID of any version, the function
+ * returns 0.
  */
 class is_uuid_vx_impl {
  public:
@@ -203,16 +218,17 @@ class is_uuid_vx_impl {
   }
 
   mysqlpp::udf_result_t<INT_RESULT> calculate(const mysqlpp::udf_context &ctx) {
-    bool verification_result = false;
-    boost::uuids::string_generator gen;
+    if (ctx.is_arg_null(0)) {
+      return {};
+    }
 
-    if ( ! ctx.is_arg_null(0) ) {
+    bool verification_result = false;
+    try {
+      boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      try {
-        gen(uxs.data());
-        verification_result = true;
-      } catch (std::exception &ex) {
-      }
+      gen(uxs.data());
+      verification_result = true;
+    } catch (std::exception &) {
     }
     return {verification_result ? 1LL : 0LL};
   }
@@ -221,11 +237,13 @@ class is_uuid_vx_impl {
 /**
  * Implementation of IS_NIL_UUID_VX() function.
  * The function takes exactly one string argument. The argument must be a valid
- * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argument can be parsed as UUID of any version, and the argument is NIL
- * UUID, the function returns "true". If the argument is valid UUID but is not
- * NIL UUID, the function returns "false". In other cases functions throws an
+ * UUID in formatted or hexadecimal form. In other cases the function throws an
  * error.
+ * - If the argument is NULL, the function returns NULL.
+ * - If the argument can be parsed as a UUID of any version, and the argument is
+ * NIL UUID, the function returns 1.
+ * - If the argument is a valid UUID but is not NIL UUID, the function returns
+ * 0.
  */
 class is_nil_uuid_vx_impl {
  public:
@@ -244,16 +262,18 @@ class is_nil_uuid_vx_impl {
   }
 
   mysqlpp::udf_result_t<INT_RESULT> calculate(const mysqlpp::udf_context &ctx) {
+    if (ctx.is_arg_null(0)) {
+      return {};
+    }
+
     bool verification_result = false;
-    boost::uuids::string_generator gen;
-    if ( ! ctx.is_arg_null(0) ) {
+    try {
+      boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      try {
-        boost::uuids::uuid u = gen(uxs.data());
-        verification_result = u.is_nil();
-      } catch (std::exception &ex) {
-        raise<std::invalid_argument>(err_msg_valid_uuid);
-      }
+      boost::uuids::uuid u = gen(uxs.data());
+      verification_result = u.is_nil();
+    } catch (std::exception &) {
+      raise<std::invalid_argument>(err_msg_valid_uuid);
     }
     return {verification_result ? 1LL : 0LL};
   }
@@ -262,14 +282,18 @@ class is_nil_uuid_vx_impl {
 /**
  * Implementation of IS_MAX_UUID_VX() function.
  * The function takes exactly one string argument. The argument must be a valid
- * UUID in formatted or hexadecimal form. In other case function throws error.
- * If the argument can be parsed as UUID of any version, and the argument is MAX
- * UUID, the function returns "true". If the argument is valid UUID but is not
- * MAX UUID, the function returns "false". In other cases functions throws an
+ * UUID in formatted or hexadecimal form. In other cases the function throws an
  * error.
+ * - If the argument is NULL, the function returns NULL.
+ * - If the argument can be parsed as a UUID of any version, and the argument is
+ * MAX UUID, the function returns 1.
+ * - If the argument is a valid UUID but is not MAX UUID, the function returns
+ * 0.
  */
 class is_max_uuid_vx_impl {
  public:
+  static const boost::uuids::uuid max_uuid;
+
   is_max_uuid_vx_impl(mysqlpp::udf_context &ctx) {
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
@@ -285,34 +309,38 @@ class is_max_uuid_vx_impl {
   }
 
   mysqlpp::udf_result_t<INT_RESULT> calculate(const mysqlpp::udf_context &ctx) {
-    bool verification_result = true;
-    boost::uuids::string_generator gen;
+    if (ctx.is_arg_null(0)) {
+      return {};
+    }
 
-    if ( ! ctx.is_arg_null(0) ) {
+    bool verification_result = true;
+    try {
+      boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      try {
-        boost::uuids::uuid u = gen(uxs.data());
-        verification_result =
-          ! std::all_of(u.begin(), u.end(), [](uint8_t d) { return d == 0xFF; });
-      } catch (std::exception &ex) {
-        raise<std::invalid_argument>(err_msg_valid_uuid);
-      }
+      boost::uuids::uuid u = gen(uxs.data());
+      verification_result = (u == max_uuid);
+    } catch (std::exception &) {
+      raise<std::invalid_argument>(err_msg_valid_uuid);
     }
 
     return {verification_result ? 1LL : 0LL};
   }
 };
 
+const boost::uuids::uuid is_max_uuid_vx_impl::max_uuid{
+    {0xffU, 0xffU, 0xffU, 0xffU, 0xffU, 0xffU, 0xffU, 0xffU, 0xffU, 0xffU,
+     0xffU, 0xffU, 0xffU, 0xffU, 0xffU, 0xffU}};
+
 /**
  * Implementation of UUID_V1() function.
- * The function takes no arguments. It generates time stamp
- * based UUID of version 1.
+ * The function takes no arguments. It generates a timestamp-based UUID
+ * of version 1.
  */
 class uuid_v1_impl {
  public:
   uuid_v1_impl(mysqlpp::udf_context &ctx) {
     ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
+    ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() != 0) {
       raise<std::invalid_argument>(err_msg_no_arguments);
     }
