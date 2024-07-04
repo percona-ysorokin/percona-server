@@ -71,8 +71,7 @@ constexpr char uuid_charset[]{"ascii"};
 constexpr char binary_charset[]{"binary"};
 
 constexpr std::string_view nil_uuid_sv{"00000000-0000-0000-0000-000000000000"};
-// TODO: should we convert this to lower-case to match with generated values
-constexpr std::string_view max_uuid_sv{"FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"};
+constexpr std::string_view max_uuid_sv{"ffffffff-ffff-ffff-ffff-ffffffffffff"};
 
 constexpr std::string_view err_msg_one_argument{
     "Function requires exactly one argument."};
