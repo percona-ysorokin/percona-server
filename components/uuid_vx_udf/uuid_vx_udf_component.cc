@@ -25,26 +25,32 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 /* using Boost uuid library (header-only) version > 1.86                      */
 /******************************************************************************/
 
+#include <cassert>
+#include <chrono>
+#include <cstdint>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+
+#include <boost/preprocessor/stringize.hpp>
+
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+
 #include <mysql/components/component_implementation.h>
+
 #include <mysql/components/services/component_sys_var_service.h>
 #include <mysql/components/services/mysql_current_thread_reader.h>
 #include <mysql/components/services/mysql_runtime_error.h>
 #include <mysql/components/services/udf_metadata.h>
 #include <mysql/components/services/udf_registration.h>
 
-#include <boost/preprocessor/stringize.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <chrono>
-#include <ctime>
-#include <stdint.h>
-#include <iomanip>
 #include <mysqlpp/udf_context_charset_extension.hpp>
 #include <mysqlpp/udf_registration.hpp>
 #include <mysqlpp/udf_wrappers.hpp>
-#include <sstream>
-#include <string>
 
 
 // defined as a macro because needed both raw and stringized
@@ -64,9 +70,9 @@ constexpr char string_charset[]{"utf8mb4"};
 constexpr char uuid_charset[]{"ascii"};
 constexpr char binary_charset[]{"binary"};
 
-constexpr std::string_view nil_uuid{"00000000-0000-0000-0000-000000000000"};
+constexpr std::string_view nil_uuid_sv{"00000000-0000-0000-0000-000000000000"};
 // TODO: should we convert this to lower-case to match with generated values
-constexpr std::string_view max_uuid{"FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"};
+constexpr std::string_view max_uuid_sv{"FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"};
 
 constexpr std::string_view err_msg_one_argument{
     "Function requires exactly one argument."};
@@ -91,8 +97,6 @@ template <typename Exception>
   throw Exception{std::string{err_msg}};
 }
 
-constexpr std::size_t uuid_size_in_bytes = boost::uuids::uuid::static_size();
-
 /**
  * Implementation of UUID_VX_VERSION() function.
  * The function takes exactly one string argument. The argument must be a valid
@@ -106,11 +110,13 @@ constexpr std::size_t uuid_size_in_bytes = boost::uuids::uuid::static_size();
 class uuid_vx_version_impl {
  public:
   explicit uuid_vx_version_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -130,7 +136,7 @@ class uuid_vx_version_impl {
     try {
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      boost::uuids::uuid uid = gen(uxs.data());
+      boost::uuids::uuid uid = gen(std::begin(uxs), std::end(uxs));
       version = uid.version();
     } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
@@ -154,11 +160,13 @@ class uuid_vx_version_impl {
 class uuid_vx_variant_impl { 
  public:
   explicit uuid_vx_variant_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -177,12 +185,12 @@ class uuid_vx_variant_impl {
     try {
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      boost::uuids::uuid uid = gen(uxs.data());
+      boost::uuids::uuid uid = gen(std::begin(uxs), std::end(uxs));
       variant = uid.variant();
     } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
     }
-    return variant;
+    return static_cast<std::underlying_type_t<decltype(variant)>>(variant);
   }
 };
 
@@ -200,11 +208,13 @@ class uuid_vx_variant_impl {
 class is_uuid_vx_impl {
  public:
   explicit is_uuid_vx_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -222,9 +232,9 @@ class is_uuid_vx_impl {
     try {
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      gen(uxs.data());
+      gen(std::begin(uxs), std::end(uxs));
       verification_result = true;
-    } catch (std::exception &) {
+    } catch (const std::exception &) {
       verification_result = false;
     }
     return {verification_result ? 1LL : 0LL};
@@ -245,11 +255,13 @@ class is_uuid_vx_impl {
 class is_nil_uuid_vx_impl {
  public:
   explicit is_nil_uuid_vx_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -267,9 +279,9 @@ class is_nil_uuid_vx_impl {
     try {
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      boost::uuids::uuid uid = gen(uxs.data());
+      boost::uuids::uuid uid = gen(std::begin(uxs), std::end(uxs));
       verification_result = uid.is_nil();
-    } catch (std::exception &) {
+    } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
     }
     return {verification_result ? 1LL : 0LL};
@@ -292,11 +304,13 @@ class is_max_uuid_vx_impl {
   static const boost::uuids::uuid max_uuid;
 
   explicit is_max_uuid_vx_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -314,9 +328,9 @@ class is_max_uuid_vx_impl {
     try {
       boost::uuids::string_generator gen;
       auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      boost::uuids::uuid uid = gen(uxs.data());
+      boost::uuids::uuid uid = gen(std::begin(uxs), std::end(uxs));
       verification_result = (uid == max_uuid);
-    } catch (std::exception &) {
+    } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
     }
 
@@ -336,11 +350,12 @@ const boost::uuids::uuid is_max_uuid_vx_impl::max_uuid{
 class uuid_v1_impl {
  public:
   explicit uuid_v1_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() != 0) {
       raise<std::invalid_argument>(err_msg_no_arguments);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(false);
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, uuid_charset);
@@ -354,28 +369,34 @@ class uuid_v1_impl {
 };
 
 /**
+ * Helper enum class defining different hash-based UUID namespaces
+ */
+enum class hash_uuid_namespace_type { dns = 0, url = 1, oid = 2, x500 = 3 };
+
+/**
  * Helper class for string-based uuids
  */
 class string_based_uuid {
  public:
-  static boost::uuids::uuid get_uuid_namespace(int name_index) {
+  static boost::uuids::uuid get_uuid_namespace(
+      hash_uuid_namespace_type hash_uuid_namespace) noexcept {
     boost::uuids::uuid ns;
-    switch (name_index) {
-      case 0:
+    switch (hash_uuid_namespace) {
+      case hash_uuid_namespace_type::dns:
         ns = boost::uuids::ns::dns();
         break;
-      case 1:
+      case hash_uuid_namespace_type::url:
         ns = boost::uuids::ns::url();
         break;
-      case 2:
+      case hash_uuid_namespace_type::oid:
         ns = boost::uuids::ns::oid();
         break;
-      case 3:
+      case hash_uuid_namespace_type::x500:
         ns = boost::uuids::ns::x500dn();
         break;  // we have 4 NS in the standard by now. In any other case we
                 // just use url()
       default:
-        ns = boost::uuids::ns::url();
+        assert(false);
     }
     return ns;
   }
@@ -388,9 +409,14 @@ class string_based_uuid {
  * MD5 algorithm. The second optional argument is name space for UUID.
  * DNS: 0, URL: 1, OID: 2, X.500: 3, default is 1, or URL
  */
-class uuid_v3_impl : string_based_uuid {
+class uuid_v3_impl : private string_based_uuid {
  public:
   explicit uuid_v3_impl(mysqlpp::udf_context &ctx) {
+    size_t narg = ctx.get_number_of_args();
+    if (narg < 1 || narg > 2) {
+      raise<std::invalid_argument>(err_msg_one_or_two_arguments);
+    }
+
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
 
@@ -398,38 +424,38 @@ class uuid_v3_impl : string_based_uuid {
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, uuid_charset);
 
-    size_t narg = ctx.get_number_of_args();
-    if (narg > 0 && narg < 3) {
-      // arg0 - @uuid string
-      ctx.mark_arg_nullable(0, true);
-      ctx.set_arg_type(0, STRING_RESULT);
-      charset_ext.set_arg_value_charset(ctx, 0, string_charset);
-      if (narg == 2) {
-        ctx.mark_arg_nullable(1, false);
-        ctx.set_arg_type(1, INT_RESULT);
-      }
-    } else {
-      raise<std::invalid_argument>(err_msg_one_or_two_arguments);
+    // arg0 - @uuid string
+    ctx.mark_arg_nullable(0, true);
+    ctx.set_arg_type(0, STRING_RESULT);
+    charset_ext.set_arg_value_charset(ctx, 0, string_charset);
+    if (narg == 2) {
+      // the second argumnent (namespace) can be NULL, meaning default (URL)
+      ctx.mark_arg_nullable(1, true);
+      ctx.set_arg_type(1, INT_RESULT);
     }
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    int ns_index = 1;
     if (ctx.is_arg_null(0)) {
       return {};
     }
+
+    auto ns_index = hash_uuid_namespace_type::url;
     auto the_string = ctx.get_arg<STRING_RESULT>(0);
     if (ctx.get_number_of_args() > 1) {
-      auto ns = ctx.get_arg<INT_RESULT>(1);
-      ns_index = ns.value_or(1);
-      if (ns_index < 0 || ns_index > 3) {
-        raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
+      auto ns_arg = ctx.get_arg<INT_RESULT>(1);
+      if (ns_arg.has_value()) {
+        auto ns_raw = ns_arg.value();
+        if (ns_raw < 0 || ns_raw > 3) {
+          raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
+        }
+        ns_index = static_cast<hash_uuid_namespace_type>(ns_raw);
       }
     }
     boost::uuids::name_generator_md5 gen_v3(get_uuid_namespace(ns_index));
-    std::string us(the_string);
-    return boost::uuids::to_string(gen_v3(us));
+    return boost::uuids::to_string(
+        gen_v3(std::data(the_string), std::size(the_string)));
   }
 };
 
@@ -441,11 +467,12 @@ class uuid_v3_impl : string_based_uuid {
 class uuid_v4_impl {
  public:
   explicit uuid_v4_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() > 0) {
       raise<std::invalid_argument>(err_msg_no_arguments);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(false);
 
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
@@ -454,7 +481,7 @@ class uuid_v4_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       [[maybe_unused]] const mysqlpp::udf_context &ctx) {
-    boost::uuids::random_generator gen_v4;
+    static thread_local boost::uuids::random_generator gen_v4;
     return boost::uuids::to_string(gen_v4());
   }
 };
@@ -466,9 +493,14 @@ class uuid_v4_impl {
  * SHA1 algorithm. The second optional argument is name space for UUID.
  * DNS: 0, URL: 1, OID: 2, X.500: 3, default is 1, or URL
  */
-class uuid_v5_impl : string_based_uuid {
+class uuid_v5_impl : private string_based_uuid {
  public:
   explicit uuid_v5_impl(mysqlpp::udf_context &ctx) {
+    size_t narg = ctx.get_number_of_args();
+    if (narg < 1 || narg > 2) {
+      raise<std::invalid_argument>(err_msg_one_or_two_arguments);
+    }
+
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
 
@@ -476,39 +508,39 @@ class uuid_v5_impl : string_based_uuid {
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, uuid_charset);
 
-    size_t narg = ctx.get_number_of_args();
-    if (narg > 0 && narg < 3) {
-      // arg0 - @uuid string
-      ctx.mark_arg_nullable(0, true);
-      ctx.set_arg_type(0, STRING_RESULT);
-      charset_ext.set_arg_value_charset(ctx, 0, string_charset);
-      if (narg == 2) {
-        ctx.mark_arg_nullable(1, false);
-        ctx.set_arg_type(1, INT_RESULT);
-      }
-    } else {
-      raise<std::invalid_argument>(err_msg_one_or_two_arguments);
+    // arg0 - @uuid string
+    ctx.mark_arg_nullable(0, true);
+    ctx.set_arg_type(0, STRING_RESULT);
+    charset_ext.set_arg_value_charset(ctx, 0, string_charset);
+    if (narg == 2) {
+      // the second argumnent (namespace) can be NULL, meaning default (URL)
+      ctx.mark_arg_nullable(1, true);
+      ctx.set_arg_type(1, INT_RESULT);
     }
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-    int ns_index = 1;
     if (ctx.is_arg_null(0)) {
       return {};
     }
+
+    auto ns_index = hash_uuid_namespace_type::url;
     auto the_string = ctx.get_arg<STRING_RESULT>(0);
     // static thread_local
     if (ctx.get_number_of_args() == 2) {
-      auto ns = ctx.get_arg<INT_RESULT>(1);
-      ns_index = ns.value_or(1);
-      if (ns_index < 0 || ns_index > 3) {
-        raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
+      auto ns_arg = ctx.get_arg<INT_RESULT>(1);
+      if (ns_arg.has_value()) {
+        auto ns_raw = ns_arg.value();
+        if (ns_raw < 0 || ns_raw > 3) {
+          raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
+        }
+        ns_index = static_cast<hash_uuid_namespace_type>(ns_raw);
       }
     }
     boost::uuids::name_generator_sha1 gen_v5(get_uuid_namespace(ns_index));
-    std::string us(the_string);
-    return boost::uuids::to_string(gen_v5(us));
+    return boost::uuids::to_string(
+        gen_v5(std::data(the_string), std::size(the_string)));
   }
 };
 
@@ -520,11 +552,12 @@ class uuid_v5_impl : string_based_uuid {
 class uuid_v6_impl {
  public:
   explicit uuid_v6_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() != 0) {
       raise<std::invalid_argument>(err_msg_no_arguments);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(false);
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, uuid_charset);
@@ -548,21 +581,24 @@ class uuid_v6_impl {
 class uuid_v7_impl {
  public:
   explicit uuid_v7_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(false);
     size_t narg = ctx.get_number_of_args();
-    // arg0 - @time_offset_ms, optional
     if (narg > 1) {
       raise<std::invalid_argument>(err_msg_zero_or_one_argument);
     }
-    if (narg == 1) {
-      ctx.mark_arg_nullable(0, false);
-      ctx.set_arg_type(0, INT_RESULT);
-    }
 
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(false);
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, uuid_charset);
+
+    // arg0 - @time_offset_ms, optional
+    if (narg == 1) {
+      // NULL value for the first argument (time shift) means 0, e.g. no time
+      // shift
+      ctx.mark_arg_nullable(0, true);
+      ctx.set_arg_type(0, INT_RESULT);
+    }
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
@@ -605,11 +641,12 @@ class uuid_v7_impl {
 class nil_uuid_vx_impl {
  public:
   explicit nil_uuid_vx_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(true);
-    ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() != 0) {
       raise<std::invalid_argument>(err_msg_no_arguments);
     }
+
+    ctx.mark_result_const(true);
+    ctx.mark_result_nullable(false);
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, uuid_charset);
@@ -617,7 +654,7 @@ class nil_uuid_vx_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       [[maybe_unused]] const mysqlpp::udf_context &ctx) {
-    return std::string{nil_uuid};
+    return std::string{nil_uuid_sv};
   }
 };
 
@@ -629,11 +666,12 @@ class nil_uuid_vx_impl {
 class max_uuid_vx_impl {
  public:
   explicit max_uuid_vx_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(true);
-    ctx.mark_result_nullable(false);
     if (ctx.get_number_of_args() != 0) {
       raise<std::invalid_argument>(err_msg_no_arguments);
     }
+
+    ctx.mark_result_const(true);
+    ctx.mark_result_nullable(false);
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, uuid_charset);
@@ -641,7 +679,7 @@ class max_uuid_vx_impl {
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       [[maybe_unused]] const mysqlpp::udf_context &ctx) {
-    return std::string{max_uuid};
+    return std::string{max_uuid_sv};
   }
 };
 
@@ -655,34 +693,38 @@ class max_uuid_vx_impl {
 class uuid_vx_to_bin_impl {
  public:
   explicit uuid_vx_to_bin_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
-    // arg0 - @uuid_string
-    ctx.mark_arg_nullable(0, true);
-    ctx.set_arg_type(0, STRING_RESULT);
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, binary_charset);
-    ctx.set_result_max_length(uuid_size_in_bytes+1);
+
+    // arg0 - @uuid_string
+    ctx.mark_arg_nullable(0, true);
+    ctx.set_arg_type(0, STRING_RESULT);
+    charset_ext.set_arg_value_charset(ctx, 0, uuid_charset);
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
-
     if (ctx.is_arg_null(0)) {
       return {};
     }
+
     boost::uuids::uuid uid;
     try {
       boost::uuids::string_generator gen;
-      auto uxs = ctx.get_arg<STRING_RESULT>(0);      
-      uid = gen(uxs.data());     
-    } catch (std::exception &ex) {
+      auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      uid = gen(std::begin(uxs), std::end(uxs));
+    } catch (const std::exception &ex) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
     }
+
     return std::string{std::begin(uid), std::end(uid)};
   }
 };
@@ -696,19 +738,20 @@ class uuid_vx_to_bin_impl {
 class bin_to_uuid_vx_impl {
  public:
   explicit bin_to_uuid_vx_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
-    // arg0 - @uuid_version
-    ctx.mark_arg_nullable(0, true);
-    ctx.set_arg_type(0, STRING_RESULT);
 
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
     mysqlpp::udf_context_charset_extension charset_ext{
         mysql_service_mysql_udf_metadata};
     charset_ext.set_return_value_charset(ctx, uuid_charset);
-    charset_ext.set_arg_value_charset(ctx, 0, uuid_charset);
+
+    // arg0 - @uuid_version
+    ctx.mark_arg_nullable(0, true);
+    ctx.set_arg_type(0, STRING_RESULT);
+    charset_ext.set_arg_value_charset(ctx, 0, binary_charset);
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
@@ -717,14 +760,12 @@ class bin_to_uuid_vx_impl {
       return {};
     }
     auto ubs = ctx.get_arg<STRING_RESULT>(0);
-    if (ubs.size() != uuid_size_in_bytes) {
+    if (ubs.size() != boost::uuids::uuid::static_size()) {
       raise<std::invalid_argument>(err_msg_16bytes);
     }
 
     boost::uuids::uuid uid;
-    for (size_t i = 0; i < uuid_size_in_bytes; i++) {
-      uid.data[i] = ubs.at(i);
-    }
+    std::copy(std::begin(ubs), std::end(ubs), std::begin(uid));
 
     return boost::uuids::to_string(uid);
   }
@@ -743,8 +784,8 @@ class timestamp_based_uuid {
     boost::uuids::uuid uid;
     long ms = 0;
     try {
-      uid = gen(uxs.data());
-    } catch (std::exception &ex) {
+      uid = gen(std::begin(uxs), std::end(uxs));
+    } catch (const std::exception &ex) {
       raise<std::invalid_argument>(err_msg_valid_v167_uuid);
     }
     switch (uid.version()) {
@@ -759,7 +800,6 @@ class timestamp_based_uuid {
                  boost::uuids::uuid_clock::to_sys(uid.time_point_v6())
                      .time_since_epoch())
                  .count();
-        break;
         break;
       case 7:
         ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -818,11 +858,13 @@ class timestamp_based_uuid {
 class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
  public:
   explicit uuid_vx_to_timestamp_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -838,6 +880,7 @@ class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
     if (ctx.is_arg_null(0)) {
       return {};
     }
+
     auto uxs = ctx.get_arg<STRING_RESULT>(0);
     return get_timestamp(get_ts(uxs));
   }
@@ -853,11 +896,13 @@ class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
 class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
  public:
   explicit uuid_vx_to_timestamp_tz_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_no_arguments);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
+
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -889,11 +934,12 @@ class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
 class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
  public:
   explicit uuid_vx_to_unixtime_impl(mysqlpp::udf_context &ctx) {
-    ctx.mark_result_const(false);
-    ctx.mark_result_nullable(true);
     if (ctx.get_number_of_args() != 1) {
       raise<std::invalid_argument>(err_msg_one_argument);
     }
+
+    ctx.mark_result_const(false);
+    ctx.mark_result_nullable(true);
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
@@ -903,6 +949,7 @@ class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
     if (ctx.is_arg_null(0)) {
       return {};
     }
+
     auto uxs = ctx.get_arg<STRING_RESULT>(0);
     return get_ts(uxs);
   }
