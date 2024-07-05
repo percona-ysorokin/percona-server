@@ -134,8 +134,8 @@ class uuid_vx_version_impl {
 
     try {
       boost::uuids::string_generator gen;
-      auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      boost::uuids::uuid uid = gen(std::begin(uxs), std::end(uxs));
+      const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
+      const auto uid{gen(std::begin(uxs), std::end(uxs))};
       version = uid.version();
     } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
@@ -183,8 +183,8 @@ class uuid_vx_variant_impl {
         boost::uuids::uuid::variant_future};
     try {
       boost::uuids::string_generator gen;
-      auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      boost::uuids::uuid uid = gen(std::begin(uxs), std::end(uxs));
+      const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
+      const auto uid{gen(std::begin(uxs), std::end(uxs))};
       variant = uid.variant();
     } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
@@ -227,10 +227,10 @@ class is_uuid_vx_impl {
       return {};
     }
 
-    bool verification_result = false;
+    bool verification_result{false};
     try {
       boost::uuids::string_generator gen;
-      auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
       gen(std::begin(uxs), std::end(uxs));
       verification_result = true;
     } catch (const std::exception &) {
@@ -274,11 +274,11 @@ class is_nil_uuid_vx_impl {
       return {};
     }
 
-    bool verification_result = false;
+    bool verification_result{false};
     try {
       boost::uuids::string_generator gen;
-      auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      boost::uuids::uuid uid = gen(std::begin(uxs), std::end(uxs));
+      const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
+      const auto uid{gen(std::begin(uxs), std::end(uxs))};
       verification_result = uid.is_nil();
     } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
@@ -323,11 +323,11 @@ class is_max_uuid_vx_impl {
       return {};
     }
 
-    bool verification_result = true;
+    bool verification_result{false};
     try {
       boost::uuids::string_generator gen;
-      auto uxs = ctx.get_arg<STRING_RESULT>(0);
-      boost::uuids::uuid uid = gen(std::begin(uxs), std::end(uxs));
+      const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
+      const auto uid{gen(std::begin(uxs), std::end(uxs))};
       verification_result = (uid == max_uuid);
     } catch (const std::exception &) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
@@ -370,7 +370,14 @@ class uuid_v1_impl {
 /**
  * Helper enum class defining different hash-based UUID namespaces
  */
-enum class hash_uuid_namespace_type { dns = 0, url = 1, oid = 2, x500 = 3 };
+enum class hash_uuid_namespace_type {
+  dns = 0,
+  url = 1,
+  oid = 2,
+  x500 = 3,
+  enum_min = dns,
+  enum_max = x500
+};
 
 /**
  * Helper class for string-based uuids
@@ -379,25 +386,42 @@ class string_based_uuid {
  public:
   static boost::uuids::uuid get_uuid_namespace(
       hash_uuid_namespace_type hash_uuid_namespace) noexcept {
-    boost::uuids::uuid ns;
     switch (hash_uuid_namespace) {
       case hash_uuid_namespace_type::dns:
-        ns = boost::uuids::ns::dns();
-        break;
+        return boost::uuids::ns::dns();
       case hash_uuid_namespace_type::url:
-        ns = boost::uuids::ns::url();
-        break;
+        return boost::uuids::ns::url();
       case hash_uuid_namespace_type::oid:
-        ns = boost::uuids::ns::oid();
-        break;
+        return boost::uuids::ns::oid();
       case hash_uuid_namespace_type::x500:
-        ns = boost::uuids::ns::x500dn();
-        break;  // we have 4 NS in the standard by now. In any other case we
-                // just use url()
+        return boost::uuids::ns::x500dn();
       default:
+        // we have 4 NS in the standard by now.
+        // In any other case we will trigger an assertion
         assert(false);
     }
-    return ns;
+    return {};
+  }
+  static hash_uuid_namespace_type get_namespace_from_arg(
+      const mysqlpp::udf_context &ctx, std::size_t index) {
+    static constexpr auto default_namespace{hash_uuid_namespace_type::url};
+    if (index >= ctx.get_number_of_args()) {
+      return default_namespace;
+    }
+
+    const auto ns_arg{ctx.get_arg<INT_RESULT>(index)};
+    if (!ns_arg.has_value()) {
+      return default_namespace;
+    }
+
+    const auto ns_raw{ns_arg.value()};
+    if (ns_raw < static_cast<std::underlying_type_t<hash_uuid_namespace_type>>(
+                     hash_uuid_namespace_type::enum_min) ||
+        ns_raw > static_cast<std::underlying_type_t<hash_uuid_namespace_type>>(
+                     hash_uuid_namespace_type::enum_max)) {
+      raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
+    }
+    return static_cast<hash_uuid_namespace_type>(ns_raw);
   }
 };
 
@@ -411,7 +435,7 @@ class string_based_uuid {
 class uuid_v3_impl : private string_based_uuid {
  public:
   explicit uuid_v3_impl(mysqlpp::udf_context &ctx) {
-    size_t narg = ctx.get_number_of_args();
+    const auto narg{ctx.get_number_of_args()};
     if (narg < 1 || narg > 2) {
       raise<std::invalid_argument>(err_msg_one_or_two_arguments);
     }
@@ -440,19 +464,10 @@ class uuid_v3_impl : private string_based_uuid {
       return {};
     }
 
-    auto ns_index = hash_uuid_namespace_type::url;
-    auto the_string = ctx.get_arg<STRING_RESULT>(0);
-    if (ctx.get_number_of_args() > 1) {
-      auto ns_arg = ctx.get_arg<INT_RESULT>(1);
-      if (ns_arg.has_value()) {
-        auto ns_raw = ns_arg.value();
-        if (ns_raw < 0 || ns_raw > 3) {
-          raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
-        }
-        ns_index = static_cast<hash_uuid_namespace_type>(ns_raw);
-      }
-    }
-    boost::uuids::name_generator_md5 gen_v3(get_uuid_namespace(ns_index));
+    const auto hash_uuid_namespace{get_namespace_from_arg(ctx, 1)};
+    boost::uuids::name_generator_md5 gen_v3{
+        get_uuid_namespace(hash_uuid_namespace)};
+    const auto the_string{ctx.get_arg<STRING_RESULT>(0)};
     return boost::uuids::to_string(
         gen_v3(std::data(the_string), std::size(the_string)));
   }
@@ -495,7 +510,7 @@ class uuid_v4_impl {
 class uuid_v5_impl : private string_based_uuid {
  public:
   explicit uuid_v5_impl(mysqlpp::udf_context &ctx) {
-    size_t narg = ctx.get_number_of_args();
+    const auto narg{ctx.get_number_of_args()};
     if (narg < 1 || narg > 2) {
       raise<std::invalid_argument>(err_msg_one_or_two_arguments);
     }
@@ -524,20 +539,10 @@ class uuid_v5_impl : private string_based_uuid {
       return {};
     }
 
-    auto ns_index = hash_uuid_namespace_type::url;
-    auto the_string = ctx.get_arg<STRING_RESULT>(0);
-    // static thread_local
-    if (ctx.get_number_of_args() == 2) {
-      auto ns_arg = ctx.get_arg<INT_RESULT>(1);
-      if (ns_arg.has_value()) {
-        auto ns_raw = ns_arg.value();
-        if (ns_raw < 0 || ns_raw > 3) {
-          raise<std::invalid_argument>(err_msg_uuid_namespace_idx);
-        }
-        ns_index = static_cast<hash_uuid_namespace_type>(ns_raw);
-      }
-    }
-    boost::uuids::name_generator_sha1 gen_v5(get_uuid_namespace(ns_index));
+    const auto hash_uuid_namespace{get_namespace_from_arg(ctx, 1)};
+    boost::uuids::name_generator_sha1 gen_v5{
+        get_uuid_namespace(hash_uuid_namespace)};
+    const auto the_string{ctx.get_arg<STRING_RESULT>(0)};
     return boost::uuids::to_string(
         gen_v5(std::data(the_string), std::size(the_string)));
   }
@@ -580,7 +585,7 @@ class uuid_v6_impl {
 class uuid_v7_impl {
  public:
   explicit uuid_v7_impl(mysqlpp::udf_context &ctx) {
-    size_t narg = ctx.get_number_of_args();
+    const auto narg{ctx.get_number_of_args()};
     if (narg > 1) {
       raise<std::invalid_argument>(err_msg_zero_or_one_argument);
     }
@@ -603,11 +608,11 @@ class uuid_v7_impl {
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
       const mysqlpp::udf_context &ctx) {
     static thread_local boost::uuids::time_generator_v7 gen_v7;
-    auto generated = gen_v7();
-    long offset = 0;
+    auto generated{gen_v7()};
+    std::int64_t offset{0};
     if (ctx.get_number_of_args() == 1) {
-      auto offs = ctx.get_arg<INT_RESULT>(0);
-      offset = offs.value_or(0);
+      const auto offset_arg{ctx.get_arg<INT_RESULT>(0)};
+      offset = offset_arg.value_or(0);
     }
     if (offset != 0) {
       generated = add_ts_offset(generated, offset);
@@ -618,15 +623,19 @@ class uuid_v7_impl {
  private:
   /**
    * This function just shifts timestamp (ms part only) for uuid version 7.
-   * ofs_ms argument is of type "long" so it will not cause integer overflow.
+   * ofs_ms argument is of type "std::int64_t" so it will not cause integer
+   * overflow.
    * @return time-shifted UUID v7
    */
-  static boost::uuids::uuid add_ts_offset(boost::uuids::uuid uid, long ofs_ms) {
-    std::uint64_t time_ms = uid.time_point_v7().time_since_epoch().count();
-    time_ms += ofs_ms;
-    uint16_t d6tmp = uid.data[6];  // ver and rand part
-    uint8_t d7tmp = uid.data[7];   // rand part
-    std::uint64_t timestamp_and_others = (time_ms << 16) | (d6tmp << 8) | d7tmp;
+  static boost::uuids::uuid add_ts_offset(boost::uuids::uuid uid,
+                                          std::int64_t ofs_ms) {
+    // TODO: overflow can happen here
+    const std::uint64_t time_ms{static_cast<std::uint64_t>(
+        uid.time_point_v7().time_since_epoch().count() + ofs_ms)};
+    const std::uint16_t d6tmp{uid.data[6]};  // ver and rand part
+    const std::uint8_t d7tmp{uid.data[7]};   // rand part
+    const std::uint64_t timestamp_and_others{(time_ms << 16) | (d6tmp << 8) |
+                                             d7tmp};
     boost::uuids::detail::store_big_u64(uid.data + 0, timestamp_and_others);
     return uid;
   }
@@ -718,7 +727,7 @@ class uuid_vx_to_bin_impl {
     boost::uuids::uuid uid;
     try {
       boost::uuids::string_generator gen;
-      auto uxs = ctx.get_arg<STRING_RESULT>(0);
+      const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
       uid = gen(std::begin(uxs), std::end(uxs));
     } catch (const std::exception &ex) {
       raise<std::invalid_argument>(err_msg_valid_uuid);
@@ -758,7 +767,7 @@ class bin_to_uuid_vx_impl {
     if (ctx.is_arg_null(0)) {
       return {};
     }
-    auto ubs = ctx.get_arg<STRING_RESULT>(0);
+    const auto ubs{ctx.get_arg<STRING_RESULT>(0)};
     if (ubs.size() != boost::uuids::uuid::static_size()) {
       raise<std::invalid_argument>(err_msg_16bytes);
     }
@@ -778,10 +787,10 @@ class timestamp_based_uuid {
   /**
    * Returns time in ms since epoch
    */
-  static u_int64_t get_ts(std::string_view uxs) {
+  static std::uint64_t get_ts(std::string_view uxs) {
     boost::uuids::string_generator gen;
     boost::uuids::uuid uid;
-    long ms = 0;
+    std::int64_t ms{0};
     try {
       uid = gen(std::begin(uxs), std::end(uxs));
     } catch (const std::exception &ex) {
@@ -818,12 +827,14 @@ class timestamp_based_uuid {
    * @return String timestamp representation tin the form like 2024-05-29
    * 18:04:14.201
    */
-  static std::string get_timestamp(uint64_t milliseconds) {
+  static std::string get_timestamp(std::uint64_t milliseconds) {
     std::chrono::system_clock::time_point tm{
         std::chrono::milliseconds{milliseconds}};
-    auto in_time_t = std::chrono::system_clock::to_time_t(tm);
+    const auto in_time_t{std::chrono::system_clock::to_time_t(tm)};
 
     std::ostringstream oss;
+    // TODO: get rid of std::gmtime() as it returns a pointer to a static
+    //       local buffer and therefore is not thread-safe
     oss << std::put_time(std::gmtime(&in_time_t), "%Y-%m-%d %H:%M:%S") << '.'
         << std::setfill('0') << std::setw(3) << milliseconds % 1000;
     return oss.str();
@@ -835,12 +846,14 @@ class timestamp_based_uuid {
    * @return String timestamp representation tin the form like Wed May 29
    * 18:05:07 2024 GMT
    */
-  static std::string get_timestamp_with_tz(uint64_t milliseconds) {
+  static std::string get_timestamp_with_tz(std::uint64_t milliseconds) {
     std::chrono::system_clock::time_point tm{
         std::chrono::milliseconds{milliseconds}};
-    auto in_time_t = std::chrono::system_clock::to_time_t(tm);
+    const auto in_time_t{std::chrono::system_clock::to_time_t(tm)};
 
     std::ostringstream oss;
+    // TODO: get rid of std::gmtime() as it returns a pointer to a static
+    //       local buffer and therefore is not thread-safe
     oss << std::put_time(std::gmtime(&in_time_t), "%c %Z");
 
     return oss.str();
@@ -854,7 +867,7 @@ class timestamp_based_uuid {
  * function throws error. If the argument can be parsed as UUID, the function
  * returns it's timestamp in the form like 2024-05-29 18:04:14.201.
  */
-class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
+class uuid_vx_to_timestamp_impl : private timestamp_based_uuid {
  public:
   explicit uuid_vx_to_timestamp_impl(mysqlpp::udf_context &ctx) {
     if (ctx.get_number_of_args() != 1) {
@@ -863,14 +876,13 @@ class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
 
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
+    mysqlpp::udf_context_charset_extension charset_ext{
+        mysql_service_mysql_udf_metadata};
+    charset_ext.set_return_value_charset(ctx, string_charset);
 
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
-
-    mysqlpp::udf_context_charset_extension charset_ext{
-        mysql_service_mysql_udf_metadata};
-    charset_ext.set_return_value_charset(ctx, string_charset);
     charset_ext.set_arg_value_charset(ctx, 0, uuid_charset);
   }
 
@@ -880,7 +892,7 @@ class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
       return {};
     }
 
-    auto uxs = ctx.get_arg<STRING_RESULT>(0);
+    const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
     return get_timestamp(get_ts(uxs));
   }
 };
@@ -892,7 +904,7 @@ class uuid_vx_to_timestamp_impl : timestamp_based_uuid {
  * function throws error. If the argument can be parsed as UUID, the function
  * returns it's timestamp in the form like Wed May 29 18:05:07 2024 GMT.
  */
-class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
+class uuid_vx_to_timestamp_tz_impl : private timestamp_based_uuid {
  public:
   explicit uuid_vx_to_timestamp_tz_impl(mysqlpp::udf_context &ctx) {
     if (ctx.get_number_of_args() != 1) {
@@ -901,14 +913,14 @@ class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
 
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
+    mysqlpp::udf_context_charset_extension charset_ext{
+        mysql_service_mysql_udf_metadata};
+    charset_ext.set_return_value_charset(ctx, string_charset);
 
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
-
-    mysqlpp::udf_context_charset_extension charset_ext{
-        mysql_service_mysql_udf_metadata};
-    charset_ext.set_return_value_charset(ctx, string_charset);
+    charset_ext.set_arg_value_charset(ctx, 0, uuid_charset);
   }
 
   mysqlpp::udf_result_t<STRING_RESULT> calculate(
@@ -917,8 +929,7 @@ class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
       return {};
     }
 
-    auto uxs = ctx.get_arg<STRING_RESULT>(0);
-
+    const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
     return get_timestamp_with_tz(get_ts(uxs));
   }
 };
@@ -930,7 +941,7 @@ class uuid_vx_to_timestamp_tz_impl : timestamp_based_uuid {
  * function throws error. If the argument can be parsed as UUID, the function
  * returns it's timestamp in ms since epoch.
  */
-class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
+class uuid_vx_to_unixtime_impl : private timestamp_based_uuid {
  public:
   explicit uuid_vx_to_unixtime_impl(mysqlpp::udf_context &ctx) {
     if (ctx.get_number_of_args() != 1) {
@@ -939,9 +950,13 @@ class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
 
     ctx.mark_result_const(false);
     ctx.mark_result_nullable(true);
+
     // arg0 - @uuid_string
     ctx.mark_arg_nullable(0, true);
     ctx.set_arg_type(0, STRING_RESULT);
+    mysqlpp::udf_context_charset_extension charset_ext{
+        mysql_service_mysql_udf_metadata};
+    charset_ext.set_arg_value_charset(ctx, 0, uuid_charset);
   }
 
   mysqlpp::udf_result_t<INT_RESULT> calculate(const mysqlpp::udf_context &ctx) {
@@ -949,7 +964,7 @@ class uuid_vx_to_unixtime_impl : timestamp_based_uuid {
       return {};
     }
 
-    auto uxs = ctx.get_arg<STRING_RESULT>(0);
+    const auto uxs{ctx.get_arg<STRING_RESULT>(0)};
     return get_ts(uxs);
   }
 };
