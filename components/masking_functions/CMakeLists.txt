@@ -30,6 +30,7 @@ set(DATAMASKING_SOURCES
   src/masking_functions/charset_string.cpp
   src/masking_functions/charset_string_operations.cpp
   src/masking_functions/dictionary.cpp
+  src/masking_functions/dictionary_flusher_thread.cpp
   src/masking_functions/query_builder.cpp
   src/masking_functions/query_cache.cpp
   src/masking_functions/random_string_generators.cpp
@@ -49,6 +50,8 @@ set(DATAMASKING_SOURCES
   include/masking_functions/component_sys_variable_service_tuple.hpp
   include/masking_functions/dictionary_fwd.hpp
   include/masking_functions/dictionary.hpp
+  include/masking_functions/dictionary_flusher_thread_fwd.hpp
+  include/masking_functions/dictionary_flusher_thread.hpp
   include/masking_functions/primitive_singleton.hpp
   include/masking_functions/query_builder_fwd.hpp
   include/masking_functions/query_builder.hpp
