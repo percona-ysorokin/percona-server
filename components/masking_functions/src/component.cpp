@@ -36,6 +36,7 @@
 
 #include "masking_functions/command_service_tuple.hpp"
 #include "masking_functions/component_sys_variable_service_tuple.hpp"
+#include "masking_functions/dictionary_flusher_thread.hpp"
 #include "masking_functions/primitive_singleton.hpp"
 #include "masking_functions/query_builder.hpp"
 #include "masking_functions/query_cache.hpp"
@@ -166,10 +167,18 @@ static mysql_service_status_t component_init() {
 
   auto builder{std::make_unique<masking_functions::query_builder>(
       masking_functions::get_dict_database_name())};
+  auto cache{
+      std::make_shared<masking_functions::query_cache>(std::move(builder))};
+
   masking_functions::primitive_singleton<
-      masking_functions::query_cache_ptr>::instance() =
-      std::make_unique<masking_functions::query_cache>(
-          std::move(builder), masking_functions::get_flush_interval_seconds());
+      masking_functions::query_cache_ptr>::instance() = cache;
+
+  auto flusher = std::make_unique<masking_functions::dictionary_flusher_thread>(
+      cache, masking_functions::get_flush_interval_seconds());
+
+  masking_functions::primitive_singleton<
+      masking_functions::dictionary_flusher_thread_ptr>::instance() =
+      std::move(flusher);
 
   LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
                   "Component successfully initialized");
@@ -178,6 +187,10 @@ static mysql_service_status_t component_init() {
 
 static mysql_service_status_t component_deinit() {
   int result = 0;
+
+  masking_functions::primitive_singleton<
+      masking_functions::dictionary_flusher_thread_ptr>::instance()
+      .reset();
 
   masking_functions::primitive_singleton<
       masking_functions::query_cache_ptr>::instance()
