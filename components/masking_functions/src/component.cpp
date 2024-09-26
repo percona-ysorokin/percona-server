@@ -97,6 +97,8 @@ static void masking_functions_my_error(int error_id, myf flags, ...) {
 }
 
 static mysql_service_status_t component_init() {
+  mysql_service_status_t initialization_result{0};
+
   log_bi = mysql_service_log_builtins;
   log_bs = mysql_service_log_builtins_string;
 
@@ -137,52 +139,52 @@ static mysql_service_status_t component_init() {
   // component
   mysqlpp::udf_error_reporter::instance() = &masking_functions_my_error;
 
-  if (!masking_functions::register_dynamic_privileges()) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Cannot register dynamic privilege");
+  try {
+    if (!masking_functions::register_dynamic_privileges()) {
+      throw std::runtime_error{"Cannot register dynamic privilege"};
+    }
+
+    if (!masking_functions::register_sys_vars()) {
+      throw std::runtime_error{"Cannot register system variables"};
+    }
+
+    std::string check_error_message;
+    if (!masking_functions::check_sys_vars(check_error_message)) {
+      throw std::runtime_error{check_error_message};
+    }
+
+    if (!masking_functions::register_udfs()) {
+      throw std::runtime_error{"Cannot register UDFs"};
+    }
+
+    auto builder{std::make_unique<masking_functions::query_builder>(
+        masking_functions::get_dict_database_name())};
+    auto cache{
+        std::make_shared<masking_functions::query_cache>(std::move(builder))};
+
+    masking_functions::primitive_singleton<
+        masking_functions::query_cache_ptr>::instance() = cache;
+
+    const auto flush_interval_seconds{
+        masking_functions::get_flush_interval_seconds()};
+    if (flush_interval_seconds > 0U) {
+      auto flusher =
+          std::make_unique<masking_functions::dictionary_flusher_thread>(
+              cache, flush_interval_seconds);
+
+      masking_functions::primitive_singleton<
+          masking_functions::dictionary_flusher_thread_ptr>::instance() =
+          std::move(flusher);
+    }
+
+    LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Component successfully initialized");
+  } catch (const std::exception &e) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, e.what());
     component_deinit();
-    return 1;
+    initialization_result = 1;
   }
-
-  if (!masking_functions::register_sys_vars()) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Cannot register system variables");
-    component_deinit();
-    return 1;
-  }
-
-  std::string check_error_message;
-  if (!masking_functions::check_sys_vars(check_error_message)) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    check_error_message.c_str());
-    component_deinit();
-    return 1;
-  }
-
-  if (!masking_functions::register_udfs()) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, "Cannot register UDFs");
-    component_deinit();
-    return 1;
-  }
-
-  auto builder{std::make_unique<masking_functions::query_builder>(
-      masking_functions::get_dict_database_name())};
-  auto cache{
-      std::make_shared<masking_functions::query_cache>(std::move(builder))};
-
-  masking_functions::primitive_singleton<
-      masking_functions::query_cache_ptr>::instance() = cache;
-
-  auto flusher = std::make_unique<masking_functions::dictionary_flusher_thread>(
-      cache, masking_functions::get_flush_interval_seconds());
-
-  masking_functions::primitive_singleton<
-      masking_functions::dictionary_flusher_thread_ptr>::instance() =
-      std::move(flusher);
-
-  LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                  "Component successfully initialized");
-  return 0;
+  return initialization_result;
 }
 
 static mysql_service_status_t component_deinit() {

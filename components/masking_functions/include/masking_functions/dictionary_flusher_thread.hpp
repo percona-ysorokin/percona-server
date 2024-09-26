@@ -18,13 +18,10 @@
 
 #include "masking_functions/dictionary_flusher_thread_fwd.hpp"
 
-#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
-
-#include <mysql/components/services/psi_thread.h>
 
 #include "masking_functions/query_cache_fwd.hpp"
 
@@ -33,7 +30,7 @@ namespace masking_functions {
 class dictionary_flusher_thread {
  public:
   dictionary_flusher_thread(const query_cache_ptr &cache,
-                            std::uint64_t flusher_interval_seconds);
+                            std::uint64_t flush_interval_seconds);
   dictionary_flusher_thread(const dictionary_flusher_thread &other) = delete;
   dictionary_flusher_thread(dictionary_flusher_thread &&other) = delete;
   dictionary_flusher_thread &operator=(const dictionary_flusher_thread &other) =
@@ -44,22 +41,19 @@ class dictionary_flusher_thread {
 
  private:
   query_cache_ptr cache_;
-  std::uint64_t flusher_interval_seconds_;
+  std::uint64_t flush_interval_seconds_;
 
-  std::atomic_bool is_flusher_stopped_;
+  bool stopped_;
   std::mutex flusher_mutex_;
   std::condition_variable flusher_condition_var_;
 
-  PSI_thread_key psi_flusher_thread_key_;
-  my_thread_handle flusher_thread_;
-  my_thread_attr_t flusher_thread_attr_;
-  std::unique_ptr<THD> flusher_thd_;
+  struct jthread_deleter {
+    void operator()(void *ptr) const noexcept;
+  };
+  using jthread_ptr = std::unique_ptr<void, jthread_deleter>;
+  jthread_ptr thread_impl_;
 
-  void init_thd() noexcept;
-  void release_thd() noexcept;
-  void dict_flusher() noexcept;
-
-  static void *run_dict_flusher(void *arg);
+  void do_periodic_reload();
 };
 
 }  // namespace masking_functions
