@@ -110,7 +110,7 @@ void sql_context::execute_select_internal(
 
   if (actual_number_of_fields != expected_number_of_fields) {
     throw std::runtime_error{
-        "Micmatch between actual and expected number of fields"};
+        "Mismatch between actual and expected number of fields"};
   }
 
   MYSQL_RES_H mysql_res = nullptr;
@@ -133,7 +133,7 @@ void sql_context::execute_select_internal(
   mysql_res_ptr mysql_res_guard(mysql_res, std::move(mysql_res_deleter));
   std::uint64_t row_count = 0;
   // As the 'affected_rows()' method of the 'mysql_command_query' MySQL
-  // service is implementted via 'mysql_affected_rows()' MySQL client
+  // service is implemented via 'mysql_affected_rows()' MySQL client
   // function, it is OK to use it for SELECT statements as well, because
   // in this case it will work like 'mysql_num_rows()'.
   if ((*get_services().query->affected_rows)(to_mysql_h(impl_.get()),
