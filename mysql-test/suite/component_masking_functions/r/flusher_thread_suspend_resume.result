@@ -1,0 +1,21 @@
+CALL mtr.add_suppression("Exception during reloading dictionary cache");
+SET GLOBAL debug = '+d,masking_functions_flusher_create,masking_functions_cache_reload,masking_functions_flusher_double_pass';
+INSTALL COMPONENT 'file://component_masking_functions';;
+SET debug_sync = 'now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR masking_functions_cache_reload_after_signal';
+include/assert.inc [Server error log must contain an error record from the Dictionary Flusher thread]
+SET debug_sync = 'now SIGNAL masking_functions_flusher_create_after_signal';
+CREATE TABLE mysql.masking_dictionaries(
+Dictionary VARCHAR(256) NOT NULL,
+Term VARCHAR(256) NOT NULL,
+UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
+) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+INSERT INTO mysql.masking_dictionaries VALUES('dict1', 'term1');
+include/assert.inc [The very first call to gen_dictionary("dict1") should trigger inplace cache reload and return "term1"]
+INSERT INTO mysql.masking_dictionaries VALUES('dict2', 'term2');
+include/assert.inc [The very first call to gen_dictionary("dict2") should not trigger inplace cache reload and return NULL]
+SET debug_sync = 'now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR masking_functions_cache_reload_after_signal';
+include/assert.inc [After resuming flusher thread gen_dictionary("dict1") should still return "term1"]
+include/assert.inc [After resuming flusher thread gen_dictionary("dict2") should get new values from the cache updated by the flusher and  return "term2"]
+UNINSTALL COMPONENT 'file://component_masking_functions';
+SET GLOBAL debug = '-d,masking_functions_cache_reload,masking_functions_flusher_create,masking_functions_flusher_double_pass';
+DROP TABLE mysql.masking_dictionaries;

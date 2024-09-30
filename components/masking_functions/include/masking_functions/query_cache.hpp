@@ -54,7 +54,7 @@ class query_cache {
   mutable bookshelf_ptr dict_cache_;
   mutable std::shared_mutex dict_cache_mutex_;
 
-  bookshelf_ptr create_dict_cache_internal() const;
+  bookshelf_ptr create_dict_cache_internal(std::string &error_message) const;
   using shared_lock_type = std::shared_lock<std::shared_mutex>;
   using unique_lock_type = std::unique_lock<std::shared_mutex>;
   const bookshelf &acquire_dict_cache_shared(
