@@ -106,16 +106,19 @@ bool query_cache::insert(const std::string &dictionary_name,
 void query_cache::reload_cache() {
   unique_lock_type dict_cache_write_lock{dict_cache_mutex_};
 
-  auto local_dict_cache{create_dict_cache_internal()};
+  std::string error_message;
+  auto local_dict_cache{create_dict_cache_internal(error_message)};
   if (!local_dict_cache) {
-    throw std::runtime_error{"Cannot load dictionary cache"};
+    throw std::runtime_error{error_message};
   }
 
   dict_cache_ = std::move(local_dict_cache);
 }
 
-bookshelf_ptr query_cache::create_dict_cache_internal() const {
+bookshelf_ptr query_cache::create_dict_cache_internal(
+    std::string &error_message) const {
   bookshelf_ptr result;
+  error_message.clear();
   try {
     masking_functions::sql_context sql_ctx{global_command_services::instance()};
     auto query{dict_query_builder_->select_all_from_dictionary()};
@@ -126,7 +129,11 @@ bookshelf_ptr query_cache::create_dict_cache_internal() const {
     }};
     sql_ctx.execute_select(query, result_inserter);
     result = std::move(local_dict_cache);
+  } catch (const std::exception &e) {
+    error_message = e.what();
   } catch (...) {
+    error_message =
+        "unexpected exception caught while loading dictionary cache";
   }
 
   return result;
@@ -147,9 +154,10 @@ bookshelf &query_cache::acquire_dict_cache_unique(
     unique_lock_type &write_lock) const {
   write_lock = unique_lock_type{dict_cache_mutex_};
   if (!dict_cache_) {
-    auto local_dict_cache{create_dict_cache_internal()};
+    std::string error_message;
+    auto local_dict_cache{create_dict_cache_internal(error_message)};
     if (!local_dict_cache) {
-      throw std::runtime_error{"Cannot load dictionary cache"};
+      throw std::runtime_error{error_message};
     }
     dict_cache_ = std::move(local_dict_cache);
   }

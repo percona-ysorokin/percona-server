@@ -4,10 +4,12 @@
 --source include/rpl/init_source_replica.inc
 
 --source include/rpl/connection_source.inc
-SET GLOBAL DEBUG='+d,masking_functions_signal_on_cache_reload';
+SET GLOBAL DEBUG='+d,masking_functions_cache_reload';
 INSTALL COMPONENT 'file://component_masking_functions';
+
+
 --source include/rpl/connection_replica.inc
-SET GLOBAL DEBUG='+d,masking_functions_signal_on_cache_reload';
+SET GLOBAL DEBUG='+d,masking_functions_cache_reload';
 INSTALL COMPONENT 'file://component_masking_functions';
 
 --source include/rpl/connection_source.inc
@@ -16,58 +18,97 @@ CREATE TABLE mysql.masking_dictionaries(
     Term VARCHAR(256) NOT NULL,
     UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
-
 GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
+--let $assert_cond = gen_dictionary("dict1") IS NULL
+--let $assert_text = The very first call to gen_dictionary("dict1") on source must load empty cache and return NULL
+--source include/assert.inc
 
-SELECT masking_dictionary_term_add('single_dict_1', 'entry_1');
-SELECT masking_dictionary_term_add('single_dict_2', 'entry_2');
-SELECT gen_dictionary('single_dict_1');
-SELECT gen_dictionary('single_dict_2');
 
---source include/rpl/sync.inc
 --source include/rpl/connection_replica.inc
-
 GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
-SELECT * FROM mysql.masking_dictionaries;
-SELECT masking_dictionaries_flush();
-SELECT gen_dictionary('single_dict_1');
-SELECT gen_dictionary('single_dict_2');
+--let $assert_cond = gen_dictionary("dict1") IS NULL
+--let $assert_text = The very first call to gen_dictionary("dict1") on replica must load empty cache and return NULL
+--source include/assert.inc
+
 
 --source include/rpl/connection_source.inc
+SELECT masking_dictionary_term_add('dict1', 'term1');
+SELECT masking_dictionary_term_add('dict2', 'term2');
 
-INSERT INTO mysql.masking_dictionaries VALUES ('single_dict_3', 'entry_3');
+--let $assert_cond = gen_dictionary("dict1") = "term1"
+--let $assert_text = The call to gen_dictionary("dict1") after inserting terms on source must return "term1"
+--source include/assert.inc
 
-# Source must return NULL as dictionary flusher thread is suspended
-SELECT gen_dictionary('single_dict_3');
+--let $assert_cond = gen_dictionary("dict2") = "term2"
+--let $assert_text = The call to gen_dictionary("dict2") after inserting terms on source must return "term2"
+--source include/assert.inc
 
-SET DEBUG_SYNC='now SIGNAL masking_functions_before_cache_reload WAIT_FOR masking_functions_after_cache_reload';
-
-# Source must return a non-NULL value as flusher thread is expected to reload dictionary content at this point
-SELECT gen_dictionary('single_dict_3');
 
 --source include/rpl/sync.inc
 --source include/rpl/connection_replica.inc
+--let $assert_cond = [SELECT COUNT(*) FROM mysql.masking_dictionaries] = 2
+--let $assert_text = The number of dictionary terms on replica after synchronization must be 2
+--source include/assert.inc
 
-SELECT * FROM mysql.masking_dictionaries;
+--let $assert_cond = gen_dictionary("dict1") IS NULL
+--let $assert_text = The call to gen_dictionary("dict1") on replica after synchronization but without reloading cache must return NULL
+--source include/assert.inc
 
-# Replica must return NULL as dictionary flusher thread is suspended
-SELECT gen_dictionary('single_dict_3');
+--let $assert_cond = gen_dictionary("dict2") IS NULL
+--let $assert_text = The call to gen_dictionary("dict1") on replica after synchronization but without reloading cache must return NULL
+--source include/assert.inc
 
-SET DEBUG_SYNC='now SIGNAL masking_functions_before_cache_reload WAIT_FOR masking_functions_after_cache_reload';
+SELECT masking_dictionaries_flush();
 
-# Replica must return a non-NULL value as flusher thread is expected to reload dictionary content at this point
-SELECT gen_dictionary('single_dict_3');
+--let $assert_cond = gen_dictionary("dict1") = "term1"
+--let $assert_text = The call to gen_dictionary("dict1") on replica after synchronization and reloading cache must return "term1"
+--source include/assert.inc
+
+--let $assert_cond = gen_dictionary("dict2") = "term2"
+--let $assert_text = The call to gen_dictionary("dict1") on replica after synchronization and reloading cache must return "term2"
+--source include/assert.inc
+
+
+--source include/rpl/connection_source.inc
+INSERT INTO mysql.masking_dictionaries VALUES ('dict3', 'term3');
+
+--let $assert_cond = gen_dictionary("dict3") IS NULL
+--let $assert_text = The call to gen_dictionary("dict3") on source with suspended flusher thread must return NULL
+--source include/assert.inc
+
+SET DEBUG_SYNC='now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR masking_functions_cache_reload_after_signal';
+
+--let $assert_cond = gen_dictionary("dict3") = "term3"
+--let $assert_text = The call to gen_dictionary("dict3") on source after resuming flusher thread must return "term3"
+--source include/assert.inc
+
+
+--source include/rpl/sync.inc
+--source include/rpl/connection_replica.inc
+--let $assert_cond = [SELECT COUNT(*) FROM mysql.masking_dictionaries] = 3
+--let $assert_text = The number of dictionary terms on replica after the second synchronization must be 3
+--source include/assert.inc
+
+--let $assert_cond = gen_dictionary("dict3") IS NULL
+--let $assert_text = The call to gen_dictionary("dict3") on replica with suspended flusher thread must return NULL
+--source include/assert.inc
+
+SET DEBUG_SYNC='now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR masking_functions_cache_reload_after_signal';
+
+--let $assert_cond = gen_dictionary("dict3") = "term3"
+--let $assert_text = The call to gen_dictionary("dict3") on replica after resuming flusher thread must return "term3"
+--source include/assert.inc
 
 #
 # Cleanup
 --source include/rpl/connection_replica.inc
 REVOKE MASKING_DICTIONARIES_ADMIN ON *.* FROM root@localhost;
-SET GLOBAL DEBUG='-d,masking_functions_signal_on_cache_reload';
+SET GLOBAL DEBUG='-d,masking_functions_cache_reload';
 UNINSTALL COMPONENT 'file://component_masking_functions';
 
 --source include/rpl/connection_source.inc
 REVOKE MASKING_DICTIONARIES_ADMIN ON *.* FROM root@localhost;
-SET GLOBAL DEBUG='-d,masking_functions_signal_on_cache_reload';
+SET GLOBAL DEBUG='-d,masking_functions_cache_reload';
 UNINSTALL COMPONENT 'file://component_masking_functions';
 
 DROP TABLE mysql.masking_dictionaries;

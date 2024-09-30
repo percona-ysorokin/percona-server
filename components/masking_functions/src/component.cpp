@@ -32,7 +32,11 @@
 
 #include <mysqlpp/udf_error_reporter.hpp>
 
+#include <my_dbug.h>
 #include <mysqld_error.h>
+
+#include <sql/current_thd.h>
+#include <sql/debug_sync.h>
 
 #include "masking_functions/command_service_tuple.hpp"
 #include "masking_functions/component_sys_variable_service_tuple.hpp"
@@ -64,6 +68,7 @@ REQUIRES_SERVICE_PLACEHOLDER(mysql_command_query_result);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_field_info);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_options);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_factory);
+REQUIRES_SERVICE_PLACEHOLDER(mysql_command_error_info);
 
 REQUIRES_PSI_THREAD_SERVICE_PLACEHOLDER;
 
@@ -124,7 +129,8 @@ static mysql_service_status_t component_init() {
           mysql_service_mysql_command_query_result,
           mysql_service_mysql_command_field_info,
           mysql_service_mysql_command_options,
-          mysql_service_mysql_command_factory};
+          mysql_service_mysql_command_factory,
+          mysql_service_mysql_command_error_info};
   masking_functions::primitive_singleton<
       masking_functions::component_sys_variable_service_tuple>::instance() =
       masking_functions::component_sys_variable_service_tuple{
@@ -175,6 +181,13 @@ static mysql_service_status_t component_init() {
       masking_functions::primitive_singleton<
           masking_functions::dictionary_flusher_thread_ptr>::instance() =
           std::move(flusher);
+
+      DBUG_EXECUTE_IF("masking_functions_flusher_create", {
+        DBUG_SET("-d,masking_functions_flusher_create");
+        const char act[] =
+            "now WAIT_FOR masking_functions_flusher_create_after_signal";
+        assert(!debug_sync_set_action(current_thd, STRING_WITH_LEN(act)));
+      });
     }
 
     LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
@@ -247,6 +260,7 @@ BEGIN_COMPONENT_REQUIRES(CURRENT_COMPONENT_NAME)
   REQUIRES_SERVICE(mysql_command_field_info),
   REQUIRES_SERVICE(mysql_command_options),
   REQUIRES_SERVICE(mysql_command_factory),
+  REQUIRES_SERVICE(mysql_command_error_info),
 
   REQUIRES_SERVICE(udf_registration),
   REQUIRES_SERVICE(dynamic_privilege_register),

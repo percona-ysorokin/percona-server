@@ -84,6 +84,7 @@ class sql_context {
   void execute_select_internal(std::string_view query,
                                std::size_t number_of_fields,
                                const row_internal_callback &callback);
+  [[noreturn]] void raise_with_error_message(std::string_view prefix);
 };
 
 }  // namespace masking_functions

@@ -4,10 +4,10 @@ Note	####	Sending passwords in plain text without SSL/TLS is extremely insecure.
 Note	####	Storing MySQL user name or password information in the connection metadata repository is not secure and is therefore not recommended. Please consider using the USER and PASSWORD connection options for START REPLICA; see the 'START REPLICA Syntax' in the MySQL Manual for more information.
 [connection master]
 [connection master]
-SET GLOBAL DEBUG='+d,masking_functions_signal_on_cache_reload';
+SET GLOBAL DEBUG='+d,masking_functions_cache_reload';
 INSTALL COMPONENT 'file://component_masking_functions';
 [connection slave]
-SET GLOBAL DEBUG='+d,masking_functions_signal_on_cache_reload';
+SET GLOBAL DEBUG='+d,masking_functions_cache_reload';
 INSTALL COMPONENT 'file://component_masking_functions';
 [connection master]
 CREATE TABLE mysql.masking_dictionaries(
@@ -16,64 +16,47 @@ Term VARCHAR(256) NOT NULL,
 UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
 GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
-SELECT masking_dictionary_term_add('single_dict_1', 'entry_1');
-masking_dictionary_term_add('single_dict_1', 'entry_1')
-1
-SELECT masking_dictionary_term_add('single_dict_2', 'entry_2');
-masking_dictionary_term_add('single_dict_2', 'entry_2')
-1
-SELECT gen_dictionary('single_dict_1');
-gen_dictionary('single_dict_1')
-entry_1
-SELECT gen_dictionary('single_dict_2');
-gen_dictionary('single_dict_2')
-entry_2
-include/rpl/sync.inc
+include/assert.inc [The very first call to gen_dictionary("dict1") on source must load empty cache and return NULL]
 [connection slave]
 GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
-SELECT * FROM mysql.masking_dictionaries;
-Dictionary	Term
-single_dict_1	entry_1
-single_dict_2	entry_2
+include/assert.inc [The very first call to gen_dictionary("dict1") on replica must load empty cache and return NULL]
+[connection master]
+SELECT masking_dictionary_term_add('dict1', 'term1');
+masking_dictionary_term_add('dict1', 'term1')
+1
+SELECT masking_dictionary_term_add('dict2', 'term2');
+masking_dictionary_term_add('dict2', 'term2')
+1
+include/assert.inc [The call to gen_dictionary("dict1") after inserting terms on source must return "term1"]
+include/assert.inc [The call to gen_dictionary("dict2") after inserting terms on source must return "term2"]
+include/rpl/sync.inc
+[connection slave]
+include/assert.inc [The number of dictionary terms on replica after synchronization must be 2]
+include/assert.inc [The call to gen_dictionary("dict1") on replica after synchronization but without reloading cache must return NULL]
+include/assert.inc [The call to gen_dictionary("dict1") on replica after synchronization but without reloading cache must return NULL]
 SELECT masking_dictionaries_flush();
 masking_dictionaries_flush()
 1
-SELECT gen_dictionary('single_dict_1');
-gen_dictionary('single_dict_1')
-entry_1
-SELECT gen_dictionary('single_dict_2');
-gen_dictionary('single_dict_2')
-entry_2
+include/assert.inc [The call to gen_dictionary("dict1") on replica after synchronization and reloading cache must return "term1"]
+include/assert.inc [The call to gen_dictionary("dict1") on replica after synchronization and reloading cache must return "term2"]
 [connection master]
-INSERT INTO mysql.masking_dictionaries VALUES ('single_dict_3', 'entry_3');
-SELECT gen_dictionary('single_dict_3');
-gen_dictionary('single_dict_3')
-NULL
-SET DEBUG_SYNC='now SIGNAL masking_functions_before_cache_reload WAIT_FOR masking_functions_after_cache_reload';
-SELECT gen_dictionary('single_dict_3');
-gen_dictionary('single_dict_3')
-entry_3
+INSERT INTO mysql.masking_dictionaries VALUES ('dict3', 'term3');
+include/assert.inc [The call to gen_dictionary("dict3") on source with suspended flusher thread must return NULL]
+SET DEBUG_SYNC='now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR masking_functions_cache_reload_after_signal';
+include/assert.inc [The call to gen_dictionary("dict3") on source after resuming flusher thread must return "term3"]
 include/rpl/sync.inc
 [connection slave]
-SELECT * FROM mysql.masking_dictionaries;
-Dictionary	Term
-single_dict_1	entry_1
-single_dict_2	entry_2
-single_dict_3	entry_3
-SELECT gen_dictionary('single_dict_3');
-gen_dictionary('single_dict_3')
-NULL
-SET DEBUG_SYNC='now SIGNAL masking_functions_before_cache_reload WAIT_FOR masking_functions_after_cache_reload';
-SELECT gen_dictionary('single_dict_3');
-gen_dictionary('single_dict_3')
-entry_3
+include/assert.inc [The number of dictionary terms on replica after the second synchronization must be 3]
+include/assert.inc [The call to gen_dictionary("dict3") on replica with suspended flusher thread must return NULL]
+SET DEBUG_SYNC='now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR masking_functions_cache_reload_after_signal';
+include/assert.inc [The call to gen_dictionary("dict3") on replica after resuming flusher thread must return "term3"]
 [connection slave]
 REVOKE MASKING_DICTIONARIES_ADMIN ON *.* FROM root@localhost;
-SET GLOBAL DEBUG='-d,masking_functions_signal_on_cache_reload';
+SET GLOBAL DEBUG='-d,masking_functions_cache_reload';
 UNINSTALL COMPONENT 'file://component_masking_functions';
 [connection master]
 REVOKE MASKING_DICTIONARIES_ADMIN ON *.* FROM root@localhost;
-SET GLOBAL DEBUG='-d,masking_functions_signal_on_cache_reload';
+SET GLOBAL DEBUG='-d,masking_functions_cache_reload';
 UNINSTALL COMPONENT 'file://component_masking_functions';
 DROP TABLE mysql.masking_dictionaries;
 include/rpl/sync.inc
