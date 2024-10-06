@@ -16,6 +16,8 @@
 #ifndef MASKING_FUNCTIONS_SQL_CONTEXT_HPP
 #define MASKING_FUNCTIONS_SQL_CONTEXT_HPP
 
+#include "masking_functions/sql_context_fwd.hpp"
+
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -40,7 +42,8 @@ class sql_context {
   using row_callback =
       std::function<void(const field_value_container<NumberOfFields> &)>;
 
-  explicit sql_context(const command_service_tuple &services);
+  sql_context(const command_service_tuple &services,
+              sql_context_registry_access registry_locking_mode);
 
   sql_context(sql_context const &) = delete;
   sql_context(sql_context &&) noexcept = default;

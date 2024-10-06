@@ -18,19 +18,20 @@
 
 #include "masking_functions/query_cache_fwd.hpp"
 
-#include <mutex>
-#include <shared_mutex>
 #include <string>
 
-#include "masking_functions/bookshelf_fwd.hpp"
+#include "masking_functions/basic_sql_context_builder_fwd.hpp"
 #include "masking_functions/query_builder_fwd.hpp"
+#include "masking_functions/query_cache_core_fwd.hpp"
 
 namespace masking_functions {
 
 class query_cache {
  public:
-  // passing unique_ptr by value to transfer ownership
-  query_cache(query_builder_ptr query_builder);
+  query_cache(const query_cache_core_ptr &core,
+              const basic_sql_context_builder_ptr &sql_ctx_builder,
+              const query_builder_ptr &sql_query_builder);
+
   query_cache(const query_cache &other) = delete;
   query_cache(query_cache &&other) = delete;
   query_cache &operator=(const query_cache &other) = delete;
@@ -49,17 +50,9 @@ class query_cache {
   void reload_cache();
 
  private:
-  query_builder_ptr dict_query_builder_;
-
-  mutable bookshelf_ptr dict_cache_;
-  mutable std::shared_mutex dict_cache_mutex_;
-
-  bookshelf_ptr create_dict_cache_internal(std::string &error_message) const;
-  using shared_lock_type = std::shared_lock<std::shared_mutex>;
-  using unique_lock_type = std::unique_lock<std::shared_mutex>;
-  const bookshelf &acquire_dict_cache_shared(
-      shared_lock_type &read_lock, unique_lock_type &write_lock) const;
-  bookshelf &acquire_dict_cache_unique(unique_lock_type &write_lock) const;
+  query_cache_core_ptr core_;
+  basic_sql_context_builder_ptr sql_ctx_builder_;
+  query_builder_ptr sql_query_builder_;
 };
 
 }  // namespace masking_functions

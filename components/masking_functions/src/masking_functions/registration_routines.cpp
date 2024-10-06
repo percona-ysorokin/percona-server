@@ -21,6 +21,7 @@
 #include <array>
 #include <bitset>
 #include <locale>
+#include <string>
 
 #include <mysql/components/component_implementation.h>
 

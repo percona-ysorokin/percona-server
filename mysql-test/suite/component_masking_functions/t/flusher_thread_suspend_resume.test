@@ -30,7 +30,6 @@ SET debug_sync = 'now SIGNAL masking_functions_flusher_create_after_signal';
 --reap
 
 --disconnect con_priv
---source include/wait_until_count_sessions.inc
 
 CREATE TABLE mysql.masking_dictionaries(
     Dictionary VARCHAR(256) NOT NULL,
@@ -65,3 +64,5 @@ UNINSTALL COMPONENT 'file://component_masking_functions';
 SET GLOBAL debug = '-d,masking_functions_cache_reload,masking_functions_flusher_create,masking_functions_flusher_double_pass';
 
 DROP TABLE mysql.masking_dictionaries;
+
+--source include/wait_until_count_sessions.inc
