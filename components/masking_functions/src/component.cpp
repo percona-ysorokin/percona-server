@@ -40,11 +40,14 @@
 
 #include "masking_functions/command_service_tuple.hpp"
 #include "masking_functions/component_sys_variable_service_tuple.hpp"
+#include "masking_functions/default_sql_context_builder.hpp"
 #include "masking_functions/dictionary_flusher_thread.hpp"
 #include "masking_functions/primitive_singleton.hpp"
 #include "masking_functions/query_builder.hpp"
 #include "masking_functions/query_cache.hpp"
+#include "masking_functions/query_cache_core.hpp"
 #include "masking_functions/registration_routines.hpp"
+#include "masking_functions/static_sql_context_builder.hpp"
 #include "masking_functions/string_service_tuple.hpp"
 #include "masking_functions/sys_vars.hpp"
 
@@ -163,20 +166,36 @@ static mysql_service_status_t component_init() {
       throw std::runtime_error{"Cannot register UDFs"};
     }
 
-    auto builder{std::make_unique<masking_functions::query_builder>(
-        masking_functions::get_dict_database_name())};
-    auto cache{
-        std::make_shared<masking_functions::query_cache>(std::move(builder))};
+    const auto &command_services = masking_functions::primitive_singleton<
+        masking_functions::command_service_tuple>::instance();
 
+    auto default_sql_ctx_builder{
+        std::make_shared<masking_functions::default_sql_context_builder>(
+            command_services,
+            masking_functions::sql_context_registry_access::locking)};
+
+    auto sql_query_builder{std::make_shared<masking_functions::query_builder>(
+        masking_functions::get_dict_database_name())};
+    auto cache_core{std::make_shared<masking_functions::query_cache_core>()};
+
+    auto primary_cache{std::make_shared<masking_functions::query_cache>(
+        cache_core, default_sql_ctx_builder, sql_query_builder)};
     masking_functions::primitive_singleton<
-        masking_functions::query_cache_ptr>::instance() = cache;
+        masking_functions::query_cache_ptr>::instance() = primary_cache;
 
     const auto flush_interval_seconds{
         masking_functions::get_flush_interval_seconds()};
     if (flush_interval_seconds > 0U) {
-      auto flusher =
+      auto static_sql_context_builder{
+          std::make_shared<masking_functions::static_sql_context_builder>(
+              command_services,
+              masking_functions::sql_context_registry_access::non_locking)};
+      auto flusher_cache{std::make_shared<masking_functions::query_cache>(
+          cache_core, static_sql_context_builder, sql_query_builder)};
+
+      auto flusher{
           std::make_unique<masking_functions::dictionary_flusher_thread>(
-              cache, flush_interval_seconds);
+              flusher_cache, flush_interval_seconds)};
 
       masking_functions::primitive_singleton<
           masking_functions::dictionary_flusher_thread_ptr>::instance() =

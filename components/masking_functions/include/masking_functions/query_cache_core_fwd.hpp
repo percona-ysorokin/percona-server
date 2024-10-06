@@ -1,4 +1,4 @@
-/* Copyright (c) 2023 Percona LLC and/or its affiliates. All rights reserved.
+/* Copyright (c) 2024 Percona LLC and/or its affiliates. All rights reserved.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -13,17 +13,17 @@
    along with this program; if not, write to the Free Software Foundation,
    51 Franklin Street, Suite 500, Boston, MA 02110-1335 USA */
 
-#ifndef MASKING_FUNCTIONS_QUERY_BUILDER_FWD_HPP
-#define MASKING_FUNCTIONS_QUERY_BUILDER_FWD_HPP
+#ifndef MASKING_FUNCTIONS_QUERY_CACHE_CORE_FWD_HPP
+#define MASKING_FUNCTIONS_QUERY_CACHE_CORE_FWD_HPP
 
 #include <memory>
 
 namespace masking_functions {
 
-class query_builder;
+class query_cache_core;
 
-using query_builder_ptr = std::shared_ptr<query_builder>;
+using query_cache_core_ptr = std::shared_ptr<query_cache_core>;
 
 }  // namespace masking_functions
 
-#endif  // MASKING_FUNCTIONS_QUERY_BUILDER_FWD_HPP
+#endif  // MASKING_FUNCTIONS_QUERY_CACHE_CORE_FWD_HPP

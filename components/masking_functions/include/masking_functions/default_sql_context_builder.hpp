@@ -13,17 +13,29 @@
    along with this program; if not, write to the Free Software Foundation,
    51 Franklin Street, Suite 500, Boston, MA 02110-1335 USA */
 
-#ifndef MASKING_FUNCTIONS_QUERY_BUILDER_FWD_HPP
-#define MASKING_FUNCTIONS_QUERY_BUILDER_FWD_HPP
+#ifndef MASKING_FUNCTIONS_DEFAULT_SQL_CONTEXT_BUILDER_HPP
+#define MASKING_FUNCTIONS_DEFAULT_SQL_CONTEXT_BUILDER_HPP
 
-#include <memory>
+#include "masking_functions/basic_sql_context_builder.hpp"
+
+#include "masking_functions/command_service_tuple_fwd.hpp"
+#include "masking_functions/sql_context_fwd.hpp"
 
 namespace masking_functions {
 
-class query_builder;
+class default_sql_context_builder : public basic_sql_context_builder {
+ public:
+  default_sql_context_builder(const command_service_tuple &services,
+                              sql_context_registry_access registry_locking_mode)
+      : basic_sql_context_builder{services},
+        registry_locking_mode_{registry_locking_mode} {}
 
-using query_builder_ptr = std::shared_ptr<query_builder>;
+ private:
+  sql_context_registry_access registry_locking_mode_;
+
+  sql_context_ptr do_build() const override;
+};
 
 }  // namespace masking_functions
 
-#endif  // MASKING_FUNCTIONS_QUERY_BUILDER_FWD_HPP
+#endif  // MASKING_FUNCTIONS_DEFAULT_SQL_CONTEXT_BUILDER_HPP

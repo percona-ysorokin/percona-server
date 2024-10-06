@@ -39,7 +39,8 @@ void sql_context::deleter::operator()(void *ptr) const noexcept {
   if (ptr != nullptr) (*services->factory->close)(to_mysql_h(ptr));
 }
 
-sql_context::sql_context(const command_service_tuple &services)
+sql_context::sql_context(const command_service_tuple &services,
+                         sql_context_registry_access registry_locking_mode)
     : impl_{nullptr, deleter{&services}} {
   MYSQL_H local_mysql_h = nullptr;
   if ((*get_services().factory->init)(&local_mysql_h) != 0) {
@@ -47,6 +48,13 @@ sql_context::sql_context(const command_service_tuple &services)
   }
   assert(local_mysql_h != nullptr);
   impl_.reset(local_mysql_h);
+
+  const bool no_lock_registry_option_value{
+      registry_locking_mode == sql_context_registry_access::non_locking};
+  if ((*get_services().options->set)(local_mysql_h, MYSQL_NO_LOCK_REGISTRY,
+                                     &no_lock_registry_option_value) != 0) {
+    raise_with_error_message("Couldn't set registry locking mode");
+  }
 
   // setting MYSQL_COMMAND_PROTOCOL to nullptr will be translated to the
   // default value "local"

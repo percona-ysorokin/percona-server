@@ -190,7 +190,7 @@ void dictionary_flusher_thread::jthread_deleter::operator()(
 
 dictionary_flusher_thread::dictionary_flusher_thread(
     const query_cache_ptr &cache, std::uint64_t flush_interval_seconds)
-    : cache_(cache),
+    : cache_{cache},
       flush_interval_seconds_{flush_interval_seconds},
       stopped_{false},
       flusher_mutex_{},
