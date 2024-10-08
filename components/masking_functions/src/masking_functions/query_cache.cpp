@@ -17,6 +17,7 @@
 
 #include <string>
 
+#include "masking_functions/basic_sql_context_builder.hpp"
 #include "masking_functions/query_cache_core.hpp"
 
 namespace masking_functions {
@@ -60,5 +61,9 @@ bool query_cache::insert(const std::string &dictionary_name,
 void query_cache::reload_cache() {
   return core_->reload_cache(*sql_ctx_builder_, *sql_query_builder_);
 }
+
+void query_cache::prepare_sql_context_builder() { sql_ctx_builder_->prepare(); }
+
+void query_cache::cleanup_sql_context_builder() { sql_ctx_builder_->cleanup(); }
 
 }  // namespace masking_functions

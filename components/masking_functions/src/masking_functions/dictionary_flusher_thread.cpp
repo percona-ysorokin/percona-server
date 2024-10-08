@@ -25,13 +25,15 @@
 #include <string_view>
 #include <utility>
 
-#include <my_dbug.h>
-
 #include <mysql/components/services/log_builtins.h>
+
+#include <my_dbug.h>
 
 #include <sql/debug_sync.h>
 #include <sql/sql_class.h>
 
+#include "masking_functions/command_service_tuple.hpp"
+#include "masking_functions/primitive_singleton.hpp"
 #include "masking_functions/query_cache.hpp"
 
 extern SERVICE_TYPE(log_builtins) * log_bi;
@@ -39,22 +41,19 @@ extern SERVICE_TYPE(log_builtins_string) * log_bs;
 
 namespace {
 
+using global_command_services = masking_functions::primitive_singleton<
+    masking_functions::command_service_tuple>;
+
 // an auxilary RAII class that is intended to be used inside 'jthread' handler
-// function: it calls 'my_thread_init()', sets up 'THD' object / 'PSI' info in
-// constructor and calls 'my_thread_end()' in destructor
-//
-// the instance of this class must be declared as the very first element of
-// the jthread's handler function so that 'thread_stack' member of the 'THD'
-// object would be initialized properly
+// function: it calls 'init()' method from the 'mysql_command_thread' service
+// in constructor and 'end()' method from the 'mysql_command_thread' service
+// in destructor
 class thread_handler_context {
  public:
   thread_handler_context() {
-    if (my_thread_init()) {
-      throw std::runtime_error{"Cannot initialize my_thread"};
+    if ((*global_command_services::instance().thread->init)() != 0) {
+      throw std::runtime_error{"Cannot initialize thread handler context"};
     }
-    thd_.set_new_thread_id();
-    thd_.thread_stack = reinterpret_cast<char *>(this);
-    thd_.store_globals();
   }
 
   thread_handler_context(const thread_handler_context &) = delete;
@@ -62,18 +61,9 @@ class thread_handler_context {
   thread_handler_context(thread_handler_context &&) = delete;
   thread_handler_context &operator=(thread_handler_context &&) = delete;
 
-  ~thread_handler_context() { my_thread_end(); }
-
-  void actualize_psi(std::string_view description) noexcept {
-    struct PSI_thread *psi = thd_.get_psi();
-    PSI_THREAD_CALL(set_thread_id)(psi, thd_.thread_id());
-    PSI_THREAD_CALL(set_thread_THD)(psi, &thd_);
-    PSI_THREAD_CALL(set_thread_command)(thd_.get_command());
-    PSI_THREAD_CALL(set_thread_info)(description.data(), description.size());
+  ~thread_handler_context() {
+    (*global_command_services::instance().thread->end)();
   }
-
- private:
-  THD thd_;
 };
 
 // an auxiliary RAII class that wraps an instance of 'my_thread_attr_t': it
@@ -117,12 +107,11 @@ class jthread {
 
   // passing 'handler_function' deliberately by value to move from
   jthread(handler_function_type handler_function, const char *category_name,
-          const char *name, const char *os_name, const char *description)
+          const char *name, const char *os_name)
       : handler_function_{std::move(handler_function)},
         psi_thread_key_{PSI_NOT_INSTRUMENTED},
         psi_thread_info_{&psi_thread_key_,   name, os_name,
                          PSI_FLAG_SINGLETON, 0,    PSI_DOCUMENT_ME},
-        description_{description},
         handle_{} {
     thread_attributes attributes{};
     attributes.make_joinable();
@@ -147,19 +136,13 @@ class jthread {
 
   PSI_thread_key psi_thread_key_;
   PSI_thread_info psi_thread_info_;
-  std::string_view description_;
 
   my_thread_handle handle_;
 
   static void *raw_handler(void *arg) {
     try {
-      // the instance of this class needs to be declared as the very first
-      // object within the thread handler function, so that its address ("this"
-      // inside class's constructor) would represent the beginning of the thread
-      // stack
       thread_handler_context handler_ctx{};
       const auto *self = static_cast<jthread *>(arg);
-      handler_ctx.actualize_psi(self->description_);
       (self->handler_function_)();
     } catch (const std::exception &e) {
       std::string message{"Exception caught in jthread handler - "};
@@ -176,8 +159,6 @@ class jthread {
 constexpr char flusher_psi_category_name[]{"masking_functions"};
 constexpr char flusher_psi_thread_info_name[]{"masking_functions_dict_flusher"};
 constexpr char flusher_psi_thread_info_os_name[]{"mf_flusher"};
-constexpr char flusher_psi_description[]{
-    "Masking functions component cache flusher"};
 
 }  // anonymous namespace
 
@@ -197,8 +178,7 @@ dictionary_flusher_thread::dictionary_flusher_thread(
       flusher_condition_var_{},
       thread_impl_{new jthread(
           [this]() { do_periodic_reload(); }, flusher_psi_category_name,
-          flusher_psi_thread_info_name, flusher_psi_thread_info_os_name,
-          flusher_psi_description)} {
+          flusher_psi_thread_info_name, flusher_psi_thread_info_os_name)} {
   // we do not try to populate dict_cache here immediately as this constructor
   // is called from the component initialization method and any call to
   // mysql_command_query service may mess up with current THD
@@ -217,6 +197,8 @@ dictionary_flusher_thread::~dictionary_flusher_thread() {
 }
 
 void dictionary_flusher_thread::do_periodic_reload() {
+  cache_->prepare_sql_context_builder();
+
   const auto flush_interval_duration{
       std::chrono::seconds{flush_interval_seconds_}};
   std::unique_lock lock{flusher_mutex_};
@@ -266,6 +248,8 @@ void dictionary_flusher_thread::do_periodic_reload() {
       });
     }
   }
+
+  cache_->cleanup_sql_context_builder();
 }
 
 }  // namespace masking_functions

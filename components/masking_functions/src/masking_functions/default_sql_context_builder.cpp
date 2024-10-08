@@ -22,8 +22,13 @@
 
 namespace masking_functions {
 
+void default_sql_context_builder::do_prepare() {}
+
 sql_context_ptr default_sql_context_builder::do_build() const {
-  return std::make_shared<sql_context>(get_services(), registry_locking_mode_);
+  return std::make_shared<sql_context>(get_services(), registry_locking_mode_,
+                                       false);
 }
+
+void default_sql_context_builder::do_cleanup() {}
 
 }  // namespace masking_functions

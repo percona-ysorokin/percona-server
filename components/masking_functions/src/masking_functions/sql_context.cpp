@@ -29,8 +29,6 @@ namespace {
 
 MYSQL_H to_mysql_h(void *p) noexcept { return static_cast<MYSQL_H>(p); }
 
-constexpr const char default_command_user_name[] = "root";
-
 }  // anonymous namespace
 
 namespace masking_functions {
@@ -40,7 +38,8 @@ void sql_context::deleter::operator()(void *ptr) const noexcept {
 }
 
 sql_context::sql_context(const command_service_tuple &services,
-                         sql_context_registry_access registry_locking_mode)
+                         sql_context_registry_access registry_locking_mode,
+                         bool initialize_thread)
     : impl_{nullptr, deleter{&services}} {
   MYSQL_H local_mysql_h = nullptr;
   if ((*get_services().factory->init)(&local_mysql_h) != 0) {
@@ -49,6 +48,16 @@ sql_context::sql_context(const command_service_tuple &services,
   assert(local_mysql_h != nullptr);
   impl_.reset(local_mysql_h);
 
+  if (initialize_thread) {
+    if ((*get_services().options->set)(
+            local_mysql_h, MYSQL_COMMAND_LOCAL_THD_HANDLE, nullptr) != 0) {
+      raise_with_error_message("Couldn't set local THD handle");
+    }
+  }
+
+  // setting MYSQL_NO_LOCK_REGISTRY is needed for cases when we destroy
+  // 'sql_context' from the 'UNINSTALL COMPONENT' handler (component's
+  // 'deinit()' function)
   const bool no_lock_registry_option_value{
       registry_locking_mode == sql_context_registry_access::non_locking};
   if ((*get_services().options->set)(local_mysql_h, MYSQL_NO_LOCK_REGISTRY,
@@ -63,11 +72,9 @@ sql_context::sql_context(const command_service_tuple &services,
     raise_with_error_message("Couldn't set protocol");
   }
 
-  // setting MYSQL_COMMAND_USER_NAME to default_command_user_name here
-  // as the default MYSQL_SESSION_USER ("mysql.session") does not have
-  // access to the mysql.masking_dictionaries
+  // nullptr here will be translated into MYSQL_SESSION_USER ("mysql.session")
   if ((*get_services().options->set)(local_mysql_h, MYSQL_COMMAND_USER_NAME,
-                                     default_command_user_name) != 0) {
+                                     nullptr) != 0) {
     raise_with_error_message("Couldn't set username");
   }
 
@@ -87,8 +94,15 @@ sql_context::sql_context(const command_service_tuple &services,
   // value of '@@global.autocommit' (we want all operations to be committed
   // immediately), we are setting the value of the 'autocommit' session
   // variable here explicitly to 'ON'.
-  if ((*get_services().factory->autocommit)(to_mysql_h(impl_.get()), true)) {
+  if ((*get_services().factory->autocommit)(to_mysql_h(impl_.get()), true) !=
+      0) {
     raise_with_error_message("Couldn't set autocommit");
+  }
+}
+
+void sql_context::reset() {
+  if ((*get_services().factory->reset)(to_mysql_h(impl_.get())) != 0) {
+    raise_with_error_message("Couldn't reset connection");
   }
 }
 

@@ -22,12 +22,16 @@
 
 namespace masking_functions {
 
+void static_sql_context_builder::do_prepare() {
+  static_instance_ = std::make_shared<sql_context>(
+      get_services(), registry_locking_mode_, true);
+}
+
 sql_context_ptr static_sql_context_builder::do_build() const {
-  if (!static_instance_) {
-    static_instance_ =
-        std::make_shared<sql_context>(get_services(), registry_locking_mode_);
-  }
+  static_instance_->reset();
   return static_instance_;
 }
+
+void static_sql_context_builder::do_cleanup() { static_instance_.reset(); }
 
 }  // namespace masking_functions

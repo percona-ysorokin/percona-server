@@ -18,14 +18,15 @@ CREATE TABLE mysql.masking_dictionaries(
     Term VARCHAR(256) NOT NULL,
     UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries TO 'mysql.session'@'localhost';
 GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
 --let $assert_cond = gen_dictionary("dict1") IS NULL
 --let $assert_text = The very first call to gen_dictionary("dict1") on source must load empty cache and return NULL
 --source include/assert.inc
 
 
+--source include/rpl/sync.inc
 --source include/rpl/connection_replica.inc
-GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
 --let $assert_cond = gen_dictionary("dict1") IS NULL
 --let $assert_text = The very first call to gen_dictionary("dict1") on replica must load empty cache and return NULL
 --source include/assert.inc
@@ -108,6 +109,7 @@ UNINSTALL COMPONENT 'file://component_masking_functions';
 
 --source include/rpl/connection_source.inc
 REVOKE MASKING_DICTIONARIES_ADMIN ON *.* FROM root@localhost;
+REVOKE SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries FROM 'mysql.session'@'localhost';
 SET GLOBAL DEBUG='-d,masking_functions_cache_reload';
 UNINSTALL COMPONENT 'file://component_masking_functions';
 

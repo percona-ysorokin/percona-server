@@ -49,6 +49,9 @@ class query_cache {
 
   void reload_cache();
 
+  void prepare_sql_context_builder();
+  void cleanup_sql_context_builder();
+
  private:
   query_cache_core_ptr core_;
   basic_sql_context_builder_ptr sql_ctx_builder_;

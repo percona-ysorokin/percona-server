@@ -33,7 +33,9 @@ class default_sql_context_builder : public basic_sql_context_builder {
  private:
   sql_context_registry_access registry_locking_mode_;
 
+  void do_prepare() override;
   sql_context_ptr do_build() const override;
+  void do_cleanup() override;
 };
 
 }  // namespace masking_functions

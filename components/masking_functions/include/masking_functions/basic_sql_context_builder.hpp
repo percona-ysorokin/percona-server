@@ -33,7 +33,9 @@ class basic_sql_context_builder {
 
   virtual ~basic_sql_context_builder() = default;
 
+  void prepare() { do_prepare(); }
   sql_context_ptr build() const { return do_build(); }
+  void cleanup() { do_cleanup(); }
 
  protected:
   basic_sql_context_builder(const command_service_tuple &services)
@@ -46,7 +48,9 @@ class basic_sql_context_builder {
  private:
   const command_service_tuple *services_;
 
+  virtual void do_prepare() = 0;
   virtual sql_context_ptr do_build() const = 0;
+  virtual void do_cleanup() = 0;
 };
 
 }  // namespace masking_functions

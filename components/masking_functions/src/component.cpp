@@ -72,6 +72,7 @@ REQUIRES_SERVICE_PLACEHOLDER(mysql_command_field_info);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_options);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_factory);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_error_info);
+REQUIRES_SERVICE_PLACEHOLDER(mysql_command_thread);
 
 REQUIRES_PSI_THREAD_SERVICE_PLACEHOLDER;
 
@@ -133,7 +134,8 @@ static mysql_service_status_t component_init() {
           mysql_service_mysql_command_field_info,
           mysql_service_mysql_command_options,
           mysql_service_mysql_command_factory,
-          mysql_service_mysql_command_error_info};
+          mysql_service_mysql_command_error_info,
+          mysql_service_mysql_command_thread};
   masking_functions::primitive_singleton<
       masking_functions::component_sys_variable_service_tuple>::instance() =
       masking_functions::component_sys_variable_service_tuple{
@@ -280,6 +282,7 @@ BEGIN_COMPONENT_REQUIRES(CURRENT_COMPONENT_NAME)
   REQUIRES_SERVICE(mysql_command_options),
   REQUIRES_SERVICE(mysql_command_factory),
   REQUIRES_SERVICE(mysql_command_error_info),
+  REQUIRES_SERVICE(mysql_command_thread),
 
   REQUIRES_SERVICE(udf_registration),
   REQUIRES_SERVICE(dynamic_privilege_register),

@@ -36,6 +36,7 @@ CREATE TABLE mysql.masking_dictionaries(
     Term VARCHAR(256) NOT NULL,
     UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries TO 'mysql.session'@'localhost';
 
 # Even though the flusher thread is suspended, here the very first call to the 'gen_dictionary()'
 # will trigger cache reloading
@@ -63,6 +64,7 @@ UNINSTALL COMPONENT 'file://component_masking_functions';
 
 SET GLOBAL debug = '-d,masking_functions_cache_reload,masking_functions_flusher_create,masking_functions_flusher_double_pass';
 
+REVOKE SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries FROM 'mysql.session'@'localhost';
 DROP TABLE mysql.masking_dictionaries;
 
 --source include/wait_until_count_sessions.inc
