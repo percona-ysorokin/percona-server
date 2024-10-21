@@ -94,8 +94,7 @@ sql_context::sql_context(const command_service_tuple &services,
   // value of '@@global.autocommit' (we want all operations to be committed
   // immediately), we are setting the value of the 'autocommit' session
   // variable here explicitly to 'ON'.
-  if ((*get_services().factory->autocommit)(to_mysql_h(impl_.get()), true) !=
-      0) {
+  if ((*get_services().factory->autocommit)(local_mysql_h, true) != 0) {
     raise_with_error_message("Couldn't set autocommit");
   }
 }
@@ -107,13 +106,13 @@ void sql_context::reset() {
 }
 
 bool sql_context::execute_dml(std::string_view query) {
-  if ((*get_services().query->query)(to_mysql_h(impl_.get()), query.data(),
+  const auto casted_impl{to_mysql_h(impl_.get())};
+  if ((*get_services().query->query)(casted_impl, query.data(),
                                      query.length()) != 0) {
     raise_with_error_message("Error while executing SQL DML query");
   }
   std::uint64_t row_count = 0;
-  if ((*get_services().query->affected_rows)(to_mysql_h(impl_.get()),
-                                             &row_count) != 0) {
+  if ((*get_services().query->affected_rows)(casted_impl, &row_count) != 0) {
     raise_with_error_message("Couldn't get number of affected rows");
   }
   return row_count > 0;
@@ -122,14 +121,15 @@ bool sql_context::execute_dml(std::string_view query) {
 void sql_context::execute_select_internal(
     std::string_view query, std::size_t expected_number_of_fields,
     const row_internal_callback &callback) {
-  if ((*get_services().query->query)(to_mysql_h(impl_.get()), query.data(),
+  const auto casted_impl{to_mysql_h(impl_.get())};
+  if ((*get_services().query->query)(casted_impl, query.data(),
                                      query.length()) != 0) {
     raise_with_error_message("Error while executing SQL select query");
   }
 
   unsigned int actual_number_of_fields = 0;
   if ((*get_services().field_info->field_count)(
-          to_mysql_h(impl_.get()), &actual_number_of_fields) != 0) {
+          casted_impl, &actual_number_of_fields) != 0) {
     raise_with_error_message("Couldn't get number of fields");
   }
 
@@ -139,8 +139,8 @@ void sql_context::execute_select_internal(
   }
 
   MYSQL_RES_H mysql_res = nullptr;
-  if ((*get_services().query_result->store_result)(to_mysql_h(impl_.get()),
-                                                   &mysql_res) != 0) {
+  if ((*get_services().query_result->store_result)(casted_impl, &mysql_res) !=
+      0) {
     raise_with_error_message("Couldn't store MySQL result");
   }
   if (mysql_res == nullptr) {
@@ -161,8 +161,7 @@ void sql_context::execute_select_internal(
   // service is implemented via 'mysql_affected_rows()' MySQL client
   // function, it is OK to use it for SELECT statements as well, because
   // in this case it will work like 'mysql_num_rows()'.
-  if ((*get_services().query->affected_rows)(to_mysql_h(impl_.get()),
-                                             &row_count) != 0)
+  if ((*get_services().query->affected_rows)(casted_impl, &row_count) != 0)
     raise_with_error_message("Couldn't query row count");
 
   for (std::uint64_t i = 0; i < row_count; ++i) {
@@ -197,7 +196,7 @@ void sql_context::execute_select_internal(
   using error_message_buffer_type = std::array<char, MYSQL_ERRMSG_SIZE>;
   error_message_buffer_type error_message_buffer;
   char *error_message_buffer_ptr{std::data(error_message_buffer)};
-  auto casted_impl{to_mysql_h(impl_.get())};
+  const auto casted_impl{to_mysql_h(impl_.get())};
   if (casted_impl != nullptr &&
       (*get_services().error_info->sql_errno)(casted_impl, &error_number) ==
           0 &&

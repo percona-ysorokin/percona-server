@@ -28,7 +28,8 @@ void static_sql_context_builder::do_prepare() {
 }
 
 sql_context_ptr static_sql_context_builder::do_build() const {
-  static_instance_->reset();
+  // TODO: experiment with resetting the connection here
+  //       static_instance_->reset();
   return static_instance_;
 }
 

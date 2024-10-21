@@ -23,6 +23,10 @@
 #include <mysql/components/services/log_builtins.h>
 #include <mysql/components/services/mysql_command_services.h>
 #include <mysql/components/services/mysql_current_thread_reader.h>
+#ifndef NDEBUG
+#include <mysql/components/services/mysql_debug_keyword_service.h>
+#include <mysql/components/services/mysql_debug_sync_service.h>
+#endif
 #include <mysql/components/services/mysql_runtime_error.h>
 #include <mysql/components/services/mysql_string.h>
 #include <mysql/components/services/psi_thread.h>
@@ -30,13 +34,14 @@
 #include <mysql/components/services/udf_metadata.h>
 #include <mysql/components/services/udf_registration.h>
 
+#ifndef NDEBUG
+#include <mysql/components/util/debug_execute_if.h>
+#include <mysql/components/util/debug_sync.h>
+#endif
+
 #include <mysqlpp/udf_error_reporter.hpp>
 
-#include <my_dbug.h>
 #include <mysqld_error.h>
-
-#include <sql/current_thd.h>
-#include <sql/debug_sync.h>
 
 #include "masking_functions/command_service_tuple.hpp"
 #include "masking_functions/component_sys_variable_service_tuple.hpp"
@@ -91,6 +96,11 @@ REQUIRES_SERVICE_PLACEHOLDER(log_builtins);
 REQUIRES_SERVICE_PLACEHOLDER(log_builtins_string);
 
 REQUIRES_SERVICE_PLACEHOLDER(mysql_runtime_error);
+
+#ifndef NDEBUG
+REQUIRES_SERVICE_PLACEHOLDER(mysql_debug_keyword_service);
+REQUIRES_SERVICE_PLACEHOLDER(mysql_debug_sync_service);
+#endif
 
 SERVICE_TYPE(log_builtins) * log_bi;
 SERVICE_TYPE(log_builtins_string) * log_bs;
@@ -203,11 +213,8 @@ static mysql_service_status_t component_init() {
           masking_functions::dictionary_flusher_thread_ptr>::instance() =
           std::move(flusher);
 
-      DBUG_EXECUTE_IF("masking_functions_flusher_create", {
-        DBUG_SET("-d,masking_functions_flusher_create");
-        const char act[] =
-            "now WAIT_FOR masking_functions_flusher_create_after_signal";
-        assert(!debug_sync_set_action(current_thd, STRING_WITH_LEN(act)));
+      DBUG_EXECUTE_IF("enable_masking_functions_flusher_create_sync", {
+        DEBUG_SYNC("masking_functions_after_flusher_create");
       });
     }
 
@@ -299,6 +306,12 @@ BEGIN_COMPONENT_REQUIRES(CURRENT_COMPONENT_NAME)
   REQUIRES_SERVICE(log_builtins_string),
 
   REQUIRES_SERVICE(mysql_runtime_error),
+
+#ifndef NDEBUG
+  REQUIRES_SERVICE(mysql_debug_keyword_service),
+  REQUIRES_SERVICE(mysql_debug_sync_service),
+#endif
+
 END_COMPONENT_REQUIRES();
 
 BEGIN_COMPONENT_METADATA(CURRENT_COMPONENT_NAME)
