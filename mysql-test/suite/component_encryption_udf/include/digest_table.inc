@@ -81,19 +81,28 @@ if (`select "$ssl_ver" like "OpenSSL 1.1.1%"`)
     ('md4'       , NULL),
     ('md5-sha1'  , NULL),
     ('ripemd160' , NULL),
-    ('sha512-224', NULL),
-    ('sha512-256', NULL),
-    ('whirlpool' , NULL),
-    ('sm3'       , NULL),
-    ('blake2b512', NULL),
-    ('blake2s256', NULL),
     ('sha3-224'  , NULL),
     ('sha3-256'  , NULL),
     ('sha3-384'  , NULL),
-    ('sha3-512'  , NULL),
-    ('shake128'  , NULL),
-    ('shake256'  , NULL)
+    ('sha3-512'  , NULL)
   ;
+
+  # the following digests can only be used in create_digest() and not in
+  # asymmetric_sign() as these digests do not have corresponding asn1
+  # object identifiers
+  if ($include_digests_with_no_ans1_ids)
+  {
+    INSERT INTO digest_type(digest_name, builtin_template) VALUES
+      ('sha512-224', NULL),
+      ('sha512-256', NULL),
+      ('whirlpool' , NULL),
+      ('sm3'       , NULL),
+      ('blake2b512', NULL),
+      ('blake2s256', NULL),
+      ('shake128'  , NULL),
+      ('shake256'  , NULL)
+    ;
+  }
 
   --enable_query_log
   --enable_result_log
