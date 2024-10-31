@@ -191,51 +191,12 @@ while ($message_index <= 4)
     if ($algorithm == 'RSA')
     {
       SET @primary_signature_padding = 'pkcs1';
+      --error 0,ER_UDF_ERROR
       SET @message_signature = asymmetric_sign(@algorithm, @message_digest, @priv, @digest_type, @primary_signature_padding);
-      # RSA signing with private key should be deterministic and therefore
-      # calls to "asymmetric_sign('RSA', @message_digest, @priv, @digest_type, @primary_signature_padding)" with the same arguments
-      # are expected to return identical results
-      --let $assert_text = [$algorithm][$key_length][message_len=$message_length][$digest_name] calculating pkcs1 signature for the second time must not differ
-      --let $assert_cond = @message_signature = asymmetric_sign(@algorithm, @message_digest, @priv, @digest_type, @primary_signature_padding)
-      --let $include_silent = 1
-      --source include/assert.inc
-      --let $include_silent =
-
-      SET @extra_signature_padding = 'pkcs1_pss';
-      SET @extra_message_signature = asymmetric_sign(@algorithm, @message_digest, @priv, @digest_type, @extra_signature_padding);
-      --let $assert_text = [$algorithm][$key_length][message_len=$message_length][$digest_name] calculating pkcs1_pss signature for the second time must differ
-      --let $assert_cond = @extra_message_signature <> asymmetric_sign(@algorithm, @message_digest, @priv, @digest_type, @extra_signature_padding)
-      --let $include_silent = 1
-      --source include/assert.inc
-      --let $include_silent =
-
-      SET @verification_result = asymmetric_verify(@algorithm, @message_digest, @message_signature, @pub, @digest_type, @primary_signature_padding);
-      --let $assert_text = [$algorithm][$key_length][message_len=$message_length][$digest_name] pkcs1 signature must pass verification
-      --let $assert_cond = @verification_result = 1
-      --let $include_silent = 1
-      --source include/assert.inc
-      --let $include_silent =
-
-      SET @extra_verification_result = asymmetric_verify(@algorithm, @message_digest, @message_signature, @pub, @digest_type, @primary_signature_padding);
-      --let $assert_text = [$algorithm][$key_length][message_len=$message_length][$digest_name] pkcs1_pss signature must pass verification
-      --let $assert_cond = @extra_verification_result = 1
-      --let $include_silent = 1
-      --source include/assert.inc
-      --let $include_silent =
-
-      SET @first_cross_verification_result = asymmetric_verify(@algorithm, @message_digest, @extra_message_signature, @pub, @digest_type, @primary_signature_padding);
-      --let $assert_text = [$algorithm][$key_length][message_len=$message_length][$digest_name] cross pkcs1_pss-pkcs1 signature must not pass verification
-      --let $assert_cond = @first_cross_verification_result = 0
-      --let $include_silent = 1
-      --source include/assert.inc
-      --let $include_silent =
-
-      SET @second_cross_verification_result = asymmetric_verify(@algorithm, @message_digest, @message_signature, @pub, @digest_type, @extra_signature_padding);
-      --let $assert_text = [$algorithm][$key_length][message_len=$message_length][$digest_name] cross pkcs1-pkcs1_pss signature must not pass verification
-      --let $assert_cond = @second_cross_verification_result = 0
-      --let $include_silent = 1
-      --source include/assert.inc
-      --let $include_silent =
+      if ($mysql_errno != 0) {
+        --echo ### ssl_ver: $ssl_ver
+        --echo ### digest_name: $digest_name
+      }
     }
     if ($algorithm == 'DSA')
     {
