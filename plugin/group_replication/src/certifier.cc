@@ -58,6 +58,8 @@ Certifier_broadcast_thread::Certifier_broadcast_thread()
       broadcast_gtid_executed_period(BROADCAST_GTID_EXECUTED_PERIOD) {
   DBUG_EXECUTE_IF("group_replication_certifier_broadcast_thread_big_period",
                   { broadcast_gtid_executed_period = 600; });
+  DBUG_EXECUTE_IF("group_replication_certifier_broadcast_thread_short_period",
+                  { broadcast_gtid_executed_period = 1; });
 
   mysql_mutex_init(key_GR_LOCK_cert_broadcast_run, &broadcast_run_lock,
                    MY_MUTEX_INIT_FAST);
@@ -96,7 +98,9 @@ int Certifier_broadcast_thread::initialize() {
 
   while (broadcast_thd_state.is_alive_not_running()) {
     DBUG_PRINT("sleep", ("Waiting for certifier broadcast thread to start"));
-    mysql_cond_wait(&broadcast_run_cond, &broadcast_run_lock);
+    struct timespec abstime;
+    set_timespec(&abstime, 1);
+    mysql_cond_timedwait(&broadcast_run_cond, &broadcast_run_lock, &abstime);
   }
   mysql_mutex_unlock(&broadcast_run_lock);
 
@@ -124,7 +128,10 @@ int Certifier_broadcast_thread::terminate() {
 
     broadcast_thd->awake(THD::NOT_KILLED);
     mysql_mutex_unlock(&broadcast_thd->LOCK_thd_data);
-    mysql_cond_wait(&broadcast_run_cond, &broadcast_run_lock);
+
+    struct timespec abstime;
+    set_timespec(&abstime, 1);
+    mysql_cond_timedwait(&broadcast_run_cond, &broadcast_run_lock, &abstime);
   }
   mysql_mutex_unlock(&broadcast_run_lock);
 
@@ -262,6 +269,7 @@ Certifier::Certifier()
       positive_cert(0),
       negative_cert(0),
       parallel_applier_last_committed_global(1),
+      parallel_applier_last_sequence_number(1),
       parallel_applier_sequence_number(2),
       certifying_already_applied_transactions(false),
       conflict_detection_enable(!local_member_info->in_primary_mode()) {
@@ -551,17 +559,35 @@ int Certifier::terminate() {
   return error;
 }
 
-void Certifier::increment_parallel_applier_sequence_number(
-    bool update_parallel_applier_last_committed_global) {
+void Certifier::update_parallel_applier_indexes(
+    bool update_parallel_applier_last_committed_global,
+    bool increment_parallel_applier_sequence_number) {
   DBUG_TRACE;
   mysql_mutex_assert_owner(&LOCK_certification_info);
+  assert(parallel_applier_last_committed_global <
+         parallel_applier_sequence_number);
+  assert(parallel_applier_last_sequence_number <
+         parallel_applier_sequence_number);
+  assert(parallel_applier_last_committed_global <=
+         parallel_applier_last_sequence_number);
+
+  if (update_parallel_applier_last_committed_global) {
+    parallel_applier_last_committed_global =
+        (increment_parallel_applier_sequence_number
+             ? parallel_applier_sequence_number
+             : parallel_applier_last_sequence_number);
+  }
+
+  if (increment_parallel_applier_sequence_number) {
+    parallel_applier_last_sequence_number = parallel_applier_sequence_number++;
+  }
 
   assert(parallel_applier_last_committed_global <
          parallel_applier_sequence_number);
-  if (update_parallel_applier_last_committed_global)
-    parallel_applier_last_committed_global = parallel_applier_sequence_number;
-
-  parallel_applier_sequence_number++;
+  assert(parallel_applier_last_sequence_number <
+         parallel_applier_sequence_number);
+  assert(parallel_applier_last_committed_global <=
+         parallel_applier_last_sequence_number);
 }
 
 namespace {
@@ -770,9 +796,10 @@ void Certifier::update_transaction_dependency_timestamps(
   assert(gle.sequence_number > 0);
   assert(gle.last_committed < gle.sequence_number);
 
-  increment_parallel_applier_sequence_number(
+  update_parallel_applier_indexes(
       !has_write_set || has_write_set_large_size ||
-      update_parallel_applier_last_committed_global);
+          update_parallel_applier_last_committed_global,
+      true);
 
   /*
     Every Group Replication is started and the first remote transaction
@@ -791,10 +818,10 @@ void Certifier::update_transaction_dependency_timestamps(
   }
 }
 
+#ifndef NDEBUG
 void debug_print_group_gtid_sets(const Gtid_set &group_gtid_executed,
                                  const Gtid_set &group_gtid_extracted,
                                  bool set_value) {
-#ifndef NDEBUG
   char *group_gtid_executed_string = nullptr;
   char *group_gtid_extracted_string = nullptr;
   group_gtid_executed.to_string(&group_gtid_executed_string, true);
@@ -806,8 +833,8 @@ void debug_print_group_gtid_sets(const Gtid_set &group_gtid_executed,
        set_value, group_gtid_executed_string, group_gtid_extracted_string));
   my_free(group_gtid_executed_string);
   my_free(group_gtid_extracted_string);
-#endif
 }
+#endif  // NDEBUG
 
 Certified_gtid Certifier::certify(Gtid_set *snapshot_version,
                                   std::list<const char *> *write_set,
@@ -871,8 +898,10 @@ Certified_gtid Certifier::certify(Gtid_set *snapshot_version,
       !group_gtid_extracted->is_subset_not_equals(group_gtid_executed)) {
     certifying_already_applied_transactions = false;
 
+#ifndef NDEBUG
     debug_print_group_gtid_sets(*group_gtid_executed, *group_gtid_extracted,
                                 false);
+#endif
   }
 
   mysql::utils::Return_status certification_state;
@@ -1267,7 +1296,7 @@ void Certifier::garbage_collect_internal(Gtid_set *executed_gtid_set,
       what write sets were purged, which may cause transactions
       last committed to be incorrectly computed.
       */
-    increment_parallel_applier_sequence_number(true);
+    update_parallel_applier_indexes(true, false);
 
 #if !defined(NDEBUG)
     /*
@@ -1281,6 +1310,13 @@ void Certifier::garbage_collect_internal(Gtid_set *executed_gtid_set,
       // my_sleep expects a given number of microseconds.
       my_sleep(broadcast_thread->BROADCAST_GTID_EXECUTED_PERIOD * 1500000);
     }
+
+    DBUG_EXECUTE_IF("group_replication_certifier_garbage_collection_ran", {
+      const char act[] =
+          "now signal "
+          "signal.group_replication_certifier_garbage_collection_finished";
+      assert(!debug_sync_set_action(current_thd, STRING_WITH_LEN(act)));
+    });
 #endif
   }
 
@@ -2027,8 +2063,10 @@ int Certifier::set_certification_info(
     certifying_already_applied_transactions = true;
     gtid_generator.recompute(*get_group_gtid_set());
 
+#ifndef NDEBUG
     debug_print_group_gtid_sets(*group_gtid_executed, *group_gtid_extracted,
                                 true);
+#endif
   }
 
   return 0;

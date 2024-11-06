@@ -89,7 +89,8 @@
 #include "sql/error_handler.h"               // Internal_error_handler
 #include "sql/field.h"
 #include "sql/item.h"
-#include "sql/lock.h"  // MYSQL_LOCK
+#include "sql/join_optimizer/cost_model.h"  // EstimateIndexRangeScanCost
+#include "sql/lock.h"                       // MYSQL_LOCK
 #include "sql/log.h"
 #include "sql/log_event.h"  // Write_rows_log_event
 #include "sql/mdl.h"
@@ -1942,21 +1943,21 @@ int ha_commit_low(THD *thd, bool all, bool run_after_commit) {
       all ? Transaction_ctx::SESSION : Transaction_ctx::STMT;
   auto ha_list = trn_ctx->ha_trx_info(trx_scope);
 
+  /*
+    At execution of XA COMMIT .. ONE PHASE binlog or slave applier reattaches
+    the engine ha_data to THD, previously saved at XA START.
+  */
+  const bool need_restore_backup_ha_data =
+      all && thd->is_engine_ha_data_detached() &&
+      thd->lex->sql_command == SQLCOM_XA_COMMIT &&
+      static_cast<Sql_cmd_xa_commit *>(thd->lex->m_sql_cmd)->get_xa_opt() ==
+          XA_ONE_PHASE;
+
   DBUG_TRACE;
 
   if (ha_list) {
-    bool restore_backup_ha_data = false;
-    /*
-      At execution of XA COMMIT ONE PHASE binlog or slave applier
-      reattaches the engine ha_data to THD, previously saved at XA START.
-    */
-    if (all && thd->is_engine_ha_data_detached()) {
+    if (need_restore_backup_ha_data) {
       DBUG_PRINT("info", ("query='%s'", thd->query().str));
-      assert(thd->lex->sql_command == SQLCOM_XA_COMMIT);
-      assert(
-          static_cast<Sql_cmd_xa_commit *>(thd->lex->m_sql_cmd)->get_xa_opt() ==
-          XA_ONE_PHASE);
-      restore_backup_ha_data = true;
     }
 
     bool is_applier_wait_enabled = false;
@@ -1989,7 +1990,7 @@ int ha_commit_low(THD *thd, bool all, bool run_after_commit) {
       global_aggregated_stats.get_shard(thd->thread_id()).ha_commit_count++;
       ha_info.reset(); /* keep it conveniently zero-filled */
     }
-    if (restore_backup_ha_data) thd->rpl_reattach_engine_ha_data();
+    if (need_restore_backup_ha_data) thd->rpl_reattach_engine_ha_data();
     trn_ctx->reset_scope(trx_scope);
 
     /*
@@ -2008,6 +2009,8 @@ int ha_commit_low(THD *thd, bool all, bool run_after_commit) {
         Commit_order_manager::wait_and_finish(thd, error);
       }
     }
+  } else if (need_restore_backup_ha_data) {
+    thd->rpl_reattach_engine_ha_data();
   }
 
 err:
@@ -2042,36 +2045,32 @@ int ha_rollback_low(THD *thd, bool all) {
 
   (void)RUN_HOOK(transaction, before_rollback, (thd, all));
 
-  if (ha_list) {
-    bool restore_backup_ha_data = false;
-    /*
-      Similarly to the commit case, the binlog or slave applier
-      reattaches the engine ha_data to THD.
-    */
-    if (all && thd->is_engine_ha_data_detached()) {
-      assert(trn_ctx->xid_state()->get_state() != XID_STATE::XA_NOTR ||
-             thd->killed == THD::KILL_CONNECTION);
+  /*
+    Similar to the commit case, the binlog or slave applier reattaches the
+    engine ha_data to THD, previously saved at XA START.
+  */
+  const bool need_restore_backup_ha_data =
+      all && thd->is_engine_ha_data_detached() &&
+      (trn_ctx->xid_state()->get_state() != XID_STATE::XA_NOTR ||
+       thd->killed == THD::KILL_CONNECTION);
 
-      restore_backup_ha_data = true;
+  for (auto &ha_info : ha_list) {
+    int err;
+    auto ht = ha_info.ht();
+    if ((err = ht->rollback(ht, thd, all))) {  // cannot happen
+      char errbuf[MYSQL_ERRMSG_SIZE];
+      my_error(ER_ERROR_DURING_ROLLBACK, MYF(0), err,
+               my_strerror(errbuf, MYSQL_ERRMSG_SIZE, err));
+      error = 1;
     }
-
-    for (auto &ha_info : ha_list) {
-      int err;
-      auto ht = ha_info.ht();
-      if ((err = ht->rollback(ht, thd, all))) {  // cannot happen
-        char errbuf[MYSQL_ERRMSG_SIZE];
-        my_error(ER_ERROR_DURING_ROLLBACK, MYF(0), err,
-                 my_strerror(errbuf, MYSQL_ERRMSG_SIZE, err));
-        error = 1;
-      }
-      assert(!thd->status_var_aggregated);
-      thd->status_var.ha_rollback_count++;
-      global_aggregated_stats.get_shard(thd->thread_id()).ha_rollback_count++;
-      ha_info.reset(); /* keep it conveniently zero-filled */
-    }
-    if (restore_backup_ha_data) thd->rpl_reattach_engine_ha_data();
-    trn_ctx->reset_scope(trx_scope);
+    assert(!thd->status_var_aggregated);
+    thd->status_var.ha_rollback_count++;
+    global_aggregated_stats.get_shard(thd->thread_id()).ha_rollback_count++;
+    ha_info.reset(); /* keep it conveniently zero-filled */
   }
+
+  if (need_restore_backup_ha_data) thd->rpl_reattach_engine_ha_data();
+  if (ha_list) trn_ctx->reset_scope(trx_scope);
 
   /*
     Thanks to possibility of MDL deadlock rollback request can come even if
@@ -2591,7 +2590,7 @@ int ha_store_binlog_info(THD *thd) {
 
   assert(tc_log == &mysql_bin_log);
 
-  LOG_INFO li;
+  Log_info li;
   bool warn = true;
 
   /* Block commits to get consistent binlog coordinates */
@@ -6258,6 +6257,12 @@ int ha_binlog_index_purge_file(THD *thd, const char *file) {
   return 0;
 }
 
+void ha_binlog_index_purge_wait(THD *thd) {
+  assert(thd);
+  binlog_func_st bfn = {BFN_BINLOG_PURGE_WAIT, nullptr};
+  binlog_func_foreach(thd, &bfn);
+}
+
 struct binlog_log_query_st {
   enum_binlog_command binlog_command;
   const char *query;
@@ -6332,15 +6337,15 @@ void ha_acl_notify(THD *thd, class Acl_change_notification *data) {
   @return
     Estimated cost of 'index only' scan
 */
-
 double handler::index_only_read_time(uint keynr, double records) {
-  double read_time;
+  const uint index_bytes_per_record =
+      table_share->key_info[keynr].key_length + ref_length;
+
   const uint keys_per_block =
-      (stats.block_size / 2 /
-           (table_share->key_info[keynr].key_length + ref_length) +
-       1);
-  read_time = ((double)(records + keys_per_block - 1) / (double)keys_per_block);
-  return read_time;
+      1 + ((stats.block_size / 2) / index_bytes_per_record);
+
+  return static_cast<double>(records + keys_per_block - 1) /
+         static_cast<double>(keys_per_block);
 }
 
 double handler::table_in_memory_estimate() const {
@@ -6687,13 +6692,17 @@ ha_rows handler::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
   }
 
   assert(total_rows != HA_POS_ERROR);
-  {
+  *flags |= (HA_MRR_USE_DEFAULT_IMPL | HA_MRR_SUPPORT_SORTED);
+
+  // Cost computation.
+  assert(cost->is_zero());
+  if (thd->lex->using_hypergraph_optimizer()) {
+    cost->add_cpu(
+        EstimateIndexRangeScanCost(table, keyno, n_ranges, total_rows));
+  } else {
     const Cost_model_table *const cost_model = table->cost_model();
 
     /* The following calculation is the same as in multi_range_read_info(): */
-    *flags |= (HA_MRR_USE_DEFAULT_IMPL | HA_MRR_SUPPORT_SORTED);
-
-    assert(cost->is_zero());
     if (*flags & HA_MRR_INDEX_ONLY)
       *cost = index_scan_cost(keyno, static_cast<double>(n_ranges),
                               static_cast<double>(total_rows));
@@ -8467,6 +8476,10 @@ int handler::ha_delete_row(const uchar *buf) {
   */
   assert(buf == table->record[0] || buf == table->record[1]);
   DBUG_EXECUTE_IF("inject_error_ha_delete_row", return HA_ERR_INTERNAL_ERROR;);
+  DBUG_EXECUTE_IF("simulate_error_ha_delete_row_lock_wait_timeout", {
+    DBUG_SET("-d,simulate_error_ha_delete_row_lock_wait_timeout");
+    return HA_ERR_LOCK_WAIT_TIMEOUT;
+  });
 
   DBUG_EXECUTE_IF(
       "handler_crashed_table_on_usage",

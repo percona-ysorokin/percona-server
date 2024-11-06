@@ -782,22 +782,25 @@ void setup_key_part_field(TABLE_SHARE *share, handler *handler_file,
 
   const bool full_length_key_part =
       field->key_length() == key_part->length && !field->is_flag_set(BLOB_FLAG);
+  const bool is_spatial_key = Overlaps(keyinfo->flags, HA_SPATIAL);
   /*
     part_of_key contains all non-prefix keys, part_of_prefixkey
     contains prefix keys.
     Note that prefix keys in the extended PK key parts
     (part_of_key_not_extended is false) are not considered.
-    Full-text keys are not considered prefix keys.
+    Full-text and spatial keys are not considered prefix keys.
   */
   if (full_length_key_part || Overlaps(keyinfo->flags, HA_FULLTEXT)) {
     field->part_of_key.set_bit(key_n);
     if (part_of_key_not_extended)
       field->part_of_key_not_extended.set_bit(key_n);
-  } else if (part_of_key_not_extended) {
+  } else if (part_of_key_not_extended && !is_spatial_key) {
     field->part_of_prefixkey.set_bit(key_n);
   }
+  // R-tree indexes do not allow index scans and therefore cannot be
+  // marked as keys for index only access.
   if ((handler_file->index_flags(key_n, key_part_n, false) & HA_KEYREAD_ONLY) &&
-      field->type() != MYSQL_TYPE_GEOMETRY) {
+      !is_spatial_key) {
     // Set the key as 'keys_for_keyread' even if it is prefix key.
     share->keys_for_keyread.set_bit(key_n);
   }
@@ -2687,7 +2690,7 @@ bool unpack_value_generator(THD *thd, TABLE *table,
                                   Query_arena::STMT_REGULAR_EXECUTION);
   thd->swap_query_arena(val_generator_arena, &save_arena);
   thd->stmt_arena = &val_generator_arena;
-  ulong save_old_privilege = thd->want_privilege;
+  Access_bitmask save_old_privilege = thd->want_privilege;
   thd->want_privilege = 0;
 
   const CHARSET_INFO *save_character_set_client =
@@ -5100,7 +5103,7 @@ Natural_join_column::Natural_join_column(Item_field *field_param,
     Cache table, to have no resolution problem after natural join nests have
     been changed to ordinary join nests.
   */
-  if (tab->cacheable_table) field_param->cached_table = tab;
+  if (tab->cacheable_table) field_param->m_table_ref = tab;
   view_field = nullptr;
   table_ref = tab;
   is_common = false;
@@ -5165,7 +5168,7 @@ const char *Field_iterator_table::name() { return (*ptr)->field_name; }
 
 Item *Field_iterator_table::create_item(THD *thd) {
   Table_ref *tr = (*ptr)->table->pos_in_table_list;
-  Item_field *item = new Item_field(thd, &tr->query_block->context, tr, *ptr);
+  Item_field *item = new Item_field(thd, &tr->query_block->context, *ptr);
   if (item == nullptr) return nullptr;
   /*
     This function creates Item-s which don't go through fix_fields(); see same
@@ -5396,8 +5399,8 @@ Natural_join_column *Field_iterator_table_ref::get_or_create_column_ref(
     /* The field belongs to a stored table. */
     Field *tmp_field = table_field_it.field();
     assert(table_ref == tmp_field->table->pos_in_table_list);
-    Item_field *tmp_item = new Item_field(thd, &table_ref->query_block->context,
-                                          table_ref, tmp_field);
+    Item_field *tmp_item =
+        new Item_field(thd, &table_ref->query_block->context, tmp_field);
     if (tmp_item == nullptr) return nullptr;
     nj_col = new (thd->mem_root) Natural_join_column(tmp_item, table_ref);
     field_count = table_ref->table->s->fields;

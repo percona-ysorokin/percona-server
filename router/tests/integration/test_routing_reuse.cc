@@ -32,6 +32,7 @@
 #include <gmock/gmock-matchers.h>
 #include <google/protobuf/io/tokenizer.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/stubs/common.h>
 #include <google/protobuf/text_format.h>
 #include <gtest/gtest-param-test.h>
 #include <gtest/gtest.h>
@@ -127,15 +128,27 @@ query_one_result(MysqlClient &cli, std::string_view stmt) {
  */
 class StringErrorCollector : public google::protobuf::io::ErrorCollector {
  public:
+#if (GOOGLE_PROTOBUF_VERSION >= 4024000)
+  void RecordError(int line, google::protobuf::io::ColumnNumber column,
+                   absl::string_view msg) override
+#else
   void AddError(int line, google::protobuf::io::ColumnNumber column,
-                const std::string &msg) override {
+                const std::string &msg) override
+#endif  // (GOOGLE_PROTOBUF_VERSION >= 4024000)
+  {
     std::ostringstream ss;
 
     ss << "ERROR: " << line << ":" << column << ": " << msg;
     lines_.push_back(ss.str());
   }
+#if (GOOGLE_PROTOBUF_VERSION >= 4024000)
+  void RecordWarning(int line, google::protobuf::io::ColumnNumber column,
+                     absl::string_view msg) override
+#else
   void AddWarning(int line, google::protobuf::io::ColumnNumber column,
-                  const std::string &msg) override {
+                  const std::string &msg) override
+#endif  // (GOOGLE_PROTOBUF_VERSION >= 4024000)
+  {
     std::ostringstream ss;
 
     ss << "WARN: " << line << ":" << column << ": " << msg;
@@ -290,12 +303,13 @@ class SharedServer {
     proc.set_logging_path(mysqld_dir_name(), "mysqld.err");
     try {
       proc.wait_for_exit(90s);
+
+      if (proc.exit_code() != 0) mysqld_failed_to_start_ = true;
     } catch (const std::exception &) {
       process_manager().dump_logs();
 
       mysqld_failed_to_start_ = true;
     }
-    if (proc.exit_code() != 0) mysqld_failed_to_start_ = true;
   }
 
   void spawn_server() {
@@ -324,7 +338,8 @@ class SharedServer {
                                            static_cast<int>(0xc000013a)})
 #endif
             .spawn({
-                "--no-defaults", "--lc-messages-dir=" + lc_messages_dir.str(),
+                "--no-defaults",
+                "--lc-messages-dir=" + lc_messages_dir.str(),
                 "--datadir=" + mysqld_dir_name(),
                 "--log-error=" + mysqld_dir_name() +
                     mysql_harness::Path::directory_separator + "mysqld.err",
@@ -336,9 +351,8 @@ class SharedServer {
                 "--mysqlx-socket=" +
                     Path(mysqld_dir_name()).join("mysqlx.sock").str(),
                 // disable LOAD DATA/SELECT INTO on the server
-                "--secure-file-priv=NULL", "--require-secure-transport=OFF",
-                "--mysql-native-password=ON",  // For testing legacy
-                                               // mysql_native_password
+                "--secure-file-priv=NULL",
+                "--require-secure-transport=OFF",
             });
     proc.set_logging_path(mysqld_dir_name(), "mysqld.err");
     if (!proc.wait_for_sync_point_result()) mysqld_failed_to_start_ = true;
@@ -421,12 +435,13 @@ class SharedServer {
 
     auto cli = std::move(cli_res.value());
 
-    create_account(cli, native_password_account());
-    create_account(cli, native_empty_password_account());
-    create_account(cli, caching_sha2_password_account());
-    create_account(cli, caching_sha2_empty_password_account());
-    create_account(cli, sha256_password_account());
-    create_account(cli, sha256_empty_password_account());
+    ASSERT_NO_FATAL_FAILURE(
+        create_account(cli, caching_sha2_password_account()));
+    ASSERT_NO_FATAL_FAILURE(
+        create_account(cli, caching_sha2_empty_password_account()));
+    ASSERT_NO_FATAL_FAILURE(create_account(cli, sha256_password_account()));
+    ASSERT_NO_FATAL_FAILURE(
+        create_account(cli, sha256_empty_password_account()));
   }
 
   void setup_mysqld_xproto_test_env() {
@@ -533,14 +548,6 @@ class SharedServer {
 
   [[nodiscard]] static Account caching_sha2_single_use_password_account() {
     return {"caching_sha2_single_use", "notusedyet", "caching_sha2_password"};
-  }
-
-  [[nodiscard]] static Account native_password_account() {
-    return {"native", "somepass", "mysql_native_password"};
-  }
-
-  [[nodiscard]] static Account native_empty_password_account() {
-    return {"native_empty", "", "mysql_native_password"};
   }
 
   [[nodiscard]] static Account sha256_password_account() {
@@ -737,14 +744,7 @@ class ReuseConnectionTest
       const ReuseConnectionParam &param) {
     auto sess = xcl::create_session();
 
-    // if either side is unencrypted, don't try PLAIN.
-    if (GetParam().client_ssl_mode == kDisabled ||
-        GetParam().server_ssl_mode == kDisabled) {
-      sess->set_mysql_option(
-          xcl::XSession::Mysqlx_option::Authentication_method, "MYSQL41");
-    }
-
-    auto account = shared_server_->native_password_account();
+    auto account = SharedServer::caching_sha2_password_account();
 
     auto xerr =
         sess->connect(shared_router_->host(), shared_router_->xport(param),
@@ -761,7 +761,7 @@ class ReuseConnectionTest
 
   const std::string some_password_{"some_password"};
   const std::string wrong_password_{"wrong_password"};
-  const std::string empty_password_{""};
+  const std::string empty_password_;
 
   static SharedRouter *shared_router_;
 };
@@ -826,7 +826,7 @@ TEST_P(ReuseConnectionTest, classic_protocol_debug_fails) {
   SCOPED_TRACE("// connecting to server");
   MysqlClient cli;
 
-  auto account = SharedServer::native_empty_password_account();
+  auto account = SharedServer::caching_sha2_empty_password_account();
   cli.username(account.username);
   cli.password(account.password);
 
@@ -879,48 +879,6 @@ TEST_P(ReuseConnectionTest, classic_protocol_kill_via_select) {
   }
 }
 
-TEST_P(ReuseConnectionTest, classic_protocol_change_user_native_empty) {
-  SCOPED_TRACE("// connecting to server");
-  MysqlClient cli;
-
-  cli.username("root");
-  cli.password("");
-
-  {
-    auto connect_res =
-        cli.connect(shared_router_->host(), shared_router_->port(GetParam()));
-    ASSERT_NO_ERROR(connect_res);
-  }
-
-  {
-    auto account = shared_server_->native_empty_password_account();
-    auto change_user_res =
-        cli.change_user(account.username, account.password, "");
-    ASSERT_NO_ERROR(change_user_res);
-  }
-}
-
-TEST_P(ReuseConnectionTest, classic_protocol_change_user_native) {
-  SCOPED_TRACE("// connecting to server");
-  MysqlClient cli;
-
-  cli.username("root");
-  cli.password("");
-
-  {
-    auto connect_res =
-        cli.connect(shared_router_->host(), shared_router_->port(GetParam()));
-    ASSERT_NO_ERROR(connect_res);
-  }
-
-  {
-    auto account = shared_server_->native_password_account();
-    auto change_user_res =
-        cli.change_user(account.username, account.password, "");
-    ASSERT_NO_ERROR(change_user_res);
-  }
-}
-
 TEST_P(ReuseConnectionTest, classic_protocol_change_user_caching_sha2_empty) {
   // reset auth-cache for caching-sha2-password
   shared_server_->flush_prileges();
@@ -938,7 +896,7 @@ TEST_P(ReuseConnectionTest, classic_protocol_change_user_caching_sha2_empty) {
   }
 
   {
-    auto account = shared_server_->caching_sha2_empty_password_account();
+    auto account = SharedServer::caching_sha2_empty_password_account();
     auto change_user_res =
         cli.change_user(account.username, account.password, "");
     ASSERT_NO_ERROR(change_user_res);
@@ -962,7 +920,7 @@ TEST_P(ReuseConnectionTest, classic_protocol_change_user_caching_sha2) {
   }
 
   {
-    auto account = shared_server_->caching_sha2_password_account();
+    auto account = SharedServer::caching_sha2_password_account();
 
     bool expected_fail = GetParam().client_ssl_mode == kDisabled;
     if (!expected_fail) {
@@ -1008,7 +966,7 @@ TEST_P(ReuseConnectionTest,
   }
 
   {
-    auto account = shared_server_->sha256_empty_password_account();
+    auto account = SharedServer::sha256_empty_password_account();
     auto change_user_res =
         cli.change_user(account.username, account.password, "");
     ASSERT_NO_ERROR(change_user_res);
@@ -1034,7 +992,7 @@ TEST_P(ReuseConnectionTest, classic_protocol_change_user_sha256_password) {
                            GetParam().server_ssl_mode == kPreferred));
 
   {
-    auto account = shared_server_->sha256_password_account();
+    auto account = SharedServer::sha256_password_account();
     auto change_user_res =
         cli.change_user(account.username, account.password, "");
     if (expect_success) {
@@ -1783,75 +1741,6 @@ END)");
 }
 
 //
-// mysql_native_password
-//
-
-TEST_P(ReuseConnectionTest, classic_protocol_native_user_no_pass) {
-  auto account = shared_server_->native_empty_password_account();
-
-  std::string username(account.username);
-  std::string password(account.password);
-
-  {
-    MysqlClient cli;
-
-    cli.username(username);
-    cli.password(password);
-
-    auto connect_res =
-        cli.connect(shared_router_->host(), shared_router_->port(GetParam()));
-    ASSERT_NO_ERROR(connect_res);
-  }
-}
-
-TEST_P(ReuseConnectionTest, classic_protocol_native_user_with_pass) {
-  auto account = shared_server_->native_password_account();
-
-  std::string username(account.username);
-  std::string password(account.password);
-
-  {
-    SCOPED_TRACE("// user exists, with pass");
-    MysqlClient cli;
-
-    cli.username(username);
-    cli.password(password);
-
-    auto connect_res =
-        cli.connect(shared_router_->host(), shared_router_->port(GetParam()));
-    ASSERT_NO_ERROR(connect_res);
-  }
-
-  {
-    SCOPED_TRACE("// user exists, with pass, but wrong-pass");
-    MysqlClient cli;
-
-    cli.username(username);
-    cli.password(wrong_password_);
-
-    auto connect_res =
-        cli.connect(shared_router_->host(), shared_router_->port(GetParam()));
-    ASSERT_FALSE(connect_res);
-    EXPECT_EQ(connect_res.error().value(), 1045) << connect_res.error();
-    // "Access denied for user ..."
-  }
-
-  {
-    SCOPED_TRACE("// user exists, with pass, but wrong-empty-pass");
-    MysqlClient cli;
-
-    cli.username(username);
-    cli.password(empty_password_);
-
-    auto connect_res =
-        cli.connect(shared_router_->host(), shared_router_->port(GetParam()));
-    ASSERT_FALSE(connect_res);
-    EXPECT_EQ(connect_res.error().value(), 1045) << connect_res.error();
-    // "Access denied for user ..."
-  }
-}
-
-//
 // caching_sha2_password
 //
 
@@ -1859,7 +1748,7 @@ TEST_P(ReuseConnectionTest, classic_protocol_caching_sha2_password_with_pass) {
   // reset auth-cache for caching-sha2-password
   shared_server_->flush_prileges();
 
-  auto account = shared_server_->caching_sha2_password_account();
+  auto account = SharedServer::caching_sha2_password_account();
 
   std::string username(account.username);
   std::string password(account.password);
@@ -1924,7 +1813,7 @@ TEST_P(ReuseConnectionTest, classic_protocol_caching_sha2_password_no_pass) {
   // reset auth-cache for caching-sha2-password
   shared_server_->flush_prileges();
 
-  auto account = shared_server_->caching_sha2_empty_password_account();
+  auto account = SharedServer::caching_sha2_empty_password_account();
 
   std::string username(account.username);
   std::string password(account.password);
@@ -1994,7 +1883,7 @@ TEST_P(ReuseConnectionTest,
   // reset auth-cache for caching-sha2-password
   shared_server_->flush_prileges();
 
-  auto account = shared_server_->caching_sha2_single_use_password_account();
+  auto account = SharedServer::caching_sha2_single_use_password_account();
 
   std::string username(account.username);
   std::string password(account.password);
@@ -2071,7 +1960,7 @@ TEST_P(ReuseConnectionTest,
 //
 
 TEST_P(ReuseConnectionTest, classic_protocol_sha256_password_no_pass) {
-  auto account = shared_server_->sha256_empty_password_account();
+  auto account = SharedServer::sha256_empty_password_account();
 
   std::string username(account.username);
   std::string password(account.password);
@@ -2117,7 +2006,7 @@ TEST_P(ReuseConnectionTest, classic_protocol_sha256_password_no_pass) {
 }
 
 TEST_P(ReuseConnectionTest, classic_protocol_sha256_password_with_pass) {
-  auto account = shared_server_->sha256_password_account();
+  auto account = SharedServer::sha256_password_account();
 
   std::string username(account.username);
   std::string password(account.password);
@@ -2221,7 +2110,7 @@ TEST_P(ReuseConnectionTest,
          GetParam().server_ssl_mode == kPreferred));
 #endif
 
-  auto account = shared_server_->sha256_password_account();
+  auto account = SharedServer::sha256_password_account();
 
   std::string username(account.username);
   std::string password(account.password);
@@ -2277,6 +2166,14 @@ TEST_P(ReuseConnectionTest, x_protocol_crud_find_unknown_collection) {
   SCOPED_TRACE("// connect");
 
   auto sess_res = xsess(GetParam());
+
+  if (GetParam().client_ssl_mode == kDisabled) {
+    ASSERT_ERROR(sess_res);
+    EXPECT_EQ(sess_res.error().error(), 2510);
+
+    return;
+  }
+
   ASSERT_NO_ERROR(sess_res);
 
   auto sess = std::move(sess_res.value());
@@ -3681,42 +3578,6 @@ TEST_P(ReuseConnectionTest,
 }
 
 TEST_P(ReuseConnectionTest,
-       x_protocol_session_authenticate_start_native_empty) {
-  SCOPED_TRACE("// connect");
-
-  auto sess_res = xsess(GetParam());
-  ASSERT_NO_ERROR(sess_res);
-
-  auto sess = std::move(sess_res.value());
-
-  SCOPED_TRACE("// session::auth_start()");
-  {
-    auto account = shared_server_->native_empty_password_account();
-
-    auto xerr = sess->reauthenticate(account.username.c_str(),
-                                     account.password.c_str(), "");
-    ASSERT_THAT(xerr.error(), 0) << xerr;
-  }
-}
-
-TEST_P(ReuseConnectionTest, x_protocol_session_authenticate_start_native) {
-  SCOPED_TRACE("// connect");
-  auto sess_res = xsess(GetParam());
-  ASSERT_NO_ERROR(sess_res);
-
-  auto sess = std::move(sess_res.value());
-
-  SCOPED_TRACE("// session::auth_start()");
-  {
-    auto account = shared_server_->native_password_account();
-
-    auto xerr = sess->reauthenticate(account.username.c_str(),
-                                     account.password.c_str(), "");
-    ASSERT_THAT(xerr.error(), 0) << xerr;
-  }
-}
-
-TEST_P(ReuseConnectionTest,
        x_protocol_session_authenticate_start_sha256_password_empty) {
   SCOPED_TRACE("// connect");
 
@@ -3727,14 +3588,14 @@ TEST_P(ReuseConnectionTest,
 
   SCOPED_TRACE("// session::auth_start()");
   {
-    auto account = shared_server_->sha256_empty_password_account();
+    auto account = SharedServer::sha256_empty_password_account();
 
     auto xerr = sess->reauthenticate(account.username.c_str(),
                                      account.password.c_str(), "");
-    if (GetParam().client_ssl_mode == kDisabled ||
-        GetParam().server_ssl_mode == kDisabled) {
-      ASSERT_EQ(xerr.error(), 1045) << xerr;
-      // Access denied for user ...@'localhost'
+    if (GetParam().client_ssl_mode == kDisabled) {
+      ASSERT_EQ(xerr.error(), 2510) << xerr;
+      // Authentication failed, check username and password or try a secure
+      // connection
     } else {
       ASSERT_EQ(xerr.error(), 0) << xerr;
     }
@@ -3752,14 +3613,14 @@ TEST_P(ReuseConnectionTest,
 
   SCOPED_TRACE("// session::auth_start()");
   {
-    auto account = shared_server_->sha256_password_account();
+    auto account = SharedServer::sha256_password_account();
 
     auto xerr = sess->reauthenticate(account.username.c_str(),
                                      account.password.c_str(), "");
-    if (GetParam().client_ssl_mode == kDisabled ||
-        GetParam().server_ssl_mode == kDisabled) {
-      ASSERT_EQ(xerr.error(), 1045) << xerr;
-      // Access denied for user ...@'localhost'
+    if (GetParam().client_ssl_mode == kDisabled) {
+      ASSERT_EQ(xerr.error(), 2510) << xerr;
+      // Authentication failed, check username and password or try a secure
+      // connection
     } else {
       ASSERT_EQ(xerr.error(), 0) << xerr;
     }
@@ -3773,21 +3634,38 @@ TEST_P(ReuseConnectionTest,
 
   SCOPED_TRACE("// connect");
   auto sess_res = xsess(GetParam());
+
+  if (GetParam().client_ssl_mode == kDisabled) {
+    ASSERT_ERROR(sess_res);
+    EXPECT_EQ(sess_res.error().error(), 2510);
+
+    return;
+  }
+
+  if (GetParam().server_ssl_mode == kDisabled) {
+    ASSERT_ERROR(sess_res);
+    // Invalid authentication method PLAIN
+    EXPECT_EQ(sess_res.error().error(), 1251);
+
+    return;
+  }
+
   ASSERT_NO_ERROR(sess_res);
 
   auto sess = std::move(sess_res.value());
 
   SCOPED_TRACE("// session::auth_start()");
   {
-    auto account = shared_server_->caching_sha2_empty_password_account();
+    auto account = SharedServer::caching_sha2_empty_password_account();
 
     auto xerr = sess->reauthenticate(account.username.c_str(),
                                      account.password.c_str(), "");
 
     if (GetParam().client_ssl_mode == kDisabled ||
         GetParam().server_ssl_mode == kDisabled) {
-      ASSERT_EQ(xerr.error(), 1045) << xerr;
-      // Access denied for user 'caching_sha2_empty'@'localhost'
+      ASSERT_EQ(xerr.error(), 2510) << xerr;
+      // Authentication failed, check username and password or try a secure
+      // connection
     } else {
       ASSERT_EQ(xerr.error(), 0) << xerr;
     }
@@ -3801,13 +3679,29 @@ TEST_P(ReuseConnectionTest,
 
   SCOPED_TRACE("// connect");
   auto sess_res = xsess(GetParam());
+
+  if (GetParam().client_ssl_mode == kDisabled) {
+    ASSERT_ERROR(sess_res);
+    EXPECT_EQ(sess_res.error().error(), 2510);
+
+    return;
+  }
+
+  if (GetParam().server_ssl_mode == kDisabled) {
+    ASSERT_ERROR(sess_res);
+    // Invalid authentication method PLAIN
+    EXPECT_EQ(sess_res.error().error(), 1251);
+
+    return;
+  }
+
   ASSERT_NO_ERROR(sess_res);
 
   auto sess = std::move(sess_res.value());
 
   SCOPED_TRACE("// session::auth_start()");
   {
-    auto account = shared_server_->caching_sha2_password_account();
+    auto account = SharedServer::caching_sha2_password_account();
 
     auto xerr = sess->reauthenticate(account.username.c_str(),
                                      account.password.c_str(), "");
@@ -3821,53 +3715,13 @@ TEST_P(ReuseConnectionTest,
   }
 }
 
-TEST_P(ReuseConnectionTest, x_protocol_connect_native_empty) {
-  auto account = shared_server_->native_empty_password_account();
-
-  auto sess = xcl::create_session();
-
-  if (GetParam().client_ssl_mode == kDisabled ||
-      GetParam().server_ssl_mode == kDisabled) {
-    sess->set_mysql_option(xcl::XSession::Mysqlx_option::Authentication_method,
-                           "MYSQL41");
-  }
-
-  SCOPED_TRACE("// connect");
-  {
-    auto xerr =
-        sess->connect(shared_router_->host(), shared_router_->xport(GetParam()),
-                      account.username.c_str(), account.password.c_str(), "");
-    ASSERT_EQ(xerr.error(), 0) << xerr;
-  }
-}
-
-TEST_P(ReuseConnectionTest, x_protocol_connect_native) {
-  auto sess = xcl::create_session();
-
-  if (GetParam().client_ssl_mode == kDisabled ||
-      GetParam().server_ssl_mode == kDisabled) {
-    sess->set_mysql_option(xcl::XSession::Mysqlx_option::Authentication_method,
-                           "MYSQL41");
-  }
-
-  auto account = shared_server_->native_password_account();
-
-  SCOPED_TRACE("// connect");
-  {
-    auto xerr =
-        sess->connect(shared_router_->host(), shared_router_->xport(GetParam()),
-                      account.username.c_str(), account.password.c_str(), "");
-    ASSERT_EQ(xerr.error(), 0) << xerr;
-  }
-}
-
 TEST_P(ReuseConnectionTest, x_protocol_connect_sha256_password_empty) {
   // reset auth-cache for caching-sha2-password
   shared_server_->flush_prileges();
 
   SCOPED_TRACE("// setup");
   auto sess = xcl::create_session();
-  auto account = shared_server_->sha256_empty_password_account();
+  auto account = SharedServer::sha256_empty_password_account();
 
   SCOPED_TRACE("// connect");
   {
@@ -3892,7 +3746,7 @@ TEST_P(ReuseConnectionTest, x_protocol_connect_sha256_password) {
   shared_server_->flush_prileges();
 
   auto sess = xcl::create_session();
-  auto account = shared_server_->sha256_password_account();
+  auto account = SharedServer::sha256_password_account();
 
   SCOPED_TRACE("// connect");
   {
@@ -3927,7 +3781,7 @@ TEST_P(ReuseConnectionTest, x_protocol_connect_caching_sha2_password_empty) {
         std::vector<std::string>{"MYSQL41", "SHA256_MEMORY"});
   }
 
-  auto account = shared_server_->caching_sha2_empty_password_account();
+  auto account = SharedServer::caching_sha2_empty_password_account();
 
   SCOPED_TRACE("// connect");
   {
@@ -3961,7 +3815,7 @@ TEST_P(ReuseConnectionTest, x_protocol_connect_caching_sha2_password) {
         std::vector<std::string>{"MYSQL41", "SHA256_MEMORY"});
   }
 
-  auto account = shared_server_->caching_sha2_password_account();
+  auto account = SharedServer::caching_sha2_password_account();
 
   SCOPED_TRACE("// connect");
   {
@@ -3984,7 +3838,7 @@ TEST_P(ReuseConnectionTest, x_protocol_connect_caching_sha2_password) {
 TEST_P(ReuseConnectionTest, classic_protocol_charset_after_connect) {
   MysqlClient cli;
 
-  auto account = shared_server_->native_empty_password_account();
+  auto account = SharedServer::caching_sha2_empty_password_account();
 
   cli.username(account.username);
   cli.password(account.password);

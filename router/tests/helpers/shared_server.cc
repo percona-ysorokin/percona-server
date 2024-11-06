@@ -120,7 +120,7 @@ void SharedServer::initialize_server(const std::string &datadir) {
           });
   proc.set_logging_path(datadir, "mysqld-init.err");
   try {
-    proc.wait_for_exit(90s);  // throws when it times out.
+    proc.wait_for_exit(120s);  // throws when it times out.
   } catch (const std::exception &e) {
     process_manager().dump_logs();
 
@@ -138,7 +138,7 @@ void SharedServer::prepare_datadir() {
   if (mysqld_init_once_dir_ == nullptr) {
     mysqld_init_once_dir_ = new TempDirectory("mysqld-init-once");
 
-    initialize_server(mysqld_init_once_dir_name());
+    ASSERT_NO_FATAL_FAILURE(initialize_server(mysqld_init_once_dir_name()));
   }
 
   // copy the init-once dir to the datadir.
@@ -209,8 +209,6 @@ void SharedServer::spawn_server_with_datadir(
       "--enforce_gtid_consistency=ON",    //
       "--relay-log=relay-log",
       "--require-secure-transport=OFF",  // for testing server_ssl_mode=DISABLED
-      "--mysql-native-password=ON",      // For testing legacy
-                                         // mysql_native_password
   };
 
   for (const auto &arg : extra_args) {
@@ -331,18 +329,18 @@ BEGIN
 END)"));
 
   for (auto account : {
-           native_password_account(),
-           native_empty_password_account(),
            caching_sha2_password_account(),
            caching_sha2_empty_password_account(),
            sha256_password_account(),
            sha256_short_password_account(),
            sha256_empty_password_account(),
        }) {
-    create_account(cli, account);
-    grant_access(cli, account, "FLUSH_TABLES, BACKUP_ADMIN");
-    grant_access(cli, account, "ALL", "testing");
-    grant_access(cli, account, "SELECT", "performance_schema");
+    ASSERT_NO_FATAL_FAILURE(create_account(cli, account));
+    ASSERT_NO_FATAL_FAILURE(
+        grant_access(cli, account, "FLUSH_TABLES, BACKUP_ADMIN"));
+    ASSERT_NO_FATAL_FAILURE(grant_access(cli, account, "ALL", "testing"));
+    ASSERT_NO_FATAL_FAILURE(
+        grant_access(cli, account, "SELECT", "performance_schema"));
   }
 
   // locking_service

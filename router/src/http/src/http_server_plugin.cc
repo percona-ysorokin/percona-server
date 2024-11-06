@@ -63,6 +63,7 @@
 #include "mysqlrouter/component/http_auth_realm_component.h"
 #include "mysqlrouter/component/http_server_component.h"
 #include "mysqlrouter/http_constants.h"
+#include "mysqlrouter/http_server_export.h"
 #include "mysqlrouter/io_component.h"
 #include "mysqlrouter/supported_http_options.h"
 #include "static_files.h"
@@ -342,14 +343,14 @@ static void start(mysql_harness::PluginFuncEnv *env) {
   }
 }
 
-static const std::array<const char *, 4> required = {{
+static constexpr std::array required{
     "logger",
     "router_openssl",
     // as long as this plugin links against http_auth_backend_lib which links
     // against metadata_cache there is a need to cleanup protobuf
     "router_protobuf",
     "io",
-}};
+};
 
 namespace {
 

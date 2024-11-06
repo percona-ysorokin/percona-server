@@ -806,7 +806,7 @@ bool check_privileges_for_join(THD *thd, mem_root_deque<Table_ref *> *tables);
 
 /// Check privileges for all columns referenced from an expression list
 bool check_privileges_for_list(THD *thd, const mem_root_deque<Item *> &items,
-                               ulong privileges);
+                               Access_bitmask privileges);
 
 /** class to copying an field/item to a key struct */
 
@@ -876,7 +876,8 @@ bool check_field_is_const(Item *cond, const Item *order_item,
                           const Field *order_field = nullptr,
                           Item **const_item = nullptr);
 bool test_if_subpart(ORDER *a, ORDER *b);
-void calc_group_buffer(JOIN *join, ORDER *group);
+void calc_group_buffer(JOIN *join, ORDER *group,
+                       Temp_table_param *tmp_table_param = nullptr);
 bool make_join_readinfo(JOIN *join, uint no_jbuf_after);
 bool create_ref_for_key(JOIN *join, JOIN_TAB *j, Key_use *org_keyuse,
                         table_map used_tables);
@@ -923,7 +924,8 @@ bool test_if_cheaper_ordering(const JOIN_TAB *tab, ORDER_with_src *order,
                               ha_rows select_limit, int *new_key,
                               int *new_key_direction, ha_rows *new_select_limit,
                               uint *new_used_key_parts = nullptr,
-                              uint *saved_best_key_parts = nullptr);
+                              uint *saved_best_key_parts = nullptr,
+                              double *new_read_time = nullptr);
 /**
   Calculate properties of ref key: key length, number of used key parts,
   dependency map, possibility of null. After calling this function

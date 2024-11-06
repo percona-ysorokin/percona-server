@@ -140,7 +140,6 @@ Relay_log_info::Relay_log_info(bool is_slave_recovery,
       transaction_parser(mysql::binlog::event::Transaction_boundary_parser::
                              TRX_BOUNDARY_PARSER_APPLIER),
       group_relay_log_pos(0),
-      event_relay_log_number(0),
       event_relay_log_pos(0),
       group_source_log_seen_start_pos(false),
       group_source_log_start_pos(0),
@@ -158,8 +157,6 @@ Relay_log_info::Relay_log_info(bool is_slave_recovery,
       m_is_applier_source_position_info_invalid(false),
       is_group_master_log_pos_invalid(false),
       log_space_total(0),
-      ignore_log_space_limit(false),
-      sql_force_rotate_relay(false),
       last_master_timestamp(0),
       slave_skip_counter(0),
       abort_pos_wait(0),
@@ -519,7 +516,7 @@ bool Relay_log_info::cannot_safely_rollback() const {
   return ret;
 }
 
-static inline int add_relay_log(Relay_log_info *rli, LOG_INFO *linfo) {
+static inline int add_relay_log(Relay_log_info *rli, Log_info *linfo) {
   MY_STAT s;
   DBUG_TRACE;
   mysql_mutex_assert_owner(&rli->log_space_lock);
@@ -537,7 +534,7 @@ static inline int add_relay_log(Relay_log_info *rli, LOG_INFO *linfo) {
 }
 
 int Relay_log_info::count_relay_log_space() {
-  LOG_INFO flinfo;
+  Log_info flinfo;
   DBUG_TRACE;
   MUTEX_LOCK(lock, &log_space_lock);
   log_space_total = 0;
@@ -558,7 +555,7 @@ int Relay_log_info::count_relay_log_space() {
 }
 
 bool Relay_log_info::reset_group_relay_log_pos(const char **errmsg) {
-  LOG_INFO linfo;
+  Log_info linfo;
 
   mysql_mutex_assert_owner(&data_lock);
 
@@ -575,7 +572,7 @@ bool Relay_log_info::is_group_relay_log_name_invalid(const char **errmsg) {
   DBUG_TRACE;
   const char *errmsg_fmt = nullptr;
   static char errmsg_buff[MYSQL_ERRMSG_SIZE + FN_REFLEN];
-  LOG_INFO linfo;
+  Log_info linfo;
 
   *errmsg = nullptr;
   if (relay_log.find_log_pos(&linfo, group_relay_log_name, true)) {
@@ -2722,23 +2719,6 @@ ulong Relay_log_info::adapt_to_master_version_updown(ulong master_version,
   return master_version;
 }
 
-void Relay_log_info::relay_log_number_to_name(uint number,
-                                              char name[FN_REFLEN + 1]) {
-  char *str = nullptr;
-  char relay_bin_channel[FN_REFLEN + 1];
-  const char *relay_log_basename_channel = add_channel_to_relay_log_name(
-      relay_bin_channel, FN_REFLEN + 1, relay_log_basename);
-
-  /* str points to closing null of relay log basename channel */
-  str = strmake(name, relay_log_basename_channel, FN_REFLEN + 1);
-  *str++ = '.';
-  sprintf(str, "%06u", number);
-}
-
-uint Relay_log_info::relay_log_name_to_number(const char *name) {
-  return static_cast<uint>(atoi(fn_ext(name) + 1));
-}
-
 bool is_mts_db_partitioned(Relay_log_info *rli) {
   return (rli->current_mts_submode->get_type() == MTS_PARALLEL_TYPE_DB_NAME);
 }
@@ -3533,7 +3513,7 @@ bool Applier_security_context_guard::skip_priv_checks() const {
 }
 
 bool Applier_security_context_guard::has_access(
-    std::initializer_list<ulong> extra_privileges) const {
+    std::initializer_list<Access_bitmask> extra_privileges) const {
   if (this->m_privilege_checks_none) return true;
   if (this->m_current == nullptr) return false;
 
@@ -3557,12 +3537,12 @@ bool Applier_security_context_guard::has_access(
 }
 
 bool Applier_security_context_guard::has_access(
-    std::vector<std::tuple<ulong, TABLE const *, Rows_log_event *>>
+    std::vector<std::tuple<Access_bitmask, TABLE const *, Rows_log_event *>>
         &extra_privileges) const {
   if (this->m_privilege_checks_none) return true;
   if (this->m_current == nullptr) return false;
 
-  ulong priv{0};
+  Access_bitmask priv{0};
   TABLE const *table{nullptr};
 
   if (this->m_thd->variables.binlog_row_image == BINLOG_ROW_IMAGE_FULL) {

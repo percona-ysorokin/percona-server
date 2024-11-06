@@ -708,7 +708,8 @@ enum enum_binlog_func {
   BFN_RESET_SLAVE = 2,
   BFN_BINLOG_WAIT = 3,
   BFN_BINLOG_END = 4,
-  BFN_BINLOG_PURGE_FILE = 5
+  BFN_BINLOG_PURGE_FILE = 5,
+  BFN_BINLOG_PURGE_WAIT = 6
 };
 
 enum enum_binlog_command {
@@ -4669,6 +4670,7 @@ class handler {
 
  public:
   typedef ulonglong Table_flags;
+  using Blob_context = void *;
 
  protected:
   TABLE_SHARE *table_share;          /* The table definition */
@@ -5211,6 +5213,53 @@ class handler {
                                 const Rows_mysql &rows [[maybe_unused]],
                                 Bulk_load::Stat_callbacks &wait_cbk
                                 [[maybe_unused]]) {
+    return HA_ERR_UNSUPPORTED;
+  }
+
+  /** Open a blob for write operation.
+  @param[in,out]  thd         user session
+  @param[in,out]  load_ctx    load execution context
+  @param[in]      thread_idx  index of the thread executing
+  @param[out]     blob_ctx    a blob context
+  @param[out]     blobref     a blob reference to be placed in the record.
+  @return 0 on success, error code on failure */
+  virtual int open_blob(THD *thd [[maybe_unused]],
+                        void *load_ctx [[maybe_unused]],
+                        size_t thread_idx [[maybe_unused]],
+                        Blob_context &blob_ctx [[maybe_unused]],
+                        unsigned char *blobref [[maybe_unused]]) {
+    return HA_ERR_UNSUPPORTED;
+  }
+
+  /** Write to a blob
+  @param[in,out]  thd         user session
+  @param[in,out]  load_ctx    load execution context
+  @param[in]      thread_idx  index of the thread executing
+  @param[in]      blob_ctx    a blob context
+  @param[in]      data        data to be written to blob.
+  @param[in]      data_len    length of data to be written in bytes.
+  @return 0 on success, error code on failure */
+  virtual int write_blob(THD *thd [[maybe_unused]],
+                         void *load_ctx [[maybe_unused]],
+                         size_t thread_idx [[maybe_unused]],
+                         Blob_context blob_ctx [[maybe_unused]],
+                         unsigned char *blobref [[maybe_unused]],
+                         const unsigned char *data [[maybe_unused]],
+                         size_t data_len [[maybe_unused]]) {
+    return HA_ERR_UNSUPPORTED;
+  }
+
+  /** Close the blob
+  @param[in,out]  thd         user session
+  @param[in,out]  load_ctx    load execution context
+  @param[in]      thread_idx  index of the thread executing
+  @param[in]      blob_ctx    a blob context
+  @return 0 on success, error code on failure */
+  virtual int close_blob(THD *thd [[maybe_unused]],
+                         void *load_ctx [[maybe_unused]],
+                         size_t thread_idx [[maybe_unused]],
+                         Blob_context blob_ctx [[maybe_unused]],
+                         unsigned char *blobref [[maybe_unused]]) {
     return HA_ERR_UNSUPPORTED;
   }
 
@@ -7884,7 +7933,42 @@ void trans_register_ha(THD *thd, bool all, handlerton *ht,
                        const ulonglong *trxid);
 
 int ha_reset_logs(THD *thd);
+
+/**
+  Inform storage engine(s) that a binary log file will be purged and any
+  references to it should be removed.
+
+  The function is called for all purged files, regardless if it is an explicit
+  PURGE BINARY LOGS statement, or an automatic purge performed by the server.
+
+  @note Since function is called with the LOCK_index mutex held the work
+  performed in this callback should be kept at minimum. One way to defer work is
+  to schedule work and use the `ha_binlog_index_purge_wait` callback to wait for
+  completion.
+
+  @param thd Thread handle of session purging file. The nullptr value indicates
+  that purge is done at server startup.
+  @param file Name of file being purged.
+  @return Always 0, return value are ignored by caller.
+*/
 int ha_binlog_index_purge_file(THD *thd, const char *file);
+
+/**
+  Request the storage engine to complete any operations that were initiated
+  by `ha_binlog_index_purge_file` and which need to complete
+  before PURGE BINARY LOGS completes.
+
+  The function is called only from PURGE BINARY LOGS. Each PURGE BINARY LOGS
+  statement will result in 0, 1 or more calls to `ha_binlog_index_purge_file`,
+  followed by exactly 1 call to `ha_binlog_index_purge_wait`.
+
+  @note This function is called without LOCK_index mutex held and thus any
+  waiting performed will only affect the current session.
+
+  @param thd Thread handle of session.
+*/
+void ha_binlog_index_purge_wait(THD *thd);
+
 void ha_reset_slave(THD *thd);
 void ha_binlog_log_query(THD *thd, handlerton *db_type,
                          enum_binlog_command binlog_command, const char *query,

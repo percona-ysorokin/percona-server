@@ -1569,8 +1569,8 @@ static char *my_case_str(char *str, size_t str_len, const char *token,
                          size_t token_len) {
   my_match_t match;
 
-  const uint status = my_charset_latin1.coll->strstr(
-      &my_charset_latin1, str, str_len, token, token_len, &match, 1);
+  const bool status = my_charset_latin1.coll->strstr(
+      &my_charset_latin1, str, str_len, token, token_len, &match);
 
   return status ? str + match.end : nullptr;
 }
@@ -4841,6 +4841,7 @@ static void dump_table(char *table, char *db) {
                                         field->type == MYSQL_TYPE_VAR_STRING ||
                                         field->type == MYSQL_TYPE_VARCHAR ||
                                         field->type == MYSQL_TYPE_BLOB ||
+                                        field->type == MYSQL_TYPE_VECTOR ||
                                         field->type == MYSQL_TYPE_LONG_BLOB ||
                                         field->type == MYSQL_TYPE_MEDIUM_BLOB ||
                                         field->type == MYSQL_TYPE_TINY_BLOB ||
@@ -5571,7 +5572,8 @@ static int dump_all_tables_in_db(char *database) {
     dynstr_free(&query);
   }
   if (flush_logs) {
-    if (mysql_query(mysql, "FLUSH LOGS")) DB_error(mysql, "when doing refresh");
+    if (mysql_query(mysql, "FLUSH /*!40101 LOCAL */ LOGS"))
+      DB_error(mysql, "when doing refresh");
     /* We shall continue here, if --force was given */
     else
       verbose_msg("-- dump_all_tables_in_db : logs flushed successfully!\n");
@@ -5726,7 +5728,8 @@ static bool dump_all_views_in_db(char *database) {
     dynstr_free(&query);
   }
   if (flush_logs) {
-    if (mysql_query(mysql, "FLUSH LOGS")) DB_error(mysql, "when doing refresh");
+    if (mysql_query(mysql, "FLUSH /*!40101 LOCAL */ LOGS"))
+      DB_error(mysql, "when doing refresh");
     /* We shall continue here, if --force was given */
     else
       verbose_msg("-- dump_all_views_in_db : logs flushed successfully!\n");
@@ -5844,7 +5847,7 @@ static int dump_selected_tables(char *db, char **table_names, int tables) {
   }
   dynstr_free(&lock_tables_query);
   if (flush_logs) {
-    if (mysql_query(mysql, "FLUSH LOGS")) {
+    if (mysql_query(mysql, "FLUSH /*!40101 LOCAL */ LOGS")) {
       if (!opt_force) root.Clear();
       DB_error(mysql, "when doing refresh");
     }
@@ -6130,12 +6133,11 @@ static int do_flush_tables_read_lock(MYSQL *mysql_con) {
     and most client connections are stalled. Of course, if a second long
     update starts between the two FLUSHes, we have that bad stall.
   */
-  return (mysql_query_with_error_report(
-              mysql_con, nullptr,
-              ((opt_source_data != 0) ? "FLUSH /*!40101 LOCAL */ TABLES"
-                                      : "FLUSH TABLES")) ||
-          mysql_query_with_error_report(mysql_con, nullptr,
-                                        "FLUSH TABLES WITH READ LOCK"));
+  return (
+      mysql_query_with_error_report(mysql_con, nullptr,
+                                    "FLUSH /*!40101 LOCAL */ TABLES") ||
+      mysql_query_with_error_report(
+          mysql_con, nullptr, "FLUSH /*!40101 LOCAL */ TABLES WITH READ LOCK"));
 }
 
 /**
@@ -7222,7 +7224,7 @@ int main(int argc, char **argv) {
   if (opt_lock_all_tables || opt_source_data ||
       (opt_single_transaction && flush_logs) || opt_delete_source_logs) {
     if (flush_logs || opt_delete_source_logs) {
-      if (mysql_query(mysql, "FLUSH LOGS")) {
+      if (mysql_query(mysql, "FLUSH /*!40101 LOCAL */ LOGS")) {
         DB_error(mysql, "when doing refresh");
         goto err;
       }

@@ -249,7 +249,7 @@ bool Sql_cmd_show_schema_base::check_privileges(THD *thd) {
   assert(dst_db_name != nullptr);
 
   // Get user's global and db-level privileges.
-  ulong global_db_privs;
+  Access_bitmask global_db_privs;
   if (check_access(thd, SELECT_ACL, dst_db_name, &global_db_privs, nullptr,
                    false, false))
     return true;
@@ -411,7 +411,8 @@ bool Sql_cmd_show_create_table::execute_inner(THD *thd) {
       access is granted. We need to check if first_table->grant.privilege
       contains any table-specific privilege.
     */
-    DBUG_PRINT("debug", ("tbl->grant.privilege: %lx", tbl->grant.privilege));
+    DBUG_PRINT("debug",
+               ("tbl->grant.privilege: %" PRIx32, tbl->grant.privilege));
     if (check_some_access(thd, TABLE_OP_ACLS, tbl) ||
         (tbl->grant.privilege & TABLE_OP_ACLS) == 0) {
       my_error(ER_TABLEACCESS_DENIED_ERROR, MYF(0), "SHOW",
@@ -5259,6 +5260,7 @@ static TABLE *create_schema_table(THD *thd, Table_ref *table_list) {
       case MYSQL_TYPE_MEDIUM_BLOB:
       case MYSQL_TYPE_LONG_BLOB:
       case MYSQL_TYPE_BLOB:
+      case MYSQL_TYPE_VECTOR:
         if (!(item = new Item_blob(fields_info->field_name,
                                    fields_info->field_length))) {
           return nullptr;
@@ -5402,7 +5404,7 @@ bool mysql_schema_table(THD *thd, LEX *lex, Table_ref *table_list) {
     Query_block *sel = lex->current_query_block();
     Field_translator *transl;
 
-    const ulonglong want_privilege_saved = thd->want_privilege;
+    const Access_bitmask want_privilege_saved = thd->want_privilege;
     thd->want_privilege = SELECT_ACL;
     const enum enum_mark_columns save_mark_used_columns =
         thd->mark_used_columns;
@@ -6399,11 +6401,13 @@ static void get_cs_converted_string_value(THD *thd, String *input_str,
   @param str      String to print to
   @param field_cs field's charset. When given [var]char length is printed in
                   characters, otherwise - in bytes
+  @param vector_dimensionality The dimensionality of a vector field
 
 */
 
 void show_sql_type(enum_field_types type, bool is_array, uint metadata,
-                   String *str, const CHARSET_INFO *field_cs) {
+                   String *str, const CHARSET_INFO *field_cs,
+                   unsigned int vector_dimensionality) {
   DBUG_TRACE;
   DBUG_PRINT("enter", ("type: %d, metadata: 0x%x", type, metadata));
 
@@ -6534,6 +6538,14 @@ void show_sql_type(enum_field_types type, bool is_array, uint metadata,
       else
         str->set_ascii(STRING_WITH_LEN("longtext"));
       break;
+
+    case MYSQL_TYPE_VECTOR: {
+      const CHARSET_INFO *cs = str->charset();
+      size_t length = cs->cset->snprintf(cs, str->ptr(), str->alloced_length(),
+                                         "vector(%u)", vector_dimensionality);
+      str->length(length);
+      break;
+    }
 
     case MYSQL_TYPE_BLOB:
       /*
