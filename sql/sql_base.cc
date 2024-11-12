@@ -148,17 +148,8 @@
 #include "sql/sql_view.h"    // mysql_make_view
 #include "sql/strfunc.h"
 #include "sql/system_variables.h"
-<<<<<<< HEAD
-#include "sql/table.h"                     // Table_ref
-#include "sql/table_cache.h"               // table_cache_manager
-||||||| merged common ancestors
-#include "sql/table.h"                     // Table_ref
-#include "sql/table_cache.h"               // table_cache_manager
-#include "sql/table_trigger_dispatcher.h"  // Table_trigger_dispatcher
-=======
 #include "sql/table.h"        // Table_ref
 #include "sql/table_cache.h"  // table_cache_manager
->>>>>>> mysql-9.1.0
 #include "sql/thd_raii.h"
 #include "sql/transaction.h"  // trans_rollback_stmt
 #include "sql/transaction_info.h"
@@ -3253,22 +3244,11 @@ retry_share : {
   tc->lock();
 
   /*
-<<<<<<< HEAD
-    Try to get unused TABLE object or at least pointer to
-    TABLE_SHARE from the table cache.
-
-    For cases when table is going to be updated try to get TABLE object,
-    which has trigger bodies fully loaded/ready for use.
-||||||| merged common ancestors
-    Try to get unused TABLE object or at least pointer to
-    TABLE_SHARE from the table cache.
-=======
     Try to get an unused TABLE object or at least the pointer to
     the TABLE_SHARE from the table cache.
 
     For cases when the table is going to be updated, try to get the
     TABLE object which has trigger bodies fully loaded/ready for use.
->>>>>>> mysql-9.1.0
   */
   if (!table_list->is_view())
     table =
@@ -3584,50 +3564,6 @@ share_found:
   global_aggregated_stats.get_shard(thd->thread_id()).table_open_cache_misses++;
 
 table_found:
-<<<<<<< HEAD
-
-  if (!backup_protection_acquired &&
-      table_list->mdl_request.type >= MDL_SHARED_WRITE &&
-      !(flags & (MYSQL_LOCK_LOG_TABLE | MYSQL_OPEN_HAS_MDL_LOCK)) &&
-      share->db_type() &&
-      !(share->db_type()->flags & HTON_SUPPORTS_ONLINE_BACKUPS)) {
-    if (thd->backup_tables_lock.abort_if_acquired() ||
-        thd->backup_tables_lock.acquire_protection(thd, MDL_STATEMENT,
-                                                   ot_ctx->get_timeout())) {
-      Table_cache *tc = table_cache_manager.get_cache(thd);
-
-      tc->lock();
-
-      tc->release_table(thd, table);
-
-      tc->unlock();
-
-      table->file->unbind_psi();
-
-      return true;
-    }
-  }
-
-  if (table_list->mdl_request.is_write_lock_request() && table->triggers) {
-    /*
-      For tables which are going to be updated and have triggers we need
-      to ensure that trigger bodies are fully loaded and ready for execution.
-    */
-    if (table->triggers->has_load_been_finalized()) {
-      // Common case. We've got TABLE instance with fully ready triggers.
-      thd->status_var.table_open_cache_triggers_hits++;
-    } else {
-      /*
-        Rare case. We've got either fresh TABLE object or TABLE object,
-        which was used only by read-only statements so far.
-      */
-      thd->status_var.table_open_cache_triggers_misses++;
-      if (table->triggers->finalize_load(thd)) return true;
-    }
-  }
-
-||||||| merged common ancestors
-=======
   if (table_list->mdl_request.is_write_lock_request() && table->triggers) {
     /*
       For tables which are going to be updated and have triggers, we need
@@ -3651,7 +3587,28 @@ table_found:
     }
   }
 
->>>>>>> mysql-9.1.0
+  if (!backup_protection_acquired &&
+      table_list->mdl_request.type >= MDL_SHARED_WRITE &&
+      !(flags & (MYSQL_LOCK_LOG_TABLE | MYSQL_OPEN_HAS_MDL_LOCK)) &&
+      share->db_type() &&
+      !(share->db_type()->flags & HTON_SUPPORTS_ONLINE_BACKUPS)) {
+    if (thd->backup_tables_lock.abort_if_acquired() ||
+        thd->backup_tables_lock.acquire_protection(thd, MDL_STATEMENT,
+                                                   ot_ctx->get_timeout())) {
+      Table_cache *tc = table_cache_manager.get_cache(thd);
+
+      tc->lock();
+
+      tc->release_table(thd, table);
+
+      tc->unlock();
+
+      table->file->unbind_psi();
+
+      return true;
+    }
+  }
+
   table->mdl_ticket = mdl_ticket;
 
   table->next = thd->open_tables; /* Link into simple list */
@@ -3990,16 +3947,8 @@ static bool tdc_open_view(THD *thd, Table_ref *table_list,
 }
 
 /**
-<<<<<<< HEAD
-   Finalize the process of TABLE creation by taking action if a HEAP table
-   content was emptied implicitly.
-||||||| merged common ancestors
-   Finalize the process of TABLE creation by loading table triggers
-   and taking action if a HEAP table content was emptied implicitly.
-=======
    Finalize the process of TABLE creation by taking action if a
    HEAP table's content was emptied implicitly.
->>>>>>> mysql-9.1.0
 */
 
 static bool open_table_entry_fini(THD *thd, TABLE_SHARE *share, TABLE *entry) {
@@ -4961,19 +4910,11 @@ static bool open_and_process_routine(
 
         tc->lock();
 
-<<<<<<< HEAD
-        /*
-          We don't need TABLE object with fully loaded triggers, since it is
-          not going to be used it for update, but only to get TABLE_SHARE.
-        */
-||||||| merged common ancestors
-=======
         /*
           We don't need a TABLE object with fully loaded triggers
           since we won't use it for an update operation, but only
           to get the TABLE_SHARE.
         */
->>>>>>> mysql-9.1.0
         table = tc->get_table(thd, rt->part_mdl_key(),
                               rt->part_mdl_key_length(), false, &share);
 

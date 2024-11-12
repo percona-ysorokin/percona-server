@@ -303,9 +303,9 @@ static bool prepare_share(THD *thd, TABLE_SHARE *share,
   if (share->keys) {
     KEY *keyinfo;
     KEY_PART_INFO *key_part;
-<<<<<<< HEAD
-    uint primary_key = (uint)(
-        find_type(primary_key_name, &share->keynames, FIND_TYPE_NO_PREFIX) - 1);
+    uint primary_key = (uint)(find_type(primary_key_name, &share->keynames,
+                                        FIND_TYPE_NO_PREFIX) -
+                              1);
 
     /*
       The following if-else is here for MyRocks:
@@ -318,14 +318,6 @@ static bool prepare_share(THD *thd, TABLE_SHARE *share,
     else
       share->primary_key = MAX_KEY;
 
-||||||| merged common ancestors
-    uint primary_key = (uint)(
-        find_type(primary_key_name, &share->keynames, FIND_TYPE_NO_PREFIX) - 1);
-=======
-    uint primary_key = (uint)(find_type(primary_key_name, &share->keynames,
-                                        FIND_TYPE_NO_PREFIX) -
-                              1);
->>>>>>> mysql-9.1.0
     const longlong ha_option = handler_file->ha_table_flags();
     keyinfo = share->key_info;
     key_part = keyinfo->key_part;
@@ -2361,27 +2353,6 @@ static bool fill_check_constraints_from_dd(TABLE_SHARE *share,
   return false;
 }
 
-<<<<<<< HEAD
-/**
-  Fill information about triggers from dd::Table object to the TABLE_SHARE.
-*/
-static bool fill_triggers_from_dd(THD *thd, TABLE_SHARE *share,
-                                  const dd::Table *tab_obj) {
-  assert(share->triggers == nullptr);
-
-  if (tab_obj->has_trigger()) {
-    share->triggers = new (&share->mem_root) List<Trigger>;
-    if (share->triggers == nullptr) return true;  // OOM
-    if (dd::load_triggers(thd, &share->mem_root, share->db.str,
-                          share->table_name.str, *tab_obj, share->triggers))
-      return true;  // OOM.
-  }
-
-  return false;
-}
-
-||||||| merged common ancestors
-=======
 /**
   Add sharable information about triggers to the TABLE_SHARE
   from a dd::Table object.
@@ -2401,7 +2372,6 @@ static bool fill_triggers_from_dd(THD *thd, TABLE_SHARE *share,
   return false;
 }
 
->>>>>>> mysql-9.1.0
 bool open_table_def(THD *thd, TABLE_SHARE *share, const dd::Table &table_def) {
   DBUG_TRACE;
 

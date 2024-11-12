@@ -1059,19 +1059,6 @@ struct TABLE_SHARE {
   Sql_check_constraint_share_list *check_constraint_share_list{nullptr};
 
   /**
-<<<<<<< HEAD
-    List of trigger descriptions for the table loaded from the data-dictionary.
-    Nullptr - if table doesn't have triggers.
-
-    @note The purpose of Trigger objects in this list is to serve as template
-          for per-TABLE-object Trigger objects (and store static metadata).
-          They can't be used directly for execution of triggers.
-  */
-  List<Trigger> *triggers{nullptr};
-
-  /**
-||||||| merged common ancestors
-=======
     List of trigger descriptions for the table loaded from the data-dictionary.
     Is nullptr if the table doesn't have triggers.
 
@@ -1083,7 +1070,6 @@ struct TABLE_SHARE {
   List<Trigger> *triggers{nullptr};
 
   /**
->>>>>>> mysql-9.1.0
     Schema's read only mode - ON (true) or OFF (false). This is filled in
     when the share is initialized with meta data from DD. If the schema is
     altered, the tables and share are removed. This can be done since

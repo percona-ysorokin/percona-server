@@ -168,17 +168,11 @@ insert into test.pfs_published_schema
 
 insert into test.pfs_published_schema
  values("MySQL 9.0.0", 90000,
-<<<<<<< HEAD
-        "226c2d04698e23d7a4a4ee497790850d300a5b5cb96f48eb3d73030f75ba3e50");
-||||||| merged common ancestors
-        "2616977dc6227148a18b0db345f8300a49990d008fd2558ee0dc624435c29661");
-=======
         "fefb8c85575ab81e8c5a9517b11d21180bf8ae90213740e8636ef0ebf59cfe94");
 
 insert into test.pfs_published_schema
  values("MySQL 9.1.0", 90100,
-        "b4d93fec13a721f3070b8e87b8025b1e224b35325b3e00085926bbfa1b792b60");
->>>>>>> mysql-9.1.0
+        "a7112d114ab99a14040b0269aa44b7c6e231574d01fce0ada74954189cec0c07");
 
 create table test.pfs_check_table
   (id int NOT NULL AUTO_INCREMENT,

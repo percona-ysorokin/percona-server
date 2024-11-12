@@ -3948,8 +3948,8 @@ static int fill_schema_user_stats(THD *thd, Table_ref *tables,
   1 - error
 */
 
-static int fill_schema_client_stats(
-    THD *thd, Table_ref *tables, Item *cond [[maybe_unused]]) noexcept {
+static int fill_schema_client_stats(THD *thd, Table_ref *tables,
+                                    Item *cond [[maybe_unused]]) noexcept {
   DBUG_ENTER("fill_schema_client_stats");
 
   if (check_global_access(thd, SUPER_ACL | PROCESS_ACL)) DBUG_RETURN(1);
@@ -3967,8 +3967,8 @@ static int fill_schema_client_stats(
   DBUG_RETURN(result);
 }
 
-static int fill_schema_thread_stats(
-    THD *thd, Table_ref *tables, Item *cond [[maybe_unused]]) noexcept {
+static int fill_schema_thread_stats(THD *thd, Table_ref *tables,
+                                    Item *cond [[maybe_unused]]) noexcept {
   DBUG_ENTER("fill_schema_thread_stats");
 
   if (check_global_access(thd, SUPER_ACL | PROCESS_ACL)) DBUG_RETURN(1);
@@ -4619,7 +4619,8 @@ static int fill_temporary_tables(THD *thd, Table_ref *tables, Item *cond) {
 
   for (tmp = thd->temporary_tables; tmp; tmp = tmp->next) {
     if (store_temporary_table_record(thd, tables->table, tmp,
-                                     thd->lex->query_block->db, thd->mem_root)) {
+                                     thd->lex->query_block->db,
+                                     thd->mem_root)) {
       DBUG_RETURN(1);
     }
   }
@@ -4708,26 +4709,11 @@ static int get_schema_tmp_table_columns_record(THD *thd, Table_ref *tables,
 
     // COLUMN_KEY
     pos = pointer_cast<const uchar *>(
-<<<<<<< HEAD
-        field->is_flag_set(PRI_KEY_FLAG)
-            ? "PRI"
-            : field->is_flag_set(UNIQUE_KEY_FLAG)
-                  ? "UNI"
-                  : (field->is_flag_set(MULTIPLE_KEY_FLAG))
-                        ? "MUL"
-                        : (field->is_flag_set(CLUSTERING_FLAG)) ? "CLU" : "");
-||||||| merged common ancestors
-        field->is_flag_set(PRI_KEY_FLAG)
-            ? "PRI"
-            : field->is_flag_set(UNIQUE_KEY_FLAG)
-                  ? "UNI"
-                  : field->is_flag_set(MULTIPLE_KEY_FLAG) ? "MUL" : "");
-=======
-        field->is_flag_set(PRI_KEY_FLAG)        ? "PRI"
-        : field->is_flag_set(UNIQUE_KEY_FLAG)   ? "UNI"
-        : field->is_flag_set(MULTIPLE_KEY_FLAG) ? "MUL"
-                                                : "");
->>>>>>> mysql-9.1.0
+        field->is_flag_set(PRI_KEY_FLAG)          ? "PRI"
+        : field->is_flag_set(UNIQUE_KEY_FLAG)     ? "UNI"
+        : (field->is_flag_set(MULTIPLE_KEY_FLAG)) ? "MUL"
+        : (field->is_flag_set(CLUSTERING_FLAG))   ? "CLU"
+                                                  : "");
     table->field[TMP_TABLE_COLUMNS_COLUMN_KEY]->store(
         (const char *)pos, strlen((const char *)pos), cs);
 
@@ -6201,35 +6187,6 @@ static bool acquire_mdl_for_table(THD *thd, const char *db_name,
 }
 
 /**
-<<<<<<< HEAD
-  Helper to lookup Trigger object by trigger name in a TABLE_SHARE.
-
-  @param share TABLE_SHARE in which list of Trigger object lookup to
-               be performed.
-  @param name  Name of trigger to find.
-
-  @return Pointer to Trigger object, or nullptr if no trigger with such
-          name was found.
-*/
-
-static Trigger *find_trigger_in_share(TABLE_SHARE *share,
-                                      const LEX_STRING &name) {
-  Trigger *t;
-  List_iterator_fast<Trigger> it(*(share->triggers));
-
-  while ((t = it++) != nullptr) {
-    if (!my_strnncoll(dd::Trigger::name_collation(),
-                      pointer_cast<const uchar *>(t->get_trigger_name().str),
-                      t->get_trigger_name().length,
-                      pointer_cast<const uchar *>(name.str), name.length))
-      return t;
-  }
-  return nullptr;
-}
-
-/**
-||||||| merged common ancestors
-=======
   Helper to look up a Trigger object in a TABLE_SHARE by trigger name.
 
   @param share TABLE_SHARE in whose list of Trigger objects the lookup
@@ -6256,7 +6213,6 @@ static Trigger *find_trigger_in_share(TABLE_SHARE *share,
 }
 
 /**
->>>>>>> mysql-9.1.0
   SHOW CREATE TRIGGER high-level implementation.
 
   @param thd      Thread context.

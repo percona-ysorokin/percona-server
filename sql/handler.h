@@ -7800,10 +7800,6 @@ void ha_pre_dd_shutdown(void);
 */
 bool ha_flush_logs(bool binlog_group_flush = false);
 void ha_drop_database(char *path);
-<<<<<<< HEAD
-class Create_field;
-||||||| merged common ancestors
-=======
 
 /**
   Call "log_ddl_drop_schema" handletron for
@@ -7825,7 +7821,7 @@ bool ha_log_ddl_drop_schema(const char *schema_name);
 */
 bool ha_log_ddl_create_schema(const char *schema_name);
 
->>>>>>> mysql-9.1.0
+class Create_field;
 int ha_create_table(THD *thd, const char *path, const char *db,
                     const char *table_name, HA_CREATE_INFO *create_info,
                     const List<Create_field> *create_fields,

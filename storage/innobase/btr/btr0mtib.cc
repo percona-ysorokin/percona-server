@@ -964,12 +964,7 @@ dberr_t Page_load::init_mem_blob(const page_no_t page_no,
   ut_ad(page_no < page_extent->m_range.second);
   ut_ad(m_heap == nullptr);
 
-<<<<<<< HEAD
-#ifndef NDEBUG
-||||||| merged common ancestors
-=======
 #ifdef UNIV_DEBUG
->>>>>>> mysql-9.1.0
   auto guard = create_scope_guard([this, page_no]() {
     ut_ad(m_block != nullptr);
     ut_ad(m_mtr == nullptr);
@@ -978,12 +973,7 @@ dberr_t Page_load::init_mem_blob(const page_no_t page_no,
     ut_ad(m_page_no != FIL_NULL);
     ut_ad(m_page_no == page_no);
   });
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
 #endif /* UNIV_DEBUG */
->>>>>>> mysql-9.1.0
 
   m_page_extent = page_extent;
   m_page_no = page_no;

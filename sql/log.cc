@@ -812,14 +812,8 @@ bool File_query_log::write_slow(THD *thd, ulonglong current_utime,
             " Sort_rows: %lu Sort_scan_count: %lu"
             " Created_tmp_disk_tables: %lu"
             " Created_tmp_tables: %lu"
-<<<<<<< HEAD
-            " Start: %s End: %s Schema: %s Rows_affected: %llu\n",
-||||||| merged common ancestors
-            " Start: %s End: %s\n",
-=======
             " Count_hit_tmp_table_size: %lu "
-            " Start: %s End: %s\n",
->>>>>>> mysql-9.1.0
+            " Start: %s End: %s Schema: %s Rows_affected: %llu\n",
             query_time_buff, lock_time_buff, (ulong)thd->get_sent_row_count(),
             (ulong)thd->get_examined_row_count(), (ulong)thd->thread_id(),
             static_cast<ulong>(
@@ -855,19 +849,13 @@ bool File_query_log::write_slow(THD *thd, ulonglong current_utime,
                     thd->copy_status_var_ptr->created_tmp_disk_tables),
             (ulong)(thd->status_var.created_tmp_tables -
                     thd->copy_status_var_ptr->created_tmp_tables),
-<<<<<<< HEAD
+            (ulong)(thd->status_var.count_hit_tmp_table_size -
+                    thd->copy_status_var_ptr->count_hit_tmp_table_size),
             start_time_buff, end_time_buff,
             (thd->db().str ? thd->db().str : ""),
             ((thd->get_row_count_func() > 0)
                  ? (ulonglong)thd->get_row_count_func()
                  : 0)) == (uint)-1)
-||||||| merged common ancestors
-            start_time_buff, end_time_buff) == (uint)-1)
-=======
-            (ulong)(thd->status_var.count_hit_tmp_table_size -
-                    thd->copy_status_var_ptr->count_hit_tmp_table_size),
-            start_time_buff, end_time_buff) == (uint)-1)
->>>>>>> mysql-9.1.0
       goto err; /* purecov: inspected */
   }
 

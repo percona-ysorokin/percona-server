@@ -304,19 +304,11 @@ ADD_SUBDIRECTORY(fido_client)
 # authentication mysql_native_password client plug-in
 ADD_SUBDIRECTORY(authentication_native_password)
 
-<<<<<<< HEAD
-# Merge several convenience libraries into one big perconaserverclient
-MERGE_CONVENIENCE_LIBRARIES(perconaserverclient ${LIBS_TO_MERGE}
-||||||| merged common ancestors
-# Merge several convenience libraries into one big mysqlclient
-MERGE_CONVENIENCE_LIBRARIES(mysqlclient ${LIBS_TO_MERGE}
-=======
 # authentication openid connect client plug-in
 ADD_SUBDIRECTORY(authentication_openid_connect_client)
 
-# Merge several convenience libraries into one big mysqlclient
-MERGE_CONVENIENCE_LIBRARIES(mysqlclient ${LIBS_TO_MERGE}
->>>>>>> mysql-9.1.0
+# Merge several convenience libraries into one big perconaserverclient
+MERGE_CONVENIENCE_LIBRARIES(perconaserverclient ${LIBS_TO_MERGE}
   COMPONENT Development
   LINK_LIBRARIES ${LIBS_TO_LINK}
   )

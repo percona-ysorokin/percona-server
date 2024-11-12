@@ -231,25 +231,12 @@ class Table_trigger_dispatcher : public Table_trigger_field_support {
   Field **m_old_field;
 
   /**
-<<<<<<< HEAD
-    Error which occurred while parsing one of the triggers for the table,
-    nullptr - if there was no error for any of its triggers.
-
-    Non-nullptr value indicates that as a precaution the object has entered
-    the state where all trigger operations result in errors (referencing
-    this error message saved) until all the table triggers are dropped. It is
-||||||| merged common ancestors
-    This flag indicates that one of the triggers was not parsed successfully,
-    and as a precaution the object has entered the state where all trigger
-    operations result in errors until all the table triggers are dropped. It is
-=======
     Error which occurred while parsing one of the triggers for the table;
     nullptr if there was no error for any of its triggers.
 
     Non-nullptr value indicates that as a precaution the object has entered
     the state where all trigger operations result in errors (referencing
     this error message saved) until all the table triggers are dropped. It is
->>>>>>> mysql-9.1.0
     not safe to add triggers since it is unknown if the broken trigger has the
     same name or event type. Nor is it safe to invoke any trigger. The only
     safe operations are drop_trigger() and drop_all_triggers().

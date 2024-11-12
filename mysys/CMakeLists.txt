@@ -30,14 +30,8 @@ ADD_CONVENIENCE_LIBRARY(mytime ${MY_TIME_SOURCES})
 INCLUDE_DIRECTORIES(SYSTEM ${BOOST_PATCHES_DIR} ${BOOST_INCLUDE_DIR})
 
 SET(MYSYS_SOURCES
-<<<<<<< HEAD
-  array.cc
-  buffered_error_log.cc
-||||||| merged common ancestors
-  array.cc
-=======
   base64_encode.cc
->>>>>>> mysql-9.1.0
+  buffered_error_log.cc
   charset.cc
   dbug.cc
   decimal.cc
