@@ -40,8 +40,8 @@ constexpr bool CanTypeFitValue(const U value) {
 template <typename T, typename U>
 T Clamp(U x) {
   return CanTypeFitValue<T>(x) ? T(x)
-                               : x < 0 ? std::numeric_limits<T>::min()
-                                       : std::numeric_limits<T>::max();
+         : x < 0               ? std::numeric_limits<T>::min()
+                               : std::numeric_limits<T>::max();
 }
 
 // simple (no measurement attributes supported) metric callback
@@ -117,8 +117,8 @@ static PSI_metric_info_v1 ps_metrics[] = {
      "The number of indexes for which statistics were lost "
      "(Performance_schema_index_stat_lost)",
      MetricOTELType::ASYNC_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
-     get_metric_simple_integer<decltype(
-         global_table_share_index_container.m_lost)>,
+     get_metric_simple_integer<
+         decltype(global_table_share_index_container.m_lost)>,
      &global_table_share_index_container.m_lost},
     {"locker_lost", "",
      "How many events are 'lost' or not recorded "
@@ -148,6 +148,12 @@ static PSI_metric_info_v1 ps_metrics[] = {
      MetricOTELType::ASYNC_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
      get_metric_simple_integer<decltype(metric_class_lost)>,
      &metric_class_lost},
+    {"logger_lost", "",
+     "How many logger instruments could not be loaded "
+     "(Performance_schema_logger_lost)",
+     MetricOTELType::ASYNC_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
+     get_metric_simple_integer<decltype(logger_class_lost)>,
+     &logger_class_lost},
     {"mutex_classes_lost", "",
      "How many mutex instruments could not be loaded "
      "(Performance_schema_mutex_classes_lost)",
@@ -240,8 +246,8 @@ static PSI_metric_info_v1 ps_metrics[] = {
      "The number of tables for which lock statistics were lost "
      "(Performance_schema_table_lock_stat_lost)",
      MetricOTELType::ASYNC_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
-     get_metric_simple_integer<decltype(
-         global_table_share_lock_container.m_lost)>,
+     get_metric_simple_integer<
+         decltype(global_table_share_lock_container.m_lost)>,
      &global_table_share_lock_container.m_lost},
     {"thread_classes_lost", "",
      "How many thread instruments could not be loaded "

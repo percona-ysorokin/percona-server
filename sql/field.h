@@ -58,9 +58,9 @@
 #include "sql/sql_const.h"
 #include "sql/sql_error.h"  // Sql_condition
 #include "sql/table.h"
-#include "sql/vector_conversion.h"  // get_dimensions
-#include "sql_string.h"             // String
+#include "sql_string.h"  // String
 #include "template_utils.h"
+#include "vector-common/vector_constants.h"  // max_dimensions
 
 class Create_field;
 class CostOfItem;
@@ -2083,7 +2083,7 @@ class Field_longstr : public Field_str {
   type_conversion_status check_string_copy_error(
       const char *well_formed_error_pos, const char *cannot_convert_error_pos,
       const char *from_end_pos, const char *end, bool count_spaces,
-      const CHARSET_INFO *cs);
+      const CHARSET_INFO *from_cs, const CHARSET_INFO *to_cs);
 
  public:
   Field_longstr(uchar *ptr_arg, uint32 len_arg, uchar *null_ptr_arg,
@@ -3734,9 +3734,10 @@ class Field_blob : public Field_longstr {
         m_keep_old_value(false) {
     set_flag(BLOB_FLAG);
     if (set_packlength) {
-      packlength = len_arg <= 255
-                       ? 1
-                       : len_arg <= 65535 ? 2 : len_arg <= 16777215 ? 3 : 4;
+      packlength = len_arg <= 255        ? 1
+                   : len_arg <= 65535    ? 2
+                   : len_arg <= 16777215 ? 3
+                                         : 4;
     }
   }
 
@@ -3969,7 +3970,7 @@ class Field_blob : public Field_longstr {
 
 class Field_vector : public Field_blob {
  public:
-  static const uint32 max_dimensions = 16383;
+  static const uint32 max_dimensions = vector_constants::max_dimensions;
   static const uint32 precision = sizeof(float);
   static uint32 dimension_bytes(uint32 dimensions) {
     return precision * dimensions;
@@ -4333,21 +4334,23 @@ class Field_typed_array final : public Field_json {
   int key_cmp(const uchar *, const uchar *) const override { return -1; }
   /**
    * @brief This function will behave similarly to MEMBER OF json operation,
-   *        unlike regular key_cmp. The key value will be checked against
-   *        members of the array and the presence of the key will be considered
-   *        as the record matching the given key. This particular definition is
-   *        used in descending ref index scans. Descending index scan uses
-   *        handler::ha_index_prev() function to read from the storage engine
-   *        which does not compare the index key with the search key [unlike
-   *        handler::ha_index_next_same()]. Hence each retrieved record needs
-   *        to be validated to find a stop point. Refer key_cmp_if_same() and
-   *        RefIterator<true>::Read() for more details.
+   *        unlike regular key_cmp. Since scans on multi-valued indexes always
+   *        go in the ascending direction, and always start on the first entry
+   *        that is not less than the key, a record not matching the MEMBER OF
+   *        condition is assumed to be greater than the key, so the function
+   *        always returns 1, indicating greater than, for not found.
+   *        This definition is used in descending ref index scans.
+   *        Descending index scan uses handler::ha_index_prev() function to read
+   *        from the storage engine which does not compare the index key with
+   *        the search key [unlike handler::ha_index_next_same()]. Hence each
+   *        retrieved record needs to be validated to find a stop point. Refer
+   *        key_cmp_if_same() and RefIterator<true>::Read() for more details.
    *
    * @param   key_ptr         Pointer to the key
    * @param   key_length      Key length
    * @return
    *      0   Key found in the record
-   *      -1  Key not found in the record
+   *      1   Key not found in the record
    */
   int key_cmp(const uchar *key_ptr, uint key_length) const override;
   /**

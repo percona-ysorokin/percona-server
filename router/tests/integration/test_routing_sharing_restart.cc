@@ -42,8 +42,6 @@
 #include <gtest/gtest-param-test.h>
 #include <gtest/gtest.h>
 
-#define RAPIDJSON_HAS_STDSTRING 1
-
 #include "my_rapidjson_size_t.h"
 
 #include <rapidjson/pointer.h>
@@ -573,8 +571,16 @@ class TestEnv : public ::testing::Environment {
         if (s->mysqld_failed_to_start()) {
           GTEST_SKIP() << "mysql-server failed to start.";
         }
-        s->setup_mysqld_accounts();
-        s->install_plugins();
+        auto cli_res = s->admin_cli();
+        ASSERT_NO_ERROR(cli_res);
+
+        auto cli = std::move(*cli_res);
+
+        // install plugin that will be used later with setup_mysqld_accounts.
+        ASSERT_NO_ERROR(
+            SharedServer::local_install_plugin(cli, "clone", "mysql_clone"));
+
+        SharedServer::setup_mysqld_accounts(cli);
       }
     }
 

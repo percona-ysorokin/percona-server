@@ -4284,12 +4284,12 @@ EXPLAIN
     -> Select #2 (subquery in condition; run only once)
         -> Filter: ((t3.a = `<materialized_subquery>`.kp1))  (rows=1)
             -> Limit: 1 row(s)  (rows=1)
-                -> Index lookup on <materialized_subquery> using <auto_distinct_key> (kp1=t3.a)
+                -> Index lookup on <materialized_subquery> using <auto_distinct_key> (kp1 = t3.a)
                     -> Materialize with deduplication  (rows=40)
                         -> Nested loop inner join  (rows=40)
                             -> Filter: ((t1.kp1 < 20) and (t1.c is not null))  (rows=40)
                                 -> Index range scan on t1 using kp1 over (NULL < kp1 < 20)  (rows=40)
-                            -> Single-row covering index lookup on t4 using PRIMARY (pk=t1.c)  (rows=1)
+                            -> Single-row covering index lookup on t4 using PRIMARY (pk = t1.c)  (rows=1)
 
 select * from t3 where a in 
 (select t1.kp1 from t1,t4 where kp1<20 and t4.pk=t1.c);
@@ -5867,7 +5867,7 @@ EXPLAIN
         -> Select #2 (subquery in extra conditions; run only once)
             -> Filter: ((ot1.a = `<materialized_subquery>`.a))  (rows=1)
                 -> Limit: 1 row(s)  (rows=1)
-                    -> Index lookup on <materialized_subquery> using <auto_distinct_key> (a=ot1.a)
+                    -> Index lookup on <materialized_subquery> using <auto_distinct_key> (a = ot1.a)
                         -> Materialize with deduplication  (rows=3)
                             -> Table scan on it3  (rows=3)
     -> Hash
@@ -5875,7 +5875,7 @@ EXPLAIN
     -> Select #3 (subquery in extra conditions; run only once)
         -> Filter: ((ot2.a = `<materialized_subquery>`.a))  (rows=1)
             -> Limit: 1 row(s)  (rows=1)
-                -> Index lookup on <materialized_subquery> using <auto_distinct_key> (a=ot2.a)
+                -> Index lookup on <materialized_subquery> using <auto_distinct_key> (a = ot2.a)
                     -> Materialize with deduplication  (rows=3)
                         -> Table scan on it3  (rows=3)
 
@@ -11246,7 +11246,7 @@ id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered
 3	SUBQUERY	t2	NULL	index	col_int_key	col_int_key	5	NULL	5	100.00	Using index; Using join buffer (hash join)
 2	SUBQUERY	sq1_alias1	NULL	ALL	NULL	NULL	NULL	NULL	2	50.00	Using where
 Warnings:
-Note	1003	/* select#1 */ select sum(`test`.`alias1`.`col_varchar_key`) AS `field1` from `test`.`t2` `alias2` join `test`.`t1` `alias3` left join `test`.`t1` `alias1` on(<in_optimizer>('v',<exists>(/* select#2 */ select `test`.`sq1_alias1`.`col_varchar_nokey` AS `sq1_field1` from `test`.`t1` `sq1_alias1` where (`test`.`sq1_alias1`.`col_varchar_nokey` = <cache>(convert(<cache>('v') using utf8mb4)))))) where ((`test`.`alias2`.`col_varchar_key` = `test`.`alias3`.`col_varchar_key`) and <in_optimizer>(`test`.`alias3`.`pk`,`test`.`alias3`.`pk` in ( <materialize> (/* select#3 */ select `test`.`t2`.`col_int_key` AS `sq2_field1` from `test`.`t2` join `test`.`t1` `sq2_alias2` where true ), <primary_index_lookup>(`test`.`alias3`.`pk` in <temporary table> on <auto_distinct_key> where ((`test`.`alias3`.`pk` = `<materialized_subquery>`.`sq2_field1`))))))
+Note	1003	/* select#1 */ select sum(`test`.`alias1`.`col_varchar_key`) AS `field1` from `test`.`t2` `alias2` join `test`.`t1` `alias3` left join `test`.`t1` `alias1` on(<in_optimizer>('v',<exists>(/* select#2 */ select `test`.`sq1_alias1`.`col_varchar_nokey` AS `sq1_field1` from `test`.`t1` `sq1_alias1` where (`test`.`sq1_alias1`.`col_varchar_nokey` = 'v')))) where ((`test`.`alias2`.`col_varchar_key` = `test`.`alias3`.`col_varchar_key`) and <in_optimizer>(`test`.`alias3`.`pk`,`test`.`alias3`.`pk` in ( <materialize> (/* select#3 */ select `test`.`t2`.`col_int_key` AS `sq2_field1` from `test`.`t2` join `test`.`t1` `sq2_alias2` where true ), <primary_index_lookup>(`test`.`alias3`.`pk` in <temporary table> on <auto_distinct_key> where ((`test`.`alias3`.`pk` = `<materialized_subquery>`.`sq2_field1`))))))
 PREPARE prep_stmt_7430 FROM 'SELECT SUM( alias1.col_varchar_key ) AS field1
 FROM t1 AS alias1
 RIGHT JOIN t2 AS alias2
@@ -11294,7 +11294,7 @@ id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered
 2	SUBQUERY	sq1_alias1	NULL	ALL	NULL	NULL	NULL	NULL	2	50.00	Using where
 Warnings:
 Note	1276	Field or reference 'test.alias2.col_varchar_key' of SELECT #3 was resolved in SELECT #1
-Note	1003	/* select#1 */ select sum(`test`.`alias1`.`col_varchar_key`) AS `field1` from `test`.`t2` `alias2` join `test`.`t1` `alias3` left join `test`.`t1` `alias1` on(<in_optimizer>('v',<exists>(/* select#2 */ select `test`.`sq1_alias1`.`col_varchar_nokey` AS `sq1_field1` from `test`.`t1` `sq1_alias1` where (`test`.`sq1_alias1`.`col_varchar_nokey` = <cache>(convert(<cache>('v') using utf8mb4)))))) where ((`test`.`alias2`.`col_varchar_key` = `test`.`alias3`.`col_varchar_key`) and <in_optimizer>(`test`.`alias3`.`pk`,<exists>(/* select#3 */ select `test`.`t2`.`col_int_key` AS `sq2_field1` from `test`.`t2` join `test`.`t1` `sq2_alias2` where ((`test`.`t2`.`col_varchar_nokey` <> `test`.`alias2`.`col_varchar_key`) and (`test`.`t2`.`col_varchar_key` < 'l') and (<cache>(`test`.`alias3`.`pk`) = `test`.`t2`.`col_int_key`)))))
+Note	1003	/* select#1 */ select sum(`test`.`alias1`.`col_varchar_key`) AS `field1` from `test`.`t2` `alias2` join `test`.`t1` `alias3` left join `test`.`t1` `alias1` on(<in_optimizer>('v',<exists>(/* select#2 */ select `test`.`sq1_alias1`.`col_varchar_nokey` AS `sq1_field1` from `test`.`t1` `sq1_alias1` where (`test`.`sq1_alias1`.`col_varchar_nokey` = 'v')))) where ((`test`.`alias2`.`col_varchar_key` = `test`.`alias3`.`col_varchar_key`) and <in_optimizer>(`test`.`alias3`.`pk`,<exists>(/* select#3 */ select `test`.`t2`.`col_int_key` AS `sq2_field1` from `test`.`t2` join `test`.`t1` `sq2_alias2` where ((`test`.`t2`.`col_varchar_nokey` <> `test`.`alias2`.`col_varchar_key`) and (`test`.`t2`.`col_varchar_key` < 'l') and (<cache>(`test`.`alias3`.`pk`) = `test`.`t2`.`col_int_key`)))))
 DROP TABLE t1,t2;
 DROP VIEW view_c;
 #
@@ -13165,13 +13165,13 @@ EXPLAIN
         -> Select #2 (subquery in condition; run only once)
             -> Filter: ((t4.col_int_key = `<materialized_subquery>`.col_int_key))  (rows=1)
                 -> Limit: 1 row(s)  (rows=1)
-                    -> Index lookup on <materialized_subquery> using <auto_distinct_key> (col_int_key=t4.col_int_key)
+                    -> Index lookup on <materialized_subquery> using <auto_distinct_key> (col_int_key = t4.col_int_key)
                         -> Materialize with deduplication  (rows=7)
                             -> Filter: (t3.col_int is null)  (rows=7)
                                 -> Nested loop left join  (rows=7)
                                     -> Covering index scan on t1 using col_int_key  (rows=7)
                                     -> Nested loop inner join  (rows=1)
-                                        -> Single-row index lookup on t2 using PRIMARY (pk=t1.pk)  (rows=1)
+                                        -> Single-row index lookup on t2 using PRIMARY (pk = t1.pk)  (rows=1)
                                         -> Filter: (t3.col_int_key = t2.col_int)  (rows=1)
                                             -> Table scan on t3  (rows=4)
 
@@ -13236,12 +13236,12 @@ WHERE field1 IN (
 SELECT tv1.var_255_utf8
 FROM v1 AS tv1 LEFT JOIN v1 AS tv2 ON tv1.var_10_latin1=tv2.var_10_utf8);
 field1
-korrhrspki
-a
 ULWBF
+a
+i
+korrhrspki
 right
 x
-i
 DROP VIEW v1;
 DROP TABLE t1, tv;
 # 17832047 Crash in calculate_materialization_costs

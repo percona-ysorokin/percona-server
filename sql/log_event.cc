@@ -87,13 +87,13 @@
 #include "sql/sql_show_processlist.h"  // pfs_processlist_enabled
 #include "sql/system_variables.h"
 #include "sql/tc_log.h"
-#include "sql/vector_conversion.h"
 #include "sql/xa/sql_cmd_xa.h"  // Sql_cmd_xa_*
 #include "sql_const.h"
 #include "sql_string.h"
 #include "strmake.h"
 #include "strxmov.h"
 #include "template_utils.h"
+#include "vector-common/vector_constants.h"  // get_dimensions
 
 #ifndef MYSQL_SERVER
 #include "client/mysqlbinlog.h"
@@ -2285,9 +2285,9 @@ void Rows_log_event::print_verbose(IO_CACHE *file,
   const enum_row_image_type row_image_type =
       get_general_type_code() == mysql::binlog::event::WRITE_ROWS_EVENT
           ? enum_row_image_type::WRITE_AI
-          : get_general_type_code() == mysql::binlog::event::DELETE_ROWS_EVENT
-                ? enum_row_image_type::DELETE_BI
-                : enum_row_image_type::UPDATE_BI;
+      : get_general_type_code() == mysql::binlog::event::DELETE_ROWS_EVENT
+          ? enum_row_image_type::DELETE_BI
+          : enum_row_image_type::UPDATE_BI;
 
   if (m_extra_row_info.have_ndb_info() ||
       DBUG_EVALUATE_IF("simulate_error_in_ndb_info_print", 1, 0)) {
@@ -2646,6 +2646,8 @@ Slave_worker *Log_event::get_slave_worker(Relay_log_info *rli) {
   char llbuff[22];
   Slave_committed_queue *gaq = rli->gaq;
   DBUG_TRACE;
+  bool is_after_metrics_breakpoint =
+      rli->get_applier_metrics().is_after_metrics_breakpoint();
 
   /* checking partitioning properties and perform corresponding actions */
 
@@ -2680,7 +2682,10 @@ Slave_worker *Log_event::get_slave_worker(Relay_log_info *rli) {
              !is_mts_db_partitioned(rli));
 
       if (is_s_event || is_any_gtid_event(this)) {
-        Slave_job_item job_item = {this, rli->get_event_start_pos(), {'\0'}};
+        Slave_job_item job_item = {this,
+                                   rli->get_event_start_pos(),
+                                   {'\0'},
+                                   is_after_metrics_breakpoint};
         if (rli->get_event_relay_log_name())
           strcpy(job_item.event_relay_log_name,
                  rli->get_event_relay_log_name());
@@ -2718,7 +2723,10 @@ Slave_worker *Log_event::get_slave_worker(Relay_log_info *rli) {
        TODO: Make GITD event as B-event that is starts_group() to
        return true.
       */
-      Slave_job_item job_item = {this, rli->get_event_relay_log_pos(), {'\0'}};
+      Slave_job_item job_item = {this,
+                                 rli->get_event_relay_log_pos(),
+                                 {'\0'},
+                                 is_after_metrics_breakpoint};
       if (rli->get_event_relay_log_name())
         strcpy(job_item.event_relay_log_name, rli->get_event_relay_log_name());
 
@@ -2748,7 +2756,10 @@ Slave_worker *Log_event::get_slave_worker(Relay_log_info *rli) {
         rli, &rli->workers, this);
     if (ret_worker == nullptr) {
       /* get_least_occupied_worker may return NULL if the thread is killed */
-      Slave_job_item job_item = {this, rli->get_event_start_pos(), {'\0'}};
+      Slave_job_item job_item = {this,
+                                 rli->get_event_start_pos(),
+                                 {'\0'},
+                                 is_after_metrics_breakpoint};
       if (rli->get_event_relay_log_name())
         strcpy(job_item.event_relay_log_name, rli->get_event_relay_log_name());
       rli->curr_group_da.push_back(job_item);
@@ -2901,7 +2912,10 @@ Slave_worker *Log_event::get_slave_worker(Relay_log_info *rli) {
         Their association with relay-log physical coordinates is provided
         by the same mechanism that applies to a regular event.
       */
-      Slave_job_item job_item = {this, rli->get_event_start_pos(), {'\0'}};
+      Slave_job_item job_item = {this,
+                                 rli->get_event_start_pos(),
+                                 {'\0'},
+                                 is_after_metrics_breakpoint};
       if (rli->get_event_relay_log_name())
         strcpy(job_item.event_relay_log_name, rli->get_event_relay_log_name());
       rli->curr_group_da.push_back(job_item);
@@ -3050,7 +3064,6 @@ Slave_worker *Log_event::get_slave_worker(Relay_log_info *rli) {
 
 int Log_event::apply_gtid_event(Relay_log_info *rli) {
   DBUG_TRACE;
-
   int error = 0;
   if (rli->curr_group_da.size() < 1) return 1;
 
@@ -3200,6 +3213,8 @@ int Log_event::apply_event(Relay_log_info *rli) {
               "execution.");
           return -1;
         }
+        rli->get_applier_metrics().check_metrics_breakpoint(
+            rli->get_group_relay_log_name());
         /*
           Given not in-group mark the event handler can invoke checkpoint
           update routine in the following course.
@@ -3778,7 +3793,6 @@ bool is_atomic_ddl(THD *thd, bool using_trans_arg) {
     case SQLCOM_ALTER_PROCEDURE:
     case SQLCOM_ALTER_EVENT:
     case SQLCOM_DROP_EVENT:
-    case SQLCOM_CREATE_VIEW:
     case SQLCOM_DROP_VIEW:
 
       assert(using_trans_arg || thd->slave_thread || lex->drop_if_exists);
@@ -3790,6 +3804,7 @@ bool is_atomic_ddl(THD *thd, bool using_trans_arg) {
     case SQLCOM_CREATE_SPFUNCTION:
     case SQLCOM_CREATE_FUNCTION:
     case SQLCOM_CREATE_TRIGGER:
+    case SQLCOM_CREATE_VIEW:
       /*
         trx cache is *not* used if object already exists and IF NOT EXISTS
         clause is used in the statement or if call is from the slave applier.
@@ -8582,7 +8597,8 @@ TABLE_OR_INDEX_SCAN:
 
 end:
   /* m_key_index is ready, set m_key_info now. */
-  m_key_info = m_table->key_info + m_key_index;
+  if (m_table->key_info != nullptr)
+    m_key_info = m_table->key_info + m_key_index;
   /*
     m_key_info will influence key comparison code in HASH_SCAN mode,
     so the m_distinct_keys set should still be empty.
@@ -14525,6 +14541,8 @@ bool Transaction_payload_log_event::apply_payload_event(
       static_cast<Query_log_event *>(ev)
           ->set_skip_temp_tables_handling_by_worker();
     res = ev->do_apply_event_worker(worker);
+
+    worker->increment_worker_metrics_for_event(*ev);
   } else {
     auto coord = const_cast<Relay_log_info *>(rli);
     ev->future_event_relay_log_pos = coord->get_future_event_relay_log_pos();
@@ -14734,6 +14752,8 @@ extract_log_event_basic_info(
   if (length < header_size) return std::make_pair(true, event_info);
 
   event_info.event_type = (Log_event_type)buf[EVENT_TYPE_OFFSET];
+  event_info.log_pos = uint4korr(buf + LOG_POS_OFFSET);
+  event_info.server_id = uint4korr(buf + SERVER_ID_OFFSET);
 
   if (mysql::binlog::event::QUERY_EVENT == event_info.event_type) {
     event_info.query_length =

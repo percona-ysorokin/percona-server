@@ -34,9 +34,9 @@
 #include "mysql/binlog/event/compression/none_comp.h"
 #include "mysql/binlog/event/compression/payload_event_buffer_istream.h"
 #include "mysql/binlog/event/compression/zstd_comp.h"
-#include "mysql/binlog/event/string/concat.h"
+#include "mysql/utils/concat.h"
 
-using mysql::binlog::event::string::concat;
+using mysql::utils::concat;
 
 namespace mysql::binlog::event::unittests {
 
@@ -75,10 +75,9 @@ class Cyclic_iterator {
 template <class Compressor_tp>
 class PayloadEventBufferStreamTest {
  public:
-  using Managed_buffer_t =
-      mysql::binlog::event::compression::buffer::Managed_buffer<>;
+  using Managed_buffer_t = mysql::containers::buffers::Managed_buffer<>;
   using Managed_Buffer_sequence_t =
-      mysql::binlog::event::compression::buffer::Managed_buffer_sequence<>;
+      mysql::containers::buffers::Managed_buffer_sequence<>;
   using Compressor_t = Compressor_tp;
   using Compress_status_t = mysql::binlog::event::compression::Compress_status;
   using Decompress_status_t =
@@ -88,7 +87,7 @@ class PayloadEventBufferStreamTest {
       mysql::binlog::event::compression::Payload_event_buffer_istream;
   using Buffer_ptr_t = Stream_t::Buffer_ptr_t;
   static constexpr auto type_code = Compressor_t::type_code;
-  using Memory_resource_t = mysql::binlog::event::resource::Memory_resource;
+  using Memory_resource_t = mysql::allocators::Memory_resource;
 
   // Change to true to get more debug info
   static constexpr bool m_trace = false;

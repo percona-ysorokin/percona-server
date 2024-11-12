@@ -354,6 +354,7 @@ SET(SQL_SHARED_SOURCES
   auth/role_tables.cc
   auth/sha2_password_common.cc
   auth/sha2_password.cc
+  ../vector-common/vector_conversion.cc
   ssl_wrapper_service.cc
   bootstrap.cc
   check_stack.cc
@@ -415,6 +416,7 @@ SET(SQL_SHARED_SOURCES
   join_optimizer/build_interesting_orders.cc
   join_optimizer/common_subexpression_elimination.cc
   join_optimizer/cost_model.cc
+  join_optimizer/derived_keys.cc
   join_optimizer/estimate_selectivity.cc
   join_optimizer/explain_access_path.cc
   join_optimizer/finalize_plan.cc
@@ -873,13 +875,6 @@ ADD_COMPILE_FLAGS(
   COMPILE_FLAGS -I${CMAKE_SOURCE_DIR}/extra/lz4 -I${BUNDLED_LZ4_PATH}
   )
 
-ADD_COMPILE_FLAGS(
-  iterators/composite_iterators.cc
-  iterators/hash_join_buffer.cc
-  COMPILE_FLAGS
-  -I${CMAKE_SOURCE_DIR}/extra/unordered_dense/unordered_dense-4.4.0/include
-  )
-
 # Fixes "C1128: number of sections exceeded object file format limit" in MSVC
 IF(WIN32)
   ADD_COMPILE_FLAGS(
@@ -989,6 +984,9 @@ ELSEIF(WITH_SHOW_PARSE_TREE_DEFAULT STREQUAL "default")
   TARGET_COMPILE_DEFINITIONS(sql_main PRIVATE
     $<$<CONFIG:Debug>:WITH_SHOW_PARSE_TREE=1>)
 ENDIF()
+
+TARGET_INCLUDE_DIRECTORIES(sql_main SYSTEM PUBLIC
+  ${CMAKE_SOURCE_DIR}/extra/unordered_dense/unordered_dense-4.4.0/include)
 
 TARGET_LINK_LIBRARIES(sql_main ${MYSQLD_STATIC_PLUGIN_LIBS}
   mysql_server_component_services mysys strings vio
@@ -1114,6 +1112,12 @@ SET (RPL_REPLICA_SRCS
   dynamic_ids.cc
   binlog/log_sanitizer.cc
   changestreams/apply/commit_order_queue.cc
+  changestreams/apply/metrics/applier_metrics_stub.cc
+  changestreams/apply/metrics/time_based_metric_stub.cc
+  changestreams/apply/metrics/dummy_worker_metrics.cc
+  changestreams/apply/metrics/applier_metrics.cc
+  changestreams/apply/metrics/time_based_metric.cc
+  changestreams/apply/metrics/mta_worker_metrics.cc
   changestreams/apply/replication_thread_status.cc
   rpl_applier_reader.cc
   rpl_async_conn_failover.cc
@@ -1230,7 +1234,12 @@ IF(WITH_LTO OR CMAKE_COMPILER_FLAG_WITH_LTO)
   # and several other boost files.
   MY_CHECK_CXX_COMPILER_WARNING("error=maybe-uninitialized" HAS_WARN_FLAG)
   IF(HAS_WARN_FLAG)
-    MY_TARGET_LINK_OPTIONS(mysqld "${HAS_WARN_FLAG}")
+    TARGET_LINK_OPTIONS(mysqld PRIVATE ${HAS_WARN_FLAG})
+  ENDIF()
+  # The linker claims that unmasked_server_id is uninitialized.
+  MY_CHECK_CXX_COMPILER_WARNING("error=uninitialized" HAS_WARN_FLAG)
+  IF(HAS_WARN_FLAG)
+    TARGET_LINK_OPTIONS(mysqld PRIVATE ${HAS_WARN_FLAG})
   ENDIF()
 ENDIF()
 

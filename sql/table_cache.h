@@ -123,6 +123,7 @@ class Table_cache {
   */
   uint m_table_count;
 
+<<<<<<< HEAD
   /**
     LRU-organized list containing all TABLE instances with fully-loaded
     triggers in this table cache which are not in use by any thread.
@@ -141,6 +142,28 @@ class Table_cache {
   */
   std::atomic<uint> m_table_triggers_count;
 
+||||||| merged common ancestors
+=======
+  /**
+    LRU-organized list containing all TABLE instances with fully-loaded
+    triggers in this table cache which are not in use by any thread.
+    Tail is LRU TABLE.
+  */
+  I_P_List<TABLE,
+           I_P_List_adapter<TABLE, &TABLE::triggers_lru_next,
+                            &TABLE::triggers_lru_prev>,
+           I_P_List_null_counter, I_P_List_fast_push_back<TABLE>>
+      m_unused_triggers_lru;
+
+  /**
+    Total number of TABLE instances in this table cache with fully-loaded
+    triggers (both in use and unused).
+
+    @sa notify_triggers_load() for rationale behind use of atomic here.
+  */
+  std::atomic<uint> m_table_triggers_count;
+
+>>>>>>> mysql-9.1.0
 #ifdef HAVE_PSI_INTERFACE
   static PSI_mutex_key m_lock_key;
   static PSI_mutex_info m_mutex_keys[];
@@ -182,6 +205,7 @@ class Table_cache {
 
   void free_all_unused_tables();
 
+<<<<<<< HEAD
   /**
     Notify the table cache that for one of its TABLE objects we have
     finalized loading and parsing triggers.
@@ -193,6 +217,20 @@ class Table_cache {
 
   uint loaded_triggers_tables() const { return m_table_triggers_count; }
 
+||||||| merged common ancestors
+=======
+  /**
+    Notify the table cache that we have finalized loading and parsing
+    triggers for one of its TABLE objects.
+
+    @note We use atomic to make it MT-safe without introducing overhead
+          from lock()/unlock() pair.
+  */
+  void notify_triggers_load() { m_table_triggers_count++; }
+
+  uint loaded_triggers_tables() const { return m_table_triggers_count; }
+
+>>>>>>> mysql-9.1.0
 #ifndef NDEBUG
   void print_tables();
 #endif
@@ -274,6 +312,7 @@ class Table_cache_element {
       TABLE_list;
 
   TABLE_list used_tables;
+<<<<<<< HEAD
   /**
     List of unused TABLE objects for tables without triggers or unused TABLE
     objects for which triggers were not fully-loaded, so they can only can be
@@ -282,6 +321,19 @@ class Table_cache_element {
   TABLE_list free_tables_slim;
   /** List of unused TABLE objects with fully-loaded triggers. */
   TABLE_list free_tables_full_triggers;
+||||||| merged common ancestors
+  TABLE_list free_tables;
+=======
+  /**
+    List of unused TABLE objects that do not have fully-loaded triggers;
+    either because there were no triggers, or because the triggers were
+    not previously loaded as they were not needed for read-only statements.
+    (This distinction is why our nomenclature is not just full <-> lazy.)
+  */
+  TABLE_list free_tables_slim;
+  /** List of unused TABLE objects with fully-loaded triggers. */
+  TABLE_list free_tables_full_triggers;
+>>>>>>> mysql-9.1.0
   TABLE_SHARE *share;
 
  public:
@@ -390,6 +442,7 @@ void Table_cache::free_unused_tables_if_necessary(THD *thd) {
       global_aggregated_stats.get_shard(thd->thread_id())
           .table_open_cache_overflows++;
     }
+<<<<<<< HEAD
     while (m_table_triggers_count > table_cache_triggers_per_instance &&
            !m_unused_triggers_lru.is_empty()) {
       TABLE *table_to_free = m_unused_triggers_lru.front();
@@ -397,6 +450,18 @@ void Table_cache::free_unused_tables_if_necessary(THD *thd) {
       intern_close_table(table_to_free);
       thd->status_var.table_open_cache_triggers_overflows++;
     }
+||||||| merged common ancestors
+=======
+    while (m_table_triggers_count > table_cache_triggers_per_instance &&
+           !m_unused_triggers_lru.is_empty()) {
+      TABLE *table_to_free = m_unused_triggers_lru.front();
+      remove_table(table_to_free);
+      intern_close_table(table_to_free);
+      thd->status_var.table_open_cache_triggers_overflows++;
+      DBUG_PRINT("info", ("table_open_cache_triggers_overflows: %llu",
+                          thd->status_var.table_open_cache_triggers_overflows));
+    }
+>>>>>>> mysql-9.1.0
     mysql_mutex_unlock(&LOCK_open);
   }
 }
@@ -504,10 +569,18 @@ void Table_cache::remove_table(TABLE *table) {
   @param      thd         Thread context.
   @param      key         Key identifying table.
   @param      key_length  Length of key for the table.
+<<<<<<< HEAD
   @param      is_update   Indicates whether statement is going to use
                           TABLE object for updating the table, so it
                           is better to obtain TABLE instance with
                           fully-loaded triggers.
+||||||| merged common ancestors
+=======
+  @param      is_update   Indicates whether statement is going to use
+                          TABLE object for updating the table; if so,
+                          it is better to obtain a TABLE instance with
+                          fully-loaded triggers.
+>>>>>>> mysql-9.1.0
   @param[out] share       NULL - if table cache doesn't contain any
                           information about the table (i.e. doesn't have
                           neither used nor unused TABLE objects for it).
@@ -544,13 +617,26 @@ TABLE *Table_cache::get_table(THD *thd, const char *key, size_t key_length,
   */
   if (!is_update) {
     /*
+<<<<<<< HEAD
       For read-only statements we prefer TABLE objects which don't have
       triggers fully-loaded. If successful this should leave unused TABLEs
       with fully-loaded triggers for read-write statements.
       If there are no TABLE instances sans fully-loaded triggers available
       we will resort to using one with them. It is still better than
       doing full-blown TABLE construction process.
+||||||| merged common ancestors
+      Unlink table from list of unused TABLE objects for this
+      table in this cache.
+=======
+      For read-only statements we prefer TABLE objects which don't have
+      triggers fully-loaded. If successful, this should leave unused TABLEs
+      with fully-loaded triggers for read-write statements.
+      If there are no TABLE instances without fully-loaded triggers available,
+      we will resort to using one that has them. That's still better than
+      doing full-blown TABLE construction process.
+>>>>>>> mysql-9.1.0
     */
+<<<<<<< HEAD
     table = el->free_tables_slim.pop_front();
     if (!table) table = el->free_tables_full_triggers.pop_front();
   } else {
@@ -565,6 +651,26 @@ TABLE *Table_cache::get_table(THD *thd, const char *key, size_t key_length,
 
   if (table) {
     assert(!table->in_use);
+||||||| merged common ancestors
+    el->free_tables.remove(table);
+=======
+    table = el->free_tables_slim.pop_front();
+    if (!table) table = el->free_tables_full_triggers.pop_front();
+  } else {
+    /*
+      For read-write statements try to get a TABLE object with fully-loaded
+      triggers.
+      If there is no such object, try to obtain a TABLE object without
+      fully-loaded triggers. (If necessary trigger loading will be finalized
+      later.)
+    */
+    table = el->free_tables_full_triggers.pop_front();
+    if (!table) table = el->free_tables_slim.pop_front();
+  }
+
+  if (table) {
+    assert(!table->in_use);
+>>>>>>> mysql-9.1.0
 
     /* Unlink table from unused tables list for this cache. */
     unlink_unused_table(table);

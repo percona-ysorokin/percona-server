@@ -397,6 +397,8 @@ MySQL clients support the protocol:
   @subpage PAGE_MYSQL_SERVER_METRICS_INSTRUMENT_SERVICE
   @subpage PAGE_MYSQL_SERVER_TELEMETRY_METRICS_SERVICE
   @subpage PAGE_MYSQL_GLOBAL_VARIABLE_ATTRIBUTES_SERVICE
+  @subpage PAGE_MYSQL_SERVER_TELEMETRY_LOGS_SERVICE
+  @subpage PAGE_MYSQL_SERVER_TELEMETRY_LOGS_CLIENT_SERVICE
 */
 
 
@@ -721,9 +723,9 @@ MySQL clients support the protocol:
 #include "mysql/components/services/bits/psi_bits.h"
 #include "mysql/components/services/log_builtins.h"
 #include "mysql/components/services/log_shared.h"
+#include "mysql/components/services/mysql_option_tracker.h"
 #include "mysql/components/services/mysql_runtime_error_service.h"
 #include "mysql/components/util/weak_service_reference.h"
-#include "mysql/components/services/mysql_option_tracker.h"
 #include "mysql/my_loglevel.h"
 #include "mysql/plugin.h"
 #include "mysql/plugin_audit.h"
@@ -830,8 +832,10 @@ MySQL clients support the protocol:
 #ifdef _WIN32
 #include "sql/restart_monitor_win.h"
 #endif
+#include <mysql/psi/mysql_telemetry_logs_client.h>  // mysql_log_client_register
 #include "my_openssl_fips.h"  // OPENSSL_ERROR_LENGTH, set_fips_mode
 #include "pfs_metric_provider.h"
+#include "pfs_telemetry_logs_client_provider.h"
 #include "sql/binlog/services/iterator/file_storage.h"
 #include "sql/rpl_async_conn_failover_configuration_propagation.h"
 #include "sql/rpl_event_ctx.h"  // Rpl_event_ctx
@@ -1267,6 +1271,7 @@ bool opt_show_replica_auth_info;
 bool opt_log_replica_updates = false;
 char *opt_replica_skip_errors;
 bool opt_replica_allow_batching = true;
+bool opt_collect_replica_applier_metrics = false;
 
 /*
   Legacy global handlerton. These will be removed (please do not add more).
@@ -1411,7 +1416,11 @@ ulong locked_account_connection_count = 0;
 
 ulonglong denied_connections = 0;
 ulonglong global_conn_mem_limit = 0;
+ulonglong global_conn_memory_status_limit = 0;
 ulonglong global_conn_mem_counter = 0;
+std::atomic<long> atomic_count_hit_query_past_global_conn_mem_status_limit{0};
+ulonglong conn_memory_status_limit = 0;
+std::atomic<long> atomic_count_hit_query_past_conn_mem_status_limit{0};
 
 /**
   This variable holds handle to the object that's responsible
@@ -1543,7 +1552,6 @@ ulonglong tf_sequence_table_max_upper_bound = 0;
 /** name of reference on left expression in rewritten IN subquery */
 const char *in_left_expr_name = "<left expr>";
 
-my_decimal decimal_zero;
 /** Number of connection errors from internal server errors. */
 ulong connection_errors_internal = 0;
 /** Number of errors when reading the peer address. */
@@ -1738,6 +1746,7 @@ static int remaining_argc;
 static char **remaining_argv;
 
 void unregister_server_metric_sources();
+void unregister_server_telemetry_loggers();
 
 /**
  Holds the "original" (i.e. as on startup) set of arguments.
@@ -2154,7 +2163,8 @@ static void server_component_init() {
       srv_registry, srv_registry_registration,
       [&](SERVICE_TYPE(mysql_option_tracker_option) * opt) {
         return 0 != opt->define("MySQL Server", "mysql_server", 1);
-      });
+      },
+      false);
 }
 
 /**
@@ -2786,6 +2796,7 @@ static void clean_up(bool print_message) {
 
   unregister_pfs_metric_sources();
   unregister_server_metric_sources();
+  unregister_server_telemetry_loggers();
 
   authentication_policy::deinit();
   denit_command_maps();
@@ -5092,8 +5103,8 @@ constexpr bool CanTypeFitValue(const U value) {
 template <typename T, typename U>
 T Clamp(U x) {
   return CanTypeFitValue<T>(x) ? T(x)
-                               : x < 0 ? std::numeric_limits<T>::min()
-                                       : std::numeric_limits<T>::max();
+         : x < 0               ? std::numeric_limits<T>::min()
+                               : std::numeric_limits<T>::max();
 }
 
 // simple (no measurement attributes supported) metric callback
@@ -5183,6 +5194,28 @@ static void get_metric_global_mem_counter(
   assert(delivery != nullptr);
   MUTEX_LOCK(lock, &LOCK_global_conn_mem_limit);
   const auto measurement = global_conn_mem_counter;
+  const int64_t value = Clamp<int64_t>(measurement);
+  delivery->value_int64(delivery_context, value);
+}
+
+static void get_count_hit_query_past_global_conn_mem_status_limit(
+    void * /* measurement_context */, measurement_delivery_callback_t delivery,
+    void *delivery_context) {
+  // see show_count_hit_query_past_global_conn_mem_status_limit()
+  assert(delivery != nullptr);
+  const auto measurement =
+      atomic_count_hit_query_past_global_conn_mem_status_limit.load();
+  const int64_t value = Clamp<int64_t>(measurement);
+  delivery->value_int64(delivery_context, value);
+}
+
+static void get_count_hit_query_past_conn_mem_status_limit(
+    void * /* measurement_context */, measurement_delivery_callback_t delivery,
+    void *delivery_context) {
+  // see show_count_hit_query_past_conn_mem_status_limit()
+  assert(delivery != nullptr);
+  const auto measurement =
+      atomic_count_hit_query_past_conn_mem_status_limit.load();
   const int64_t value = Clamp<int64_t>(measurement);
   delivery->value_int64(delivery_context, value);
 }
@@ -6213,6 +6246,22 @@ static PSI_metric_info_v1 core_metrics[] = {
      MetricOTELType::ASYNC_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
      get_metric_aggregated_integer,
      (void *)offsetof(aggregated_stats_buffer, created_tmp_tables)},
+    {"count.hit_tmp_table_size", "",
+     "The number of times temp table size exceeded the tmp table size limit"
+     "while executing statements (Count_hit_tmp_table_size)",
+     MetricOTELType::ASYNC_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
+     get_metric_aggregated_integer,
+     (void *)offsetof(aggregated_stats_buffer, count_hit_tmp_table_size)},
+    {"count_hit_query_past_connection_memory_status_limit", "",
+     "The number of time connection memory usage crossed the threshold limit"
+     "(Count_hit_query_past_connection_memory_status_limit)",
+     MetricOTELType::ASYNC_GAUGE_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
+     get_count_hit_query_past_conn_mem_status_limit, nullptr},
+    {"count_hit_query_past_global_connection_memory_status_limit", "",
+     "The number of time global memory usage crossed the threshold limit"
+     "(Count_hit_query_past_global_connection_memory_status_limit)",
+     MetricOTELType::ASYNC_GAUGE_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
+     get_count_hit_query_past_global_conn_mem_status_limit, nullptr},
     {"error_log.buffered_bytes", "",
      "The number of bytes currently used in the Performance Schema error_log "
      "table (Error_log_buffered_bytes)",
@@ -6268,8 +6317,8 @@ static PSI_metric_info_v1 core_metrics[] = {
      "The maximum number of connections that have been in use simultaneously "
      "since the server started (Max_used_connections)",
      MetricOTELType::ASYNC_GAUGE_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
-     get_metric_simple_integer<decltype(
-         Connection_handler_manager::max_used_connections)>,
+     get_metric_simple_integer<
+         decltype(Connection_handler_manager::max_used_connections)>,
      &Connection_handler_manager::max_used_connections},
     {"open_files", "",
      "The number of files that are open. This count includes regular files "
@@ -6366,8 +6415,8 @@ static PSI_metric_info_v1 core_metrics[] = {
      "The number of threads that have taken more than slow_launch_time seconds "
      "to create (Slow_launch_threads)",
      MetricOTELType::ASYNC_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
-     get_metric_simple_integer<decltype(
-         Per_thread_connection_handler::slow_launch_threads)>,
+     get_metric_simple_integer<
+         decltype(Per_thread_connection_handler::slow_launch_threads)>,
      &Per_thread_connection_handler::slow_launch_threads},
     {"slow_queries", "",
      "The number of queries that have taken more than long_query_time seconds "
@@ -6614,8 +6663,8 @@ static PSI_metric_info_v1 myisam_metrics[] = {
      "The number of requests to read a key block from the MyISAM key cache "
      "(Key_read_requests)",
      MetricOTELType::ASYNC_GAUGE_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
-     get_metric_simple_integer<decltype(
-         dflt_key_cache->global_cache_r_requests)>,
+     get_metric_simple_integer<
+         decltype(dflt_key_cache->global_cache_r_requests)>,
      &dflt_key_cache->global_cache_r_requests},
     {"key_reads", "",
      "The number of physical reads of a key block from disk into the MyISAM "
@@ -6627,8 +6676,8 @@ static PSI_metric_info_v1 myisam_metrics[] = {
      "The number of requests to write a key block to the MyISAM key cache "
      "(Key_write_requests)",
      MetricOTELType::ASYNC_COUNTER, MetricNumType::METRIC_INTEGER, 0, 0,
-     get_metric_simple_integer<decltype(
-         dflt_key_cache->global_cache_w_requests)>,
+     get_metric_simple_integer<
+         decltype(dflt_key_cache->global_cache_w_requests)>,
      &dflt_key_cache->global_cache_w_requests},
     {"key_writes", "",
      "The number of physical writes of a key block from the MyISAM key cache "
@@ -6718,13 +6767,25 @@ void unregister_server_metric_sources() {
   mysql_meter_unregister(core_meters, std::size(core_meters));
 }
 
+PSI_logger_key key_error_logger = 0;
+
+static PSI_logger_info_v1 err_loggers[] = {
+    {"error_log", "MySQL error logger", 0, &key_error_logger}};
+
+void register_server_telemetry_loggers() {
+  mysql_log_client_register(err_loggers, std::size(err_loggers), "error");
+}
+
+void unregister_server_telemetry_loggers() {
+  mysql_log_client_unregister(err_loggers, std::size(err_loggers));
+}
+
 int init_common_variables() {
 #if defined(HAVE_BUILD_ID_SUPPORT)
   my_find_build_id(server_build_id);
 #endif
 
-  my_decimal_set_zero(&decimal_zero);  // set decimal_zero constant;
-  tzset();                             // Set tzname
+  tzset();  // Set tzname
 
   max_system_variables.pseudo_thread_id = (my_thread_id)~0;
   server_start_time = flush_status_time = time(nullptr);
@@ -9332,7 +9393,7 @@ int mysqld_main(int argc, char **argv)
   {
     LogErr(ERROR_LEVEL, ER_MYINIT_FAILED);
     flush_error_log_messages();
-    return 1;
+    return MYSQLD_ABORT_EXIT;
   }
 #endif /* _WIN32 */
 
@@ -9343,7 +9404,7 @@ int mysqld_main(int argc, char **argv)
   if (load_defaults(MYSQL_CONFIG_NAME, load_default_groups, &argc, &argv,
                     &argv_alloc)) {
     flush_error_log_messages();
-    return 1;
+    return MYSQLD_ABORT_EXIT;
   }
 
   argc_cached = argc;
@@ -9384,7 +9445,7 @@ int mysqld_main(int argc, char **argv)
       persisted_variables_cache.append_parse_early_variables(
           &argc, &argv, arg_separator_added)) {
     flush_error_log_messages();
-    return 1;
+    return MYSQLD_ABORT_EXIT;
   }
 
   remaining_argc = argc;
@@ -9399,6 +9460,8 @@ int mysqld_main(int argc, char **argv)
     Initialize the array of performance schema instrument configurations.
   */
   init_pfs_instrument_array();
+  init_pfs_meter_array();
+  init_pfs_logger_array();
 #endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
 
   /* init_error_log() is required by error_log_printf() in
@@ -9445,7 +9508,7 @@ int mysqld_main(int argc, char **argv)
           &psi_mdl_hook, &psi_idle_hook, &psi_stage_hook, &psi_statement_hook,
           &psi_transaction_hook, &psi_memory_hook, &psi_error_hook,
           &psi_data_lock_hook, &psi_system_hook, &psi_tls_channel_hook,
-          &psi_metric_hook);
+          &psi_metric_hook, &psi_logs_client_hook);
       if ((pfs_rc != 0) && pfs_param.m_enabled) {
         pfs_param.m_enabled = false;
         LogErr(WARNING_LEVEL, ER_PERFSCHEMA_INIT_FAILED);
@@ -9616,6 +9679,14 @@ int mysqld_main(int argc, char **argv)
     }
   }
 
+  if (psi_logs_client_hook != nullptr) {
+    service =
+        psi_logs_client_hook->get_interface(PSI_CURRENT_LOGGER_CLIENT_VERSION);
+    if (service != nullptr) {
+      set_psi_logs_client_service(service);
+    }
+  }
+
   /*
     Now that we have parsed the command line arguments, and have initialized
     the performance schema itself, the next step is to register all the
@@ -9647,7 +9718,7 @@ int mysqld_main(int argc, char **argv)
   */
   if (component_infrastructure_init()) {
     flush_error_log_messages();
-    return 1;
+    return MYSQLD_ABORT_EXIT;
   }
 
   {
@@ -9658,12 +9729,12 @@ int mysqld_main(int argc, char **argv)
 
     if (keyring_helper->valid() == false) {
       flush_error_log_messages();
-      return 1;
+      return MYSQLD_ABORT_EXIT;
     }
 
     if (initialize_manifest_file_components()) {
       flush_error_log_messages();
-      return 1;
+      return MYSQLD_ABORT_EXIT;
     }
 
     /*
@@ -9682,7 +9753,7 @@ int mysqld_main(int argc, char **argv)
   if (persisted_variables_cache.append_read_only_variables(
           &remaining_argc, &remaining_argv, arg_separator_added, false)) {
     flush_error_log_messages();
-    return 1;
+    return MYSQLD_ABORT_EXIT;
   }
   my_getopt_use_args_separator = false;
 
@@ -10249,13 +10320,13 @@ int mysqld_main(int argc, char **argv)
   if (authentication_policy::init(opt_authentication_policy)) {
     /* --authentication_policy is set to invalid value */
     LogErr(ERROR_LEVEL, ER_INVALID_AUTHENTICATION_POLICY);
-    return 1;
+    unireg_abort(MYSQLD_ABORT_EXIT);
   }
   /* set all persistent options */
   if (persisted_variables_cache.set_persisted_options(false)) {
     LogErr(ERROR_LEVEL, ER_CANT_SET_UP_PERSISTED_VALUES);
     flush_error_log_messages();
-    return 1;
+    unireg_abort(MYSQLD_ABORT_EXIT);
   }
 
   /*
@@ -10333,6 +10404,8 @@ int mysqld_main(int argc, char **argv)
   register_server_metric_sources();
   register_pfs_metric_sources();
 
+  register_server_telemetry_loggers();
+
   DBUG_PRINT("info", ("Block, listening for incoming connections"));
 
   (void)MYSQL_SET_STAGE(0, __FILE__, __LINE__);
@@ -10379,6 +10452,8 @@ int mysqld_main(int argc, char **argv)
   */
   unregister_pfs_metric_sources();
   unregister_server_metric_sources();
+
+  unregister_server_telemetry_loggers();
 
   mysql_event_tracking_shutdown_notify(
       AUDIT_EVENT(EVENT_TRACKING_SHUTDOWN_SHUTDOWN),
@@ -11653,6 +11728,25 @@ static int show_global_mem_counter(THD *, SHOW_VAR *var, char *buff) {
   return 0;
 }
 
+static int show_count_hit_query_past_global_conn_mem_status_limit(THD *,
+                                                                  SHOW_VAR *var,
+                                                                  char *buf) {
+  var->type = SHOW_LONG;
+  var->value = buf;
+  *((long *)buf) =
+      (long)(atomic_count_hit_query_past_global_conn_mem_status_limit.load());
+  return 0;
+}
+
+static int show_count_hit_query_past_conn_mem_status_limit(THD *, SHOW_VAR *var,
+                                                           char *buf) {
+  var->type = SHOW_LONG;
+  var->value = buf;
+  *((long *)buf) =
+      (long)(atomic_count_hit_query_past_conn_mem_status_limit.load());
+  return 0;
+}
+
 static int show_table_definitions(THD *, SHOW_VAR *var, char *buff) {
   var->type = SHOW_LONG;
   var->value = buff;
@@ -11850,6 +11944,18 @@ static int show_resource_group_support(THD *, SHOW_VAR *var, char *buf) {
   return 0;
 }
 
+static int show_telemetry_logs_support(THD * /*unused*/, SHOW_VAR *var,
+                                       char *buf) {
+  var->type = SHOW_BOOL;
+  var->value = buf;
+#ifdef HAVE_PSI_SERVER_TELEMETRY_LOGS_INTERFACE
+  *(pointer_cast<bool *>(buf)) = true;
+#else
+  *(pointer_cast<bool *>(buf)) = false;
+#endif /* HAVE_PSI_SERVER_TELEMETRY_LOGS_INTERFACE */
+  return 0;
+}
+
 static int show_telemetry_metrics_support(THD * /*unused*/, SHOW_VAR *var,
                                           char *buf) {
   var->type = SHOW_BOOL;
@@ -11971,6 +12077,12 @@ SHOW_VAR status_vars[] = {
      SHOW_FUNC, SHOW_SCOPE_GLOBAL},
     {"Connection_errors_tcpwrap", (char *)&show_connection_errors_tcpwrap,
      SHOW_FUNC, SHOW_SCOPE_GLOBAL},
+    {"Count_hit_query_past_connection_memory_status_limit",
+     (char *)&show_count_hit_query_past_conn_mem_status_limit, SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
+    {"Count_hit_query_past_global_connection_memory_status_limit",
+     (char *)&show_count_hit_query_past_global_conn_mem_status_limit, SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
     {"Created_tmp_disk_tables",
      (char *)offsetof(System_status_var, created_tmp_disk_tables),
      SHOW_LONGLONG_STATUS, SHOW_SCOPE_ALL},
@@ -11978,6 +12090,9 @@ SHOW_VAR status_vars[] = {
      SHOW_SCOPE_GLOBAL},
     {"Created_tmp_tables",
      (char *)offsetof(System_status_var, created_tmp_tables),
+     SHOW_LONGLONG_STATUS, SHOW_SCOPE_ALL},
+    {"Count_hit_tmp_table_size",
+     (char *)offsetof(System_status_var, count_hit_tmp_table_size),
      SHOW_LONGLONG_STATUS, SHOW_SCOPE_ALL},
     {"Delayed_errors", (char *)&delayed_insert_errors, SHOW_LONG,
      SHOW_SCOPE_GLOBAL},
@@ -12292,6 +12407,8 @@ SHOW_VAR status_vars[] = {
     {"Tls_library_version", (char *)&show_tls_library_version, SHOW_FUNC,
      SHOW_SCOPE_GLOBAL},
     {"Resource_group_supported", (char *)show_resource_group_support, SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
+    {"Telemetry_logs_supported", (char *)show_telemetry_logs_support, SHOW_FUNC,
      SHOW_SCOPE_GLOBAL},
     {"Telemetry_metrics_supported", (char *)show_telemetry_metrics_support,
      SHOW_FUNC, SHOW_SCOPE_GLOBAL},
@@ -12635,6 +12752,313 @@ static int parse_replicate_rewrite_db(char **key, char **val, char *argument) {
   }
 
   return 0;
+}
+
+/**
+  Extract instrument name and value from argument
+  and (on success) store it to the instrument configuration array.
+
+  @param argument The configuration value to parse.
+
+  @retval
+    0    OK
+  @retval
+    1    Error
+*/
+static bool process_opt_pfs_instrument(char *argument) {
+#ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
+  /*
+    Parse instrument name and value from argument string. Handle leading
+    and trailing spaces. Also handle single quotes.
+
+    Acceptable:
+      performance_schema_instrument = ' foo/%/bar/  =  ON  '
+      performance_schema_instrument = '%=OFF'
+    Not acceptable:
+      performance_schema_instrument = '' foo/%/bar = ON ''
+      performance_schema_instrument = '%='OFF''
+  */
+  char *name = argument, *p = nullptr, *val = nullptr;
+  bool quote = false; /* true if quote detected */
+  bool error = true;  /* false if no errors detected */
+  const int PFS_BUFFER_SIZE = 128;
+  char orig_argument[PFS_BUFFER_SIZE + 1];
+  orig_argument[0] = 0;
+
+  if (!argument) goto pfs_error;
+
+  /* Save original argument string for error reporting */
+  strncpy(orig_argument, argument, PFS_BUFFER_SIZE);
+
+  /* Split instrument name and value at the equal sign */
+  if (!(p = strchr(argument, '='))) goto pfs_error;
+
+  /* Get option value */
+  val = p + 1;
+  if (!*val) goto pfs_error;
+
+  /* Trim leading spaces and quote from the instrument name */
+  while (*name && (my_isspace(mysqld_charset, *name) || (*name == '\''))) {
+    /* One quote allowed */
+    if (*name == '\'') {
+      if (!quote)
+        quote = true;
+      else
+        goto pfs_error;
+    }
+    name++;
+  }
+
+  /* Trim trailing spaces from instrument name */
+  while ((p > name) && my_isspace(mysqld_charset, p[-1])) p--;
+  *p = 0;
+
+  /* Remove trailing slash from instrument name */
+  if (p > name && (p[-1] == '/')) p[-1] = 0;
+
+  if (!*name) goto pfs_error;
+
+  /* Trim leading spaces from option value */
+  while (*val && my_isspace(mysqld_charset, *val)) val++;
+
+  /* Trim trailing spaces and matching quote from value */
+  p = val + strlen(val);
+  while (p > val && (my_isspace(mysqld_charset, p[-1]) || p[-1] == '\'')) {
+    /* One matching quote allowed */
+    if (p[-1] == '\'') {
+      if (quote)
+        quote = false;
+      else
+        goto pfs_error;
+    }
+    p--;
+  }
+
+  *p = 0;
+
+  if (!*val) goto pfs_error;
+
+  /* Add instrument name and value to array of configuration options */
+  if (add_pfs_instr_to_array(name, val)) goto pfs_error;
+
+  error = false;
+
+pfs_error:
+  if (error) {
+    LogErr(WARNING_LEVEL, ER_INVALID_INSTRUMENT, orig_argument);
+    return true;
+  }
+
+  // success
+  return false;
+#else
+  // success (ignored)
+  return false;
+#endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
+}
+
+/**
+  Extract telemetry meter name and attribute values from argument
+  and (on success) store it to the meter configuration array.
+  @param argument The configuration value to parse.
+  @retval
+    0    OK
+  @retval
+    1    Error
+*/
+static bool process_opt_pfs_meter(char *argument) {
+#ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
+  /*
+    Parse instrument name and value from argument string. Handle leading
+    and trailing spaces. Also handle single quotes.
+
+    Acceptable:
+      performance_schema_meter = ' foo/%/bar/  = enabled:ON,frequency:30  '
+      performance_schema_meter = '%=enabled:OFF'
+    Not acceptable:
+      performance_schema_meter = '' foo/%/bar = enabled:ON ''
+      performance_schema_meter = '%='enabled:OFF''
+  */
+  char *name = argument, *p = nullptr, *val = nullptr;
+  bool quote = false; /* true if quote detected */
+  bool error = true;  /* false if no errors detected */
+  const int PFS_BUFFER_SIZE = 128;
+  char orig_argument[PFS_BUFFER_SIZE + 1];
+  orig_argument[0] = 0;
+
+  if (!argument) goto pfs_error_meter;
+
+  /* Save original argument string for error reporting */
+  strncpy(orig_argument, argument, PFS_BUFFER_SIZE);
+
+  /* Split instrument name and value at the equal sign */
+  if (!(p = strchr(argument, '='))) goto pfs_error_meter;
+
+  /* Get option value */
+  val = p + 1;
+  if (!*val) goto pfs_error_meter;
+
+  /* Trim leading spaces and quote from the instrument name */
+  while (*name && (my_isspace(mysqld_charset, *name) || (*name == '\''))) {
+    /* One quote allowed */
+    if (*name == '\'') {
+      if (!quote)
+        quote = true;
+      else
+        goto pfs_error_meter;
+    }
+    name++;
+  }
+
+  /* Trim trailing spaces from instrument name */
+  while ((p > name) && my_isspace(mysqld_charset, p[-1])) p--;
+  *p = 0;
+
+  /* Remove trailing slash from instrument name */
+  if (p > name && (p[-1] == '/')) p[-1] = 0;
+
+  if (!*name) goto pfs_error_meter;
+
+  /* Trim leading spaces from option value */
+  while (*val && my_isspace(mysqld_charset, *val)) val++;
+
+  /* Trim trailing spaces and matching quote from value */
+  p = val + strlen(val);
+  while (p > val && (my_isspace(mysqld_charset, p[-1]) || p[-1] == '\'')) {
+    /* One matching quote allowed */
+    if (p[-1] == '\'') {
+      if (quote)
+        quote = false;
+      else
+        goto pfs_error_meter;
+    }
+    p--;
+  }
+
+  *p = 0;
+
+  if (!*val) goto pfs_error_meter;
+
+  /* Add instrument name and value to array of configuration options */
+  if (add_pfs_meter_to_array(name, val)) goto pfs_error_meter;
+
+  error = false;
+
+pfs_error_meter:
+  if (error) {
+    LogErr(WARNING_LEVEL, ER_INVALID_METER, orig_argument);
+    return true;
+  }
+
+  // success
+  return false;
+#else
+  // success (ignored)
+  return false;
+#endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
+}
+
+/**
+  Extract logger name and level value from argument
+  and (on success) store it to the logger configuration array.
+
+  @param argument The configuration value to parse.
+
+  @retval
+    0    OK
+  @retval
+    1    Error
+*/
+static bool process_opt_pfs_logger(char *argument) {
+#ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
+  /*
+    Parse instrument name and value from argument string. Handle leading
+    and trailing spaces. Also handle single quotes.
+
+    Acceptable:
+      performance_schema_logger = ' foo/%/bar/  =  level:INFO  '
+      performance_schema_logger = '%=level:NONE'
+    Not acceptable:
+      performance_schema_logger = '' foo/%/bar = level:INFO ''
+      performance_schema_logger = '%='level:ERROR''
+  */
+  char *name = argument, *p = nullptr, *val = nullptr;
+  bool quote = false; /* true if quote detected */
+  bool error = true;  /* false if no errors detected */
+  const int PFS_BUFFER_SIZE = 128;
+  char orig_argument[PFS_BUFFER_SIZE + 1];
+  orig_argument[0] = 0;
+
+  if (!argument) goto pfs_error_logger;
+
+  /* Save original argument string for error reporting */
+  strncpy(orig_argument, argument, PFS_BUFFER_SIZE);
+
+  /* Split instrument name and value at the equal sign */
+  if (!(p = strchr(argument, '='))) goto pfs_error_logger;
+
+  /* Get option value */
+  val = p + 1;
+  if (!*val) goto pfs_error_logger;
+
+  /* Trim leading spaces and quote from the instrument name */
+  while (*name && (my_isspace(mysqld_charset, *name) || (*name == '\''))) {
+    /* One quote allowed */
+    if (*name == '\'') {
+      if (!quote)
+        quote = true;
+      else
+        goto pfs_error_logger;
+    }
+    name++;
+  }
+
+  /* Trim trailing spaces from instrument name */
+  while ((p > name) && my_isspace(mysqld_charset, p[-1])) p--;
+  *p = 0;
+
+  /* Remove trailing slash from instrument name */
+  if (p > name && (p[-1] == '/')) p[-1] = 0;
+
+  if (!*name) goto pfs_error_logger;
+
+  /* Trim leading spaces from option value */
+  while (*val && my_isspace(mysqld_charset, *val)) val++;
+
+  /* Trim trailing spaces and matching quote from value */
+  p = val + strlen(val);
+  while (p > val && (my_isspace(mysqld_charset, p[-1]) || p[-1] == '\'')) {
+    /* One matching quote allowed */
+    if (p[-1] == '\'') {
+      if (quote)
+        quote = false;
+      else
+        goto pfs_error_logger;
+    }
+    p--;
+  }
+
+  *p = 0;
+
+  if (!*val) goto pfs_error_logger;
+
+  /* Add instrument name and values to array of configuration options */
+  if (add_pfs_logger_to_array(name, val)) goto pfs_error_logger;
+
+  error = false;
+
+pfs_error_logger:
+  if (error) {
+    LogErr(WARNING_LEVEL, ER_INVALID_LOGGER, orig_argument);
+    return true;
+  }
+
+  // success
+  return false;
+#else
+  // success (ignore)
+  return false;
+#endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
 }
 
 bool mysqld_get_one_option(int optid,
@@ -13018,92 +13442,15 @@ bool mysqld_get_one_option(int optid,
     case OPT_PLUGIN_LOAD_ADD:
       opt_plugin_load_list_ptr->push_back(new i_string(argument));
       break;
-    case OPT_PFS_INSTRUMENT: {
-#ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
-      /*
-        Parse instrument name and value from argument string. Handle leading
-        and trailing spaces. Also handle single quotes.
-
-        Acceptable:
-          performance_schema_instrument = ' foo/%/bar/  =  ON  '
-          performance_schema_instrument = '%=OFF'
-        Not acceptable:
-          performance_schema_instrument = '' foo/%/bar = ON ''
-          performance_schema_instrument = '%='OFF''
-      */
-      char *name = argument, *p = nullptr, *val = nullptr;
-      bool quote = false; /* true if quote detected */
-      bool error = true;  /* false if no errors detected */
-      const int PFS_BUFFER_SIZE = 128;
-      char orig_argument[PFS_BUFFER_SIZE + 1];
-      orig_argument[0] = 0;
-
-      if (!argument) goto pfs_error;
-
-      /* Save original argument string for error reporting */
-      strncpy(orig_argument, argument, PFS_BUFFER_SIZE);
-
-      /* Split instrument name and value at the equal sign */
-      if (!(p = strchr(argument, '='))) goto pfs_error;
-
-      /* Get option value */
-      val = p + 1;
-      if (!*val) goto pfs_error;
-
-      /* Trim leading spaces and quote from the instrument name */
-      while (*name && (my_isspace(mysqld_charset, *name) || (*name == '\''))) {
-        /* One quote allowed */
-        if (*name == '\'') {
-          if (!quote)
-            quote = true;
-          else
-            goto pfs_error;
-        }
-        name++;
-      }
-
-      /* Trim trailing spaces from instrument name */
-      while ((p > name) && my_isspace(mysqld_charset, p[-1])) p--;
-      *p = 0;
-
-      /* Remove trailing slash from instrument name */
-      if (p > name && (p[-1] == '/')) p[-1] = 0;
-
-      if (!*name) goto pfs_error;
-
-      /* Trim leading spaces from option value */
-      while (*val && my_isspace(mysqld_charset, *val)) val++;
-
-      /* Trim trailing spaces and matching quote from value */
-      p = val + strlen(val);
-      while (p > val && (my_isspace(mysqld_charset, p[-1]) || p[-1] == '\'')) {
-        /* One matching quote allowed */
-        if (p[-1] == '\'') {
-          if (quote)
-            quote = false;
-          else
-            goto pfs_error;
-        }
-        p--;
-      }
-
-      *p = 0;
-
-      if (!*val) goto pfs_error;
-
-      /* Add instrument name and value to array of configuration options */
-      if (add_pfs_instr_to_array(name, val)) goto pfs_error;
-
-      error = false;
-
-    pfs_error:
-      if (error) {
-        LogErr(WARNING_LEVEL, ER_INVALID_INSTRUMENT, orig_argument);
-        return false;
-      }
-#endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
+    case OPT_PFS_INSTRUMENT:
+      if (process_opt_pfs_instrument(argument)) return false;
       break;
-    }
+    case OPT_PFS_METER:
+      if (process_opt_pfs_meter(argument)) return false;
+      break;
+    case OPT_PFS_LOGGER:
+      if (process_opt_pfs_logger(argument)) return false;
+      break;
     case OPT_THREAD_CACHE_SIZE:
       thread_cache_size_specified = true;
       break;
@@ -14204,8 +14551,8 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_monitor_info_run_lock, "Source_IO_monitor::run_lock", 0, 0, PSI_DOCUMENT_ME},
   { &key_LOCK_delegate_connection_mutex, "LOCK_delegate_connection_mutex", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_LOCK_group_replication_connection_mutex, "LOCK_group_replication_connection_mutex", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
-{ &key_LOCK_authentication_policy, "LOCK_authentication_policy", PSI_FLAG_SINGLETON, 0, "A lock to ensure execution of CREATE USER or ALTER USER sql and SET @@global.authentication_policy variable are serialized"},
-  { &key_LOCK_global_conn_mem_limit, "LOCK_global_conn_mem_limit", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME}
+  { &key_LOCK_authentication_policy, "LOCK_authentication_policy", PSI_FLAG_SINGLETON, 0, "A lock to ensure execution of CREATE USER or ALTER USER sql and SET @@global.authentication_policy variable are serialized"},
+  { &key_LOCK_global_conn_mem_limit, "LOCK_global_conn_mem_limit", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
 };
 /* clang-format on */
 

@@ -61,6 +61,11 @@ void bulk_load_enable_slow_io_debug() { g_slow_io_debug = true; }
 void bulk_load_disable_slow_io_debug() { g_slow_io_debug = false; }
 #endif /* UNIV_DEBUG */
 
+#ifndef UNIV_PFS_THREAD
+#define bulk_flusher_thread_key PFS_NOT_INSTRUMENTED
+#define bulk_alloc_thread_key PFS_NOT_INSTRUMENTED
+#endif
+
 void Bulk_flusher::start(space_id_t space_id, size_t flusher_number,
                          size_t queue_size) {
   m_space_id = space_id;
@@ -959,7 +964,12 @@ dberr_t Page_load::init_mem_blob(const page_no_t page_no,
   ut_ad(page_no < page_extent->m_range.second);
   ut_ad(m_heap == nullptr);
 
+<<<<<<< HEAD
 #ifndef NDEBUG
+||||||| merged common ancestors
+=======
+#ifdef UNIV_DEBUG
+>>>>>>> mysql-9.1.0
   auto guard = create_scope_guard([this, page_no]() {
     ut_ad(m_block != nullptr);
     ut_ad(m_mtr == nullptr);
@@ -968,7 +978,12 @@ dberr_t Page_load::init_mem_blob(const page_no_t page_no,
     ut_ad(m_page_no != FIL_NULL);
     ut_ad(m_page_no == page_no);
   });
+<<<<<<< HEAD
 #endif
+||||||| merged common ancestors
+=======
+#endif /* UNIV_DEBUG */
+>>>>>>> mysql-9.1.0
 
   m_page_extent = page_extent;
   m_page_no = page_no;
@@ -1781,8 +1796,6 @@ dberr_t Btree_load::insert(dtuple_t *tuple, size_t level) noexcept {
     }
 
     auto page_loader = lvl_ctx->get_page_load();
-
-    DEBUG_SYNC_C("bulk_load_insert");
 
     m_level_ctxs.push_back(lvl_ctx);
     ut_a(level + 1 == m_level_ctxs.size());
@@ -3134,7 +3147,7 @@ dberr_t Btree_load::Merger::add_root_for_subtrees(const size_t highest_level) {
   root_load.finish();
 
   mtr.commit();
-  guard.commit();
+  guard.release();
   root_load.commit();
   return err;
 }
@@ -3693,14 +3706,20 @@ inline Page_load *Blob_handle::alloc_first_page() {
   return m_first_page_load;
 }
 
+Blob_inserter::Blob_inserter(Btree_load &btree_load)
+    : m_btree_load(btree_load),
+      m_blob_handle(
+          ut::make_unique<Blob_handle>(UT_NEW_THIS_FILE_PSI_KEY, *this))
+
+{}
+
 dberr_t Blob_inserter::init() {
   dberr_t err =
       m_page_load_cache.init(64, 64, m_btree_load.m_index, &m_btree_load);
   if (err != DB_SUCCESS) {
     return err;
   }
-  err = m_page_extent_cache.init(32, 32, &m_btree_load, true);
-  return err;
+  return m_page_extent_cache.init(32, 32, &m_btree_load, true);
 }
 
 dberr_t Blob_handle::extend() {
@@ -3808,16 +3827,8 @@ dberr_t Blob_handle::close(lob::ref_t &ref) {
 }
 
 dberr_t Blob_inserter::open_blob(Blob_context &blob_ctx, lob::ref_t &ref) {
-  Blob_handle *obj{nullptr};
-
-  if (m_free_blob_ctxs.empty()) {
-    obj = ut::new_withkey<Blob_handle>(UT_NEW_THIS_FILE_PSI_KEY, *this);
-  } else {
-    obj = m_free_blob_ctxs.back();
-    m_free_blob_ctxs.pop_back();
-  }
-  blob_ctx = obj;
-  return obj->open(ref);
+  blob_ctx = m_blob_handle.get();
+  return m_blob_handle->open(ref);
 }
 
 dberr_t Blob_inserter::write_blob(Blob_context blob_ctx, lob::ref_t &ref,
@@ -3828,8 +3839,8 @@ dberr_t Blob_inserter::write_blob(Blob_context blob_ctx, lob::ref_t &ref,
 
 dberr_t Blob_inserter::close_blob(Blob_context blob_ctx, lob::ref_t &ref) {
   Blob_handle *handle = static_cast<Blob_handle *>(blob_ctx);
+  ut_ad(handle == m_blob_handle.get());
   handle->close(ref);
-  m_free_blob_ctxs.push_back(handle);
 
   /* Check if any extents can be added to the bulk flusher. */
   if (m_page_extent_first->is_fully_used()) {

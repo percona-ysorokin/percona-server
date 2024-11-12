@@ -2734,20 +2734,22 @@ int mysql_table_grant(THD *thd, Table_ref *table_list,
           return true; /* purecov: inspected */
       }
       while ((column = column_iter++)) {
-        uint unused_field_idx = NO_FIELD_INDEX;
-        Table_ref *dummy;
-        Field *f = find_field_in_table_ref(
-            thd, table_list, column->column.ptr(), column->column.length(),
-            column->column.ptr(), nullptr, nullptr, nullptr,
-            // check that we have the
-            // to-be-granted privilege:
-            column->rights, false, &unused_field_idx, false, &dummy);
-        if (f == (Field *)nullptr) {
+        Field *field;
+        Find_field_result found;
+        if (find_field_in_table_ref(
+                thd, table_list, column->column.ptr(), column->column.length(),
+                column->column.ptr(), nullptr, nullptr,
+                // check that we have the to-be-granted privilege:
+                column->rights, false, &found, &field, nullptr)) {
+          return true;
+        }
+        assert(found != VIEW_FIELD_FOUND);
+        if (found != BASE_FIELD_FOUND) {
           my_error(ER_BAD_FIELD_ERROR, MYF(0), column->column.c_ptr(),
                    table_list->alias);
           return true;
         }
-        if (f == (Field *)-1) return true;
+        assert(field != nullptr);
         column_priv |= column->rights;
       }
       close_mysql_tables(thd);
@@ -4539,6 +4541,9 @@ Access_bitmask get_table_grant(THD *thd, Table_ref *table) {
   Security_context *sctx = thd->security_context();
   const char *db = table->db ? table->db : thd->db().str;
   GRANT_TABLE *grant_table;
+
+  if (!initialized) return ALL_ACCESS;
+
   Acl_cache_lock_guard acl_cache_lock(thd, Acl_cache_lock_mode::READ_MODE);
 
   if (!acl_cache_lock.lock(false)) return (NO_ACCESS);
@@ -4578,6 +4583,9 @@ Access_bitmask get_column_grant(THD *thd, GRANT_INFO *grant,
   GRANT_COLUMN *grant_column;
   Access_bitmask priv;
   Security_context *sctx = thd->security_context();
+
+  if (!initialized) return ALL_ACCESS;
+
   Acl_cache_lock_guard acl_cache_lock(thd, Acl_cache_lock_mode::READ_MODE);
 
   if (!acl_cache_lock.lock(false)) return (NO_ACCESS);

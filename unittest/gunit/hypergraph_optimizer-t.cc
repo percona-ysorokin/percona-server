@@ -29,6 +29,7 @@
 
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <regex>
 #include <span>
@@ -2723,6 +2724,125 @@ TEST_F(HypergraphOptimizerTest, InnerNestloopShouldBeLeftDeep) {
   EXPECT_NE(nullptr, FindBestQueryPlanAndFinalize(m_thd, query_block));
 
   // We don't verify the plan in itself.
+}
+
+// Verify that we can produce plans on this form for an inner join inside a left
+// outer join:
+//
+//     -> Nested loop left join
+//         -> Table scan on t1
+//         -> Nested loop inner join
+//             -> Single-row index lookup on t2 using key0 (x = t1.x)
+//             -> Single-row index lookup on t3 using key0 (x = t2.y)
+//
+// We should be able to use index lookups for both tables in the inner join.
+TEST_F(HypergraphOptimizerTest, UseIndexesInInnerJoinInsideOuterJoin) {
+  Query_block *query_block = ParseAndResolve(
+      "SELECT 1 FROM t1 LEFT JOIN t2 INNER JOIN t3 ON t2.y=t3.x ON t1.x=t2.x",
+      /*nullable=*/true);
+
+  // Make the outer table small, so that it looks attractive with a nested loop
+  // with t1 on the left side and index lookups on t2 and t3 on the right side.
+  Fake_TABLE *t1 = m_fake_tables["t1"];
+  t1->file->stats.records = 10;
+  t1->file->stats.data_file_length = 1000;
+
+  // Make t2 and t3 big, so that using index lookups looks more attractive
+  // than scanning the tables, and create unique indexes on t2(x) and t3(x).
+  for (string table_name : {"t2", "t3"}) {
+    Fake_TABLE *t23 = m_fake_tables[table_name];
+    t23->file->stats.records = 1e6;
+    t23->file->stats.data_file_length = 1e9;
+    t23->create_index(t23->field[0], HA_NOSAME);
+  }
+
+  TraceGuard trace(m_thd);
+  AccessPath *root = FindBestQueryPlan(m_thd, query_block);
+  SCOPED_TRACE(trace.contents());  // Prints out the trace on failure.
+  ASSERT_NE(nullptr, root);
+  // Prints out the query plan on failure.
+  SCOPED_TRACE(PrintQueryPlan(0, root, query_block->join,
+                              /*is_root_of_join=*/true));
+
+  // Expect the plan to be NLJ(t1, NLJ(INDEX_LOOKUP(t2), INDEX_LOOKUP(t3))). It
+  // used to do full table scans on t2 and t3 instead of index lookups.
+  ASSERT_EQ(AccessPath::NESTED_LOOP_JOIN, root->type);
+  const auto &outer_join = root->nested_loop_join();
+
+  ASSERT_EQ(AccessPath::NESTED_LOOP_JOIN, outer_join.inner->type);
+  const auto &inner_join = outer_join.inner->nested_loop_join();
+
+  ASSERT_EQ(AccessPath::EQ_REF, inner_join.outer->type);
+  EXPECT_STREQ("t2", inner_join.outer->eq_ref().table->alias);
+
+  ASSERT_EQ(AccessPath::EQ_REF, inner_join.inner->type);
+  EXPECT_STREQ("t3", inner_join.inner->eq_ref().table->alias);
+}
+
+// Verify that we can produce plans on this form for a semijoin with an inner
+// join on the outer side.
+//
+//     -> Nested loop inner join (LooseScan)
+//         -> Remove duplicates from input grouped on t3.x, t3.y
+//             -> Sort: t3.x, t3.y
+//                 -> Table scan on t3
+//         -> Filter: (t1.y = t3.y)
+//             -> Nested loop inner join
+//                 -> Single-row index lookup on t2 using key0 (x = t3.x)
+//                 -> Single-row index lookup on t1 using key0 (x = t2.y)
+//
+// We should be able to put the inner join on the right hand side of a nested
+// loop join, so that we can use index lookups on both the tables that are outer
+// to the semijoin.
+TEST_F(HypergraphOptimizerTest, UseIndexesInInnerJoinOutsideSemijoin) {
+  Query_block *query_block = ParseAndResolve(
+      "SELECT 1 FROM t1, t2 WHERE t1.x = t2.y AND "
+      "(t2.x, t1.y) IN (SELECT t3.x, t3.y FROM t3)",
+      /*nullable=*/true);
+
+  // Make t1 and t2 big, so that using index lookups looks more attractive
+  // than scanning the tables, and create unique indexes on t1(x) and t2(x).
+  for (string table_name : {"t1", "t2"}) {
+    Fake_TABLE *t12 = m_fake_tables[table_name];
+    t12->file->stats.records = 1e6;
+    t12->file->stats.data_file_length = 1e9;
+    t12->create_index(t12->field[0], HA_NOSAME);
+  }
+
+  // Make t3 small, so that it looks attractive with a nested loop with t3 on
+  // the left side and index lookups on t1 and t2 on the right side.
+  Fake_TABLE *t3 = m_fake_tables["t3"];
+  t3->file->stats.records = 10;
+  t3->file->stats.data_file_length = 1000;
+
+  TraceGuard trace(m_thd);
+  AccessPath *root = FindBestQueryPlan(m_thd, query_block);
+  SCOPED_TRACE(trace.contents());  // Prints out the trace on failure.
+  ASSERT_NE(nullptr, root);
+  // Prints out the query plan on failure.
+  SCOPED_TRACE(PrintQueryPlan(0, root, query_block->join,
+                              /*is_root_of_join=*/true));
+
+  // Expect the plan to be
+  // NLJ(REMOVE_DUPS(t3), FILTER(NLJ(INDEX_LOOKUP(t2), INDEX_LOOKUP(t1)))).
+  // It used to do a full table scan on t1 instead of an index lookup.
+  ASSERT_EQ(AccessPath::NESTED_LOOP_JOIN, root->type);
+  const auto &outer_join = root->nested_loop_join();
+  EXPECT_EQ(AccessPath::REMOVE_DUPLICATES, outer_join.outer->type);
+
+  // The exact placement of the t1.y=t3.y filter is not important. It could also
+  // have been pushed down directly on top of the index lookup on t1(x). See
+  // bug#33477822.
+  ASSERT_EQ(AccessPath::FILTER, outer_join.inner->type);
+  ASSERT_EQ(AccessPath::NESTED_LOOP_JOIN,
+            outer_join.inner->filter().child->type);
+  const auto &inner_join = outer_join.inner->filter().child->nested_loop_join();
+
+  ASSERT_EQ(AccessPath::EQ_REF, inner_join.outer->type);
+  EXPECT_STREQ("t2", inner_join.outer->eq_ref().table->alias);
+
+  ASSERT_EQ(AccessPath::EQ_REF, inner_join.inner->type);
+  EXPECT_STREQ("t1", inner_join.inner->eq_ref().table->alias);
 }
 
 TEST_F(HypergraphOptimizerTest, CombineFilters) {
@@ -7621,6 +7741,34 @@ TEST_F(SecondaryEngineGraphSimplificationTest, RedundantOrderElements) {
   EXPECT_THAT(ItemToString(*order->item), AnyOf("t1.x", "t2.x"));
 }
 
+TEST_F(SecondaryEngineGraphSimplificationTest, InfiniteRestarts) {
+  Query_block *query_block =
+      ParseAndResolve("SELECT 1 FROM t1, t2 WHERE t1.x = t2.x",
+                      /*nullable=*/true);
+
+  // Add a secondary engine hook which requests planning to be restarted again
+  // and again.
+  handlerton *hton = EnableSecondaryEngine(/*aggregation_is_unordered=*/true);
+  hton->secondary_engine_check_optimizer_request =
+      [](THD *, const JoinHypergraph &, const AccessPath *, int, int,
+         bool is_root_access_path,
+         std::string *) -> SecondaryEngineGraphSimplificationRequestParameters {
+    if (is_root_access_path) {
+      return {SecondaryEngineGraphSimplificationRequest::kRestart, 1};
+    }
+    return {SecondaryEngineGraphSimplificationRequest::kContinue, 0};
+  };
+
+  // Since the secondary engine keeps requesting restarts of the join planning,
+  // the optimizer will eventually give up and return an error.
+  ErrorChecker error_checker{m_thd, ER_NO_QUERY_PLAN_FOUND};
+
+  TraceGuard trace(m_thd);
+  AccessPath *root = FindBestQueryPlan(m_thd, query_block);
+  SCOPED_TRACE(trace.contents());  // Prints out the trace on failure.
+  EXPECT_EQ(nullptr, root);
+}
+
 /*
   A hypergraph receiver that doesn't actually cost any plans;
   it only counts the number of possible plans that would be
@@ -7655,7 +7803,13 @@ struct CountingReceiver {
     return false;
   }
 
-  size_t count(NodeMap map) const { return m_num_subplans[map]; }
+  size_t count(NodeMap map) const {
+#if defined(__GNUC__) && __GNUC__ >= 14
+    // Silence -Warray-bounds warning in GCC 14.
+    [[assume(map != std::numeric_limits<uint64_t>::max())]];
+#endif
+    return m_num_subplans[map];
+  }
 
   const JoinHypergraph &m_graph;
   std::unique_ptr<size_t[]> m_num_subplans;
@@ -7667,6 +7821,7 @@ RelationalExpression *CloneRelationalExpr(THD *thd,
       new (thd->mem_root) RelationalExpression(thd);
   new_expr->type = expr->type;
   new_expr->tables_in_subtree = expr->tables_in_subtree;
+  new_expr->companion_set = expr->companion_set;
   if (new_expr->type == RelationalExpression::TABLE) {
     new_expr->table = expr->table;
   } else {
@@ -7722,6 +7877,7 @@ vector<RelationalExpression *> GenerateAllCompleteBinaryTrees(
         expr->right = CloneRelationalExpr(thd, right[j]);
         expr->tables_in_subtree =
             expr->left->tables_in_subtree | expr->right->tables_in_subtree;
+        expr->companion_set = new (thd->mem_root) CompanionSet();
         ret.push_back(expr);
       }
     }

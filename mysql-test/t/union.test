@@ -460,7 +460,7 @@ create table t1 select 1 union select -1;
 select * from t1;
 show create table t1;
 drop table t1;
--- error 1267
+-- error ER_CANT_AGGREGATE_2COLLATIONS
 create table t1 select _latin1"test" union select _latin2"testt" ;
 create table t1 select _latin2"test" union select _latin2"testt" ;
 show create table t1;
@@ -666,7 +666,7 @@ drop table t1;
 create table t2 (
 a char character set latin1 collate latin1_swedish_ci,
 b char character set latin1 collate latin1_german1_ci);
---error 1271
+--error ER_CANT_AGGREGATE_NCOLLATIONS
 create table t1 as
 (select a from t2) union
 (select b from t2);
@@ -2119,10 +2119,11 @@ SELECT * FROM (SELECT NULL) AS a;
 --echo # Bug#28237675: ASSERTION IN UNION QUERY WHEN MIXING CHARACTER SETS
 --echo #
 CREATE TABLE t(a VARCHAR(10) CHARSET ASCII);
+
 # When the literal was convertible to ASCII, the query was successful.
 SELECT _utf8mb4 'a' UNION SELECT a FROM t;
 # When the literal was not convertible to ASCII, it hit an assertion.
---error ER_CANT_AGGREGATE_2COLLATIONS
+--error ER_CANNOT_CONVERT_STRING
 SELECT _utf8mb4 0xC3A6 UNION SELECT a FROM t;
 DROP TABLE t;
 
@@ -2681,7 +2682,7 @@ let $query =
       (SELECT * FROM t UNION DISTINCT
        (SELECT a FROM r UNION ALL SELECT * FROM s ORDER BY a LIMIT 10))) UNION DISTINCT
      (VALUES ROW(1), ROW(2) UNION DISTINCT
-      SELECT * FROM s ORDER BY a LIMIT 3)) ORDER BY a LIMIT 3) UNION DISTINCT
+      SELECT * FROM s ORDER BY column_0 LIMIT 3)) ORDER BY a LIMIT 3) UNION DISTINCT
    (SELECT * FROM r UNION DISTINCT SELECT * FROM t) ORDER BY a LIMIT 5;
 eval $query;
 --replace_regex $elide_costs
@@ -2860,3 +2861,17 @@ SELECT 'BBB', 'b', '';
 DESCRIBE t;
 
 DROP TABLE t;
+
+--echo #
+--echo # Bug#36838373: Failure in Item::convert_charset()
+--echo #
+
+CREATE TABLE t (c0 TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_romanian_ci);
+
+CREATE TABLE r (c0 TEXT CHARACTER SET utf16 COLLATE utf16_bin);
+
+CREATE TABLE e (c0 INTEGER);
+
+TABLE t EXCEPT TABLE r INTERSECT DISTINCT TABLE e;
+
+DROP TABLE t, r, e;

@@ -122,14 +122,14 @@
 #include "sql/strfunc.h"
 #include "sql/system_variables.h"
 #include "sql/table.h"
-#include "sql/val_int_compare.h"    // Integer_value
-#include "sql/vector_conversion.h"  // from_string_to_vector
-#include "sql_string.h"             // needs_conversion
+#include "sql/val_int_compare.h"  // Integer_value
+#include "sql_string.h"           // needs_conversion
 #include "string_with_len.h"
 #include "strxmov.h"
 #include "template_utils.h"
 #include "typelib.h"
 #include "unhex.h"
+#include "vector-common/vector_conversion.h"  // from_string_to_vector, from_vector_to_string
 
 extern uint *my_aes_opmode_key_sizes;
 
@@ -431,7 +431,7 @@ class kdf_argument {
       *error_generated = true;
       return false;
     }
-    kdf_option = kdf_option_value->ptr();
+    kdf_option = to_string(*kdf_option_value);
     return true;
   }
 
@@ -1934,28 +1934,6 @@ void Item_func_trim::print(const THD *thd, String *str,
   str->append(')');
 }
 
-Item *Item_func_sysconst::safe_charset_converter(THD *thd,
-                                                 const CHARSET_INFO *tocs) {
-  uint conv_errors;
-  String tmp, cstr, *ostr = val_str(&tmp);
-  if (null_value) {
-    Item *null_item = new Item_null(fully_qualified_func_name());
-    null_item->collation.set(tocs);
-    return null_item;
-  }
-  cstr.copy(ostr->ptr(), ostr->length(), ostr->charset(), tocs, &conv_errors);
-  if (conv_errors != 0) return nullptr;
-
-  char *ptr = thd->strmake(cstr.ptr(), cstr.length());
-  if (ptr == nullptr) return nullptr;
-  auto conv = new Item_static_string_func(fully_qualified_func_name(), ptr,
-                                          cstr.length(), cstr.charset(),
-                                          collation.derivation);
-  if (conv == nullptr) return nullptr;
-  conv->mark_result_as_const();
-  return conv;
-}
-
 bool Item_func_database::do_itemize(Parse_context *pc, Item **res) {
   if (skip_itemize(res)) return false;
   if (super::do_itemize(pc, res)) return true;
@@ -3296,14 +3274,12 @@ String *Item_func_weight_string::val_str(String *str) {
     explicitly, otherwise calculate result length
     from argument and "num_codepoints".
   */
-  output_buf_size =
-      m_field_ref != nullptr
-          ? m_field_ref->field->pack_length()
-          : result_length > 0
-                ? result_length
-                : cs->coll->strnxfrmlen(
-                      cs, cs->mbmaxlen *
-                              max<size_t>(input->length(), num_codepoints));
+  output_buf_size = m_field_ref != nullptr ? m_field_ref->field->pack_length()
+                    : result_length > 0
+                        ? result_length
+                        : cs->coll->strnxfrmlen(
+                              cs, cs->mbmaxlen * max<size_t>(input->length(),
+                                                             num_codepoints));
 
   /*
     my_strnxfrm() with an odd number of bytes is illegal for some collations;
@@ -4163,8 +4139,8 @@ String *Item_func_to_vector::val_str(String *str) {
   auto dimension_bytes = Field_vector::dimension_bytes(output_dims);
   if (buffer.mem_realloc(dimension_bytes)) return error_str();
 
-  bool err = from_string_to_vector(res->ptr(), res->length(), buffer.ptr(),
-                                   &output_dims);
+  bool err = from_string_to_vector(res->charset(), res->ptr(), res->length(),
+                                   buffer.ptr(), &output_dims);
   if (err) {
     if (output_dims == Field_vector::max_dimensions) {
       res->replace(32, 5, "... \0", 5);
@@ -4266,11 +4242,10 @@ String *Item_func_uncompress::val_str(String *str) {
                                : ((err == Z_MEM_ERROR) ? ER_ZLIB_Z_MEM_ERROR
                                                        : ER_ZLIB_Z_DATA_ERROR));
   push_warning(current_thd, Sql_condition::SL_WARNING, code,
-               err == Z_BUF_ERROR
-                   ? ER_THD(current_thd, ER_ZLIB_Z_BUF_ERROR)
-                   : (err == Z_MEM_ERROR)
-                         ? ER_THD(current_thd, ER_ZLIB_Z_MEM_ERROR)
-                         : ER_THD(current_thd, ER_ZLIB_Z_DATA_ERROR));
+               err == Z_BUF_ERROR ? ER_THD(current_thd, ER_ZLIB_Z_BUF_ERROR)
+               : (err == Z_MEM_ERROR)
+                   ? ER_THD(current_thd, ER_ZLIB_Z_MEM_ERROR)
+                   : ER_THD(current_thd, ER_ZLIB_Z_DATA_ERROR));
 
 err:
   null_value = true;

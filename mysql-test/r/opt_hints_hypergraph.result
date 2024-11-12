@@ -1,1277 +1,2736 @@
-CREATE TABLE small_tab (val INT);
-INSERT INTO small_tab VALUES (1), (2), (3), (4);
-CREATE TABLE medium_tab (val INT);
-INSERT INTO medium_tab SELECT COUNT(*) FROM small_tab;
-INSERT INTO medium_tab SELECT COUNT(*) FROM medium_tab;
-INSERT INTO medium_tab SELECT COUNT(*) FROM medium_tab;
-CREATE TABLE large_tab (val INT);
-INSERT INTO large_tab SELECT COUNT(*) FROM medium_tab;
-INSERT INTO large_tab SELECT COUNT(*) FROM large_tab;
-INSERT INTO large_tab SELECT COUNT(*) FROM large_tab;
-SELECT COUNT(*) FROM small_tab;
-COUNT(*)
-4
-SELECT COUNT(*) FROM medium_tab;
-COUNT(*)
-3
-SELECT COUNT(*) FROM large_tab;
-COUNT(*)
-3
-ANALYZE TABLE small_tab, medium_tab, large_tab;
-Table	Op	Msg_type	Msg_text
-test.small_tab	analyze	status	OK
-test.medium_tab	analyze	status	OK
-test.large_tab	analyze	status	OK
-JOIN_FIXED_ORDER hint
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_FIXED_ORDER() */ COUNT(*) FROM small_tab JOIN large_tab USING(val) JOIN medium_tab USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (large_tab.val = medium_tab.val)  (rows=0.36)
-        -> Table scan on medium_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (small_tab.val = large_tab.val)  (rows=1.2)
-                -> Table scan on large_tab  (rows=3)
-                -> Hash
-                    -> Table scan on small_tab  (rows=4)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_FIXED_ORDER() */ COUNT(*) FROM medium_tab JOIN small_tab USING(val) JOIN large_tab USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (small_tab.val = large_tab.val)  (rows=0.36)
-        -> Table scan on large_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (medium_tab.val = small_tab.val)  (rows=1.2)
-                -> Table scan on small_tab  (rows=4)
-                -> Hash
-                    -> Table scan on medium_tab  (rows=3)
-
-EXPLAIN FORMAT=TREE SELECT COUNT(*) FROM large_tab WHERE val IN
-(SELECT /*+ QB_NAME(subq1) JOIN_FIXED_ORDER(@subq1) */ val FROM small_tab JOIN medium_tab USING(val));
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Filter: <in_optimizer>(large_tab.val,large_tab.val in (select #2))  (rows=3)
-        -> Table scan on large_tab  (rows=3)
-        -> Select #2 (subquery in condition; run only once)
-            -> Filter: ((large_tab.val = `<materialized_subquery>`.val))  (rows=1)
-                -> Limit: 1 row(s)  (rows=1)
-                    -> Index lookup on <materialized_subquery> using <auto_distinct_key> (val=large_tab.val)
-                        -> Materialize with deduplication  (rows=1.2)
-                            -> Inner hash join (small_tab.val = medium_tab.val)  (rows=1.2)
-                                -> Table scan on medium_tab  (rows=3)
-                                -> Hash
-                                    -> Table scan on small_tab  (rows=4)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_FIXED_ORDER() */ COUNT(*) FROM large_tab JOIN small_tab JOIN medium_tab;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=36)
-        -> Table scan on medium_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=12)
-                -> Table scan on small_tab  (rows=4)
-                -> Hash
-                    -> Table scan on large_tab  (rows=3)
-
-EXPLAIN FORMAT=TREE SELECT COUNT(*) FROM large_tab WHERE val IN
-(SELECT /*+ QB_NAME(subq1) JOIN_FIXED_ORDER(@subq1) */ small_tab.val FROM medium_tab JOIN small_tab);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Filter: <in_optimizer>(large_tab.val,large_tab.val in (select #2))  (rows=3)
-        -> Table scan on large_tab  (rows=3)
-        -> Select #2 (subquery in condition; run only once)
-            -> Filter: ((large_tab.val = `<materialized_subquery>`.val))  (rows=1)
-                -> Limit: 1 row(s)  (rows=1)
-                    -> Index lookup on <materialized_subquery> using <auto_distinct_key> (val=large_tab.val)
-                        -> Materialize with deduplication  (rows=12)
-                            -> Inner hash join (no condition)  (rows=12)
-                                -> Table scan on small_tab  (rows=4)
-                                -> Hash
-                                    -> Table scan on medium_tab  (rows=3)
-
-SELECT STRAIGHT_JOIN hint
-EXPLAIN FORMAT=TREE SELECT STRAIGHT_JOIN COUNT(*) FROM small_tab JOIN large_tab USING(val) JOIN medium_tab USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (large_tab.val = medium_tab.val)  (rows=0.36)
-        -> Table scan on medium_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (small_tab.val = large_tab.val)  (rows=1.2)
-                -> Table scan on large_tab  (rows=3)
-                -> Hash
-                    -> Table scan on small_tab  (rows=4)
-
-EXPLAIN FORMAT=TREE SELECT STRAIGHT_JOIN COUNT(*) FROM medium_tab JOIN small_tab USING(val) JOIN large_tab USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (small_tab.val = large_tab.val)  (rows=0.36)
-        -> Table scan on large_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (medium_tab.val = small_tab.val)  (rows=1.2)
-                -> Table scan on small_tab  (rows=4)
-                -> Hash
-                    -> Table scan on medium_tab  (rows=3)
-
-EXPLAIN FORMAT=TREE SELECT STRAIGHT_JOIN COUNT(*) FROM medium_tab JOIN large_tab USING(val) JOIN small_tab USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (large_tab.val = small_tab.val)  (rows=0.36)
-        -> Table scan on small_tab  (rows=4)
-        -> Hash
-            -> Inner hash join (medium_tab.val = large_tab.val)  (rows=0.9)
-                -> Table scan on large_tab  (rows=3)
-                -> Hash
-                    -> Table scan on medium_tab  (rows=3)
-
-EXPLAIN FORMAT=TREE SELECT STRAIGHT_JOIN COUNT(*) FROM large_tab JOIN small_tab JOIN medium_tab;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=36)
-        -> Table scan on medium_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=12)
-                -> Table scan on small_tab  (rows=4)
-                -> Hash
-                    -> Table scan on large_tab  (rows=3)
-
-EXPLAIN FORMAT=TREE SELECT STRAIGHT_JOIN COUNT(*) FROM large_tab JOIN medium_tab JOIN small_tab;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=36)
-        -> Table scan on small_tab  (rows=4)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=9)
-                -> Table scan on medium_tab  (rows=3)
-                -> Hash
-                    -> Table scan on large_tab  (rows=3)
-
-SELECT <table1> STRAIGHT_JOIN <table2> hint
-EXPLAIN FORMAT=TREE SELECT COUNT(*) FROM small_tab STRAIGHT_JOIN large_tab USING(val) STRAIGHT_JOIN medium_tab USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (large_tab.val = medium_tab.val)  (rows=0.36)
-        -> Table scan on medium_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (small_tab.val = large_tab.val)  (rows=1.2)
-                -> Table scan on large_tab  (rows=3)
-                -> Hash
-                    -> Table scan on small_tab  (rows=4)
-
-EXPLAIN FORMAT=TREE SELECT COUNT(*) FROM medium_tab STRAIGHT_JOIN small_tab USING(val) STRAIGHT_JOIN large_tab USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (small_tab.val = large_tab.val)  (rows=0.36)
-        -> Table scan on large_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (medium_tab.val = small_tab.val)  (rows=1.2)
-                -> Table scan on small_tab  (rows=4)
-                -> Hash
-                    -> Table scan on medium_tab  (rows=3)
-
-EXPLAIN FORMAT=TREE SELECT COUNT(*) FROM medium_tab STRAIGHT_JOIN large_tab USING(val) STRAIGHT_JOIN small_tab USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (large_tab.val = small_tab.val)  (rows=0.36)
-        -> Table scan on small_tab  (rows=4)
-        -> Hash
-            -> Inner hash join (medium_tab.val = large_tab.val)  (rows=0.9)
-                -> Table scan on large_tab  (rows=3)
-                -> Hash
-                    -> Table scan on medium_tab  (rows=3)
-
-EXPLAIN FORMAT=TREE SELECT COUNT(*) FROM large_tab STRAIGHT_JOIN small_tab STRAIGHT_JOIN medium_tab;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=36)
-        -> Table scan on medium_tab  (rows=3)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=12)
-                -> Table scan on small_tab  (rows=4)
-                -> Hash
-                    -> Table scan on large_tab  (rows=3)
-
-EXPLAIN FORMAT=TREE SELECT COUNT(*) FROM large_tab STRAIGHT_JOIN medium_tab STRAIGHT_JOIN small_tab;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=36)
-        -> Table scan on small_tab  (rows=4)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=9)
-                -> Table scan on medium_tab  (rows=3)
-                -> Hash
-                    -> Table scan on large_tab  (rows=3)
-
-DROP TABLE small_tab, medium_tab, large_tab;
-CREATE TABLE t1 (id int, val int);
-CREATE TABLE t2 (id int, val int);
-CREATE TABLE t3 (id int, val int);
-CREATE TABLE t4 (id int, val int);
-CREATE TABLE t5 (id int, val int);
-CREATE TABLE t6 (id int, val int);
-JOIN_PREFIX hint
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t1,t3,t5) */ COUNT(*) FROM t1 JOIN t2 USING(val) JOIN t3 USING(val) JOIN t4 USING(val) JOIN t5 USING(val) JOIN t6 USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (t2.val = t6.val)  (rows=10e-6)
-        -> Table scan on t6  (rows=1)
-        -> Hash
-            -> Inner hash join (t2.val = t4.val)  (rows=100e-6)
-                -> Table scan on t4  (rows=1)
-                -> Hash
-                    -> Inner hash join (t3.val = t2.val)  (rows=0.001)
-                        -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Inner hash join (t3.val = t5.val)  (rows=0.01)
-                                -> Table scan on t5  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (t1.val = t3.val)  (rows=0.1)
-                                        -> Table scan on t3  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t1  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t5,t4) */ COUNT(*) FROM t1 JOIN t2 USING(val) JOIN t3 USING(val) JOIN t4 USING(val) JOIN t5 USING(val) JOIN t6 USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (t2.val = t6.val)  (rows=10e-6)
-        -> Table scan on t6  (rows=1)
-        -> Hash
-            -> Inner hash join (t2.val = t3.val)  (rows=100e-6)
-                -> Table scan on t3  (rows=1)
-                -> Hash
-                    -> Inner hash join (t4.val = t2.val)  (rows=0.001)
-                        -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Inner hash join (t4.val = t1.val)  (rows=0.01)
-                                -> Table scan on t1  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (t5.val = t4.val)  (rows=0.1)
-                                        -> Table scan on t4  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t2,t4,t6,t1,t3) */ COUNT(*) FROM t1 JOIN t2 USING(val) JOIN t3 USING(val) JOIN t4 USING(val) JOIN t5 USING(val) JOIN t6 USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (t2.val = t5.val)  (rows=10e-6)
-        -> Table scan on t5  (rows=1)
-        -> Hash
-            -> Inner hash join (t2.val = t3.val)  (rows=100e-6)
-                -> Table scan on t3  (rows=1)
-                -> Hash
-                    -> Inner hash join (t2.val = t1.val)  (rows=0.001)
-                        -> Table scan on t1  (rows=1)
-                        -> Hash
-                            -> Inner hash join (t2.val = t6.val)  (rows=0.01)
-                                -> Table scan on t6  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (t2.val = t4.val)  (rows=0.1)
-                                        -> Table scan on t4  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t2  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t5,t2,t1) */ COUNT(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t6  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t4  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t3  (rows=1)
-                        -> Hash
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Table scan on t1  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (no condition)  (rows=1)
-                                        -> Table scan on t2  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t3,t4) */ COUNT(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t6  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t5  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Table scan on t1  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (no condition)  (rows=1)
-                                        -> Table scan on t4  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t3  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t5,t3,t1,t2,t4) */ COUNT(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t6  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t4  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Table scan on t1  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (no condition)  (rows=1)
-                                        -> Table scan on t3  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t5  (rows=1)
-
-JOIN_SUFFIX hint
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_SUFFIX(t1,t2,t6) */ COUNT(*) FROM t1 JOIN t2 USING(val) JOIN t3 USING(val) JOIN t4 USING(val) JOIN t5 USING(val) JOIN t6 USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (t2.val = t6.val)  (rows=10e-6)
-        -> Table scan on t6  (rows=1)
-        -> Hash
-            -> Inner hash join (t3.val = t2.val)  (rows=100e-6)
-                -> Table scan on t2  (rows=1)
-                -> Hash
-                    -> Inner hash join (t3.val = t1.val)  (rows=0.001)
-                        -> Table scan on t1  (rows=1)
-                        -> Hash
-                            -> Inner hash join (t3.val = t4.val)  (rows=0.01)
-                                -> Table scan on t4  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (t3.val = t5.val)  (rows=0.1)
-                                        -> Table scan on t3  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_SUFFIX(t6,t3) */ COUNT(*) FROM t1 JOIN t2 USING(val) JOIN t3 USING(val) JOIN t4 USING(val) JOIN t5 USING(val) JOIN t6 USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (t2.val = t3.val)  (rows=10e-6)
-        -> Table scan on t3  (rows=1)
-        -> Hash
-            -> Inner hash join (t2.val = t6.val)  (rows=100e-6)
-                -> Table scan on t6  (rows=1)
-                -> Hash
-                    -> Inner hash join (t1.val = t2.val)  (rows=0.001)
-                        -> Table scan on t1  (rows=1)
-                        -> Hash
-                            -> Inner hash join (t2.val = t4.val)  (rows=0.01)
-                                -> Table scan on t4  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (t2.val = t5.val)  (rows=0.1)
-                                        -> Table scan on t2  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_SUFFIX(t5,t4,t3,t6,t1) */ COUNT(*) FROM t1 JOIN t2 USING(val) JOIN t3 USING(val) JOIN t4 USING(val) JOIN t5 USING(val) JOIN t6 USING(val);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (t2.val = t1.val)  (rows=10e-6)
-        -> Table scan on t1  (rows=1)
-        -> Hash
-            -> Inner hash join (t2.val = t6.val)  (rows=100e-6)
-                -> Table scan on t6  (rows=1)
-                -> Hash
-                    -> Inner hash join (t2.val = t3.val)  (rows=0.001)
-                        -> Table scan on t3  (rows=1)
-                        -> Hash
-                            -> Inner hash join (t2.val = t4.val)  (rows=0.01)
-                                -> Table scan on t4  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (t2.val = t5.val)  (rows=0.1)
-                                        -> Table scan on t5  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t2  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_SUFFIX(t4,t5,t2) */ COUNT(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t2  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t5  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t4  (rows=1)
-                        -> Hash
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Inner hash join (no condition)  (rows=1)
-                                    -> Table scan on t1  (rows=1)
-                                    -> Hash
-                                        -> Table scan on t3  (rows=1)
-                                -> Hash
-                                    -> Table scan on t6  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_SUFFIX(t3,t2) */ COUNT(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t2  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t3  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Inner hash join (no condition)  (rows=1)
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Table scan on t1  (rows=1)
-                                -> Hash
-                                    -> Table scan on t4  (rows=1)
-                            -> Hash
-                                -> Table scan on t5  (rows=1)
-                        -> Hash
-                            -> Table scan on t6  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_SUFFIX(t1,t3,t2,t5,t4) */ COUNT(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t4  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t5  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Table scan on t3  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (no condition)  (rows=1)
-                                        -> Table scan on t1  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t6  (rows=1)
-
-JOIN_ORDER hint
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t6,t1) */ COUNT(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t1  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Inner hash join (no condition)  (rows=1)
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Inner hash join (no condition)  (rows=1)
-                            -> Table scan on t6  (rows=1)
-                            -> Hash
-                                -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Table scan on t3  (rows=1)
-                    -> Hash
-                        -> Table scan on t4  (rows=1)
-                -> Hash
-                    -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t4,t6,t3,t5,t1) */ COUNT(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t1  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t5  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t3  (rows=1)
-                        -> Hash
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Table scan on t6  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (no condition)  (rows=1)
-                                        -> Table scan on t4  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t2  (rows=1)
-
-Nested tables as hint tables
-EXPLAIN FORMAT=TREE SELECT /*+ QB_NAME(q1) JOIN_PREFIX(t2,t1,t2@subq2) */ count(*) FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ val FROM t2) AND
-t2.val IN (SELECT /*+ QB_NAME(subq2) */ val FROM t2);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t1.val = t2.val)  (rows=0.01)
-        -> Inner hash join (no condition)  (rows=0.1)
-            -> Table scan on t3  (rows=1)
-            -> Hash
-                -> Hash semijoin (t2.val = t2.val)  (rows=0.1)
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t1  (rows=1)
-                        -> Hash
-                            -> Table scan on t2  (rows=1)
-                    -> Hash
-                        -> Table scan on t2  (rows=1)
-        -> Hash
-            -> Table scan on t2  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t2,t1) JOIN_ORDER(t3,t4@subq1) JOIN_SUFFIX(t4@subq1) */ count(*) FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ t4.val FROM t4 JOIN t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-        -> Inner hash join (no condition)  (rows=1)
-            -> Table scan on t3  (rows=1)
-            -> Hash
-                -> Inner hash join (no condition)  (rows=1)
-                    -> Table scan on t1  (rows=1)
-                    -> Hash
-                        -> Table scan on t2  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t4  (rows=1)
-                -> Hash
-                    -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_SUFFIX(t5@subq2) */ count(*)
-FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ val FROM t4)
-AND t2.val IN (SELECT /*+ QB_NAME(subq2) */ val FROM t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=0.01)
-        -> Table scan on t3  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=0.01)
-                -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-                    -> Table scan on t1  (rows=1)
-                    -> Hash
-                        -> Table scan on t4  (rows=1)
-                -> Hash
-                    -> Hash semijoin (t2.val = t5.val)  (rows=0.1)
-                        -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t5@subq2,t4@subq1) JOIN_PREFIX(t1) JOIN_SUFFIX(t2,t5@subq2,t4@subq1) */ count(*)
-FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ val FROM t4)
-AND t2.val IN (SELECT /*+ QB_NAME(subq2) */ val FROM t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t1.val = t4.val)  (rows=0.01)
-        -> Hash semijoin (t2.val = t5.val)  (rows=0.1)
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t2  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t3  (rows=1)
-                        -> Hash
-                            -> Table scan on t1  (rows=1)
-            -> Hash
-                -> Table scan on t5  (rows=1)
-        -> Hash
-            -> Table scan on t4  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ QB_NAME(q1) JOIN_ORDER(@q1 t2,t3,t1) */ count(*)
-FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ val FROM t4)
-AND t2.val IN (SELECT /*+ QB_NAME(subq2) */ val FROM t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.val = t5.val)  (rows=0.01)
-        -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t1  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t3  (rows=1)
-                        -> Hash
-                            -> Table scan on t2  (rows=1)
-            -> Hash
-                -> Table scan on t4  (rows=1)
-        -> Hash
-            -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ QB_NAME(q1) JOIN_PREFIX(@q1 t2,t3,t1) */ count(*)
-FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ val FROM t4)
-AND t2.val IN (SELECT /*+ QB_NAME(subq2) */ val FROM t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.val = t5.val)  (rows=0.01)
-        -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t1  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t3  (rows=1)
-                        -> Hash
-                            -> Table scan on t2  (rows=1)
-            -> Hash
-                -> Table scan on t4  (rows=1)
-        -> Hash
-            -> Table scan on t5  (rows=1)
-
-Multiple hints,all applicable
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t1,t2,t3) */ count(*) FROM t1 JOIN t2 STRAIGHT_JOIN t3
-WHERE t1.val IN (SELECT val FROM t4) AND t2.val IN (SELECT val FROM t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.val = t5.val)  (rows=0.01)
-        -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t3  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Table scan on t1  (rows=1)
-            -> Hash
-                -> Table scan on t4  (rows=1)
-        -> Hash
-            -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t3) JOIN_ORDER(t1,t2,t5) */ count(*) FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ val FROM t4)
-AND t2.val IN (SELECT /*+ QB_NAME(subq2) */ val FROM t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.val = t5.val)  (rows=0.01)
-        -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t2  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t1  (rows=1)
-                        -> Hash
-                            -> Table scan on t3  (rows=1)
-            -> Hash
-                -> Table scan on t4  (rows=1)
-        -> Hash
-            -> Table scan on t5  (rows=1)
-
-EXPLAIN FORMAT=TREE  SELECT /*+ JOIN_ORDER(t3,t2) JOIN_ORDER(t1,t2,t5) */ count(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t5  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Inner hash join (no condition)  (rows=1)
-                    -> Table scan on t2  (rows=1)
-                    -> Hash
-                        -> Inner hash join (no condition)  (rows=1)
-                            -> Table scan on t3  (rows=1)
-                            -> Hash
-                                -> Table scan on t1  (rows=1)
-                -> Hash
-                    -> Table scan on t4  (rows=1)
-
-EXPLAIN FORMAT=TREE  SELECT /*+ JOIN_ORDER(t3,t2,t1,t6) JOIN_ORDER(t4,t2,t5,t1) */ count(*) FROM t1 JOIN t2 JOIN t3 JOIN t4 JOIN t5 JOIN t6;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t6  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t1  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t5  (rows=1)
-                        -> Hash
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Table scan on t2  (rows=1)
-                                -> Hash
-                                    -> Inner hash join (no condition)  (rows=1)
-                                        -> Table scan on t3  (rows=1)
-                                        -> Hash
-                                            -> Table scan on t4  (rows=1)
-
-Conflicting hints
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t3,t2,t1) JOIN_PREFIX(t2,t1) */ count(*) FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ val FROM t4)
-AND t2.val IN (SELECT /*+ QB_NAME(subq2) */ val FROM t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.val = t5.val)  (rows=0.01)
-        -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t1  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t2  (rows=1)
-                        -> Hash
-                            -> Table scan on t3  (rows=1)
-            -> Hash
-                -> Table scan on t4  (rows=1)
-        -> Hash
-            -> Table scan on t5  (rows=1)
-
-Warnings:
-Warning	3126	Hint JOIN_PREFIX( `t2`,`t1`) is ignored as conflicting/duplicated
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_SUFFIX(t3,t2) JOIN_SUFFIX(t2) */ count(*) FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ val FROM t4)
-AND t2.val IN (SELECT /*+ QB_NAME(subq2) */ val FROM t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.val = t5.val)  (rows=0.01)
-        -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t3  (rows=1)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=1)
-                        -> Table scan on t1  (rows=1)
-                        -> Hash
-                            -> Table scan on t2  (rows=1)
-            -> Hash
-                -> Table scan on t4  (rows=1)
-        -> Hash
-            -> Table scan on t5  (rows=1)
-
-Warnings:
-Warning	3126	Hint JOIN_SUFFIX( `t2`) is ignored as conflicting/duplicated
-Warning	3515	Hints aren't supported in hypergraph: semijoin/antijoin table precedes a table which it depends on
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_FIXED_ORDER() JOIN_ORDER(t2,t1) */ t2.val FROM t1 JOIN t2 ON t1.val = t2.val
-WHERE (t1.val > 5 AND t1.val <= 5);
-EXPLAIN
--> Inner hash join (t1.val = t2.val)  (rows=0.0111)
-    -> Table scan on t2  (rows=1)
-    -> Hash
-        -> Filter: ((t1.val > 5) and (t1.val <= 5))  (rows=0.111)
-            -> Table scan on t1  (rows=1)
-
-Warnings:
-Warning	3126	Hint JOIN_ORDER( `t2`,`t1`) is ignored as conflicting/duplicated
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t3,t2) JOIN_ORDER(t2,t3) */ count(*) FROM t1 JOIN t2 JOIN t3;
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=1)
-        -> Table scan on t2  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on t1  (rows=1)
-                -> Hash
-                    -> Table scan on t3  (rows=1)
-
-Invalid hint which places semijoin table at beginning of table list
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t5@subq1,t4@subq1,t2) */ count(*)
-FROM t1 JOIN t2 JOIN t3
-WHERE t1.val IN (SELECT /*+ QB_NAME(subq1) */ t4.val FROM t4 JOIN t5);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=0.1)
-        -> Table scan on t3  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=0.1)
-                -> Table scan on t2  (rows=1)
-                -> Hash
-                    -> Hash semijoin (t1.val = t4.val)  (rows=0.1)
-                        -> Table scan on t1  (rows=1)
-                        -> Hash
-                            -> Inner hash join (no condition)  (rows=1)
-                                -> Table scan on t5  (rows=1)
-                                -> Hash
-                                    -> Table scan on t4  (rows=1)
-
-Warnings:
-Warning	3515	Hints aren't supported in hypergraph: first table in join order cannot be semijoin/antijoin nest
-DROP TABLE t1, t2, t3, t4, t5, t6;
-Outer joins with hints
-CREATE TABLE t1(val INT NOT NULL AUTO_INCREMENT,PRIMARY KEY(val));
-CREATE TABLE t2(val INT DEFAULT NULL);
-CREATE TABLE t3(val INT DEFAULT NULL);
-Applicable hint
-EXPLAIN FORMAT=TREE DELETE /*+ JOIN_PREFIX(t2,t3,ta2) */
-FROM ta1.* USING t1 AS ta1 JOIN t1 AS ta2 ON 1
-RIGHT OUTER JOIN t2 ON (ta1.val = t2.val)
-WHERE (9) IN (SELECT val FROM t3);
-EXPLAIN
--> Delete from ta1 (buffered)  (rows=0.1)
-    -> Left hash join (ta1.val = t2.val)  (rows=0.1)
-        -> Hash semijoin (no condition)  (rows=0.1)
-            -> Table scan on t2  (rows=1)
-            -> Hash
-                -> Filter: (t3.val = 9)  (rows=0.1)
-                    -> Table scan on t3  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on ta2  (rows=1)
-                -> Hash
-                    -> Table scan on ta1  (rows=1)
-
-Hint should be ignored
-EXPLAIN FORMAT=TREE DELETE /*+ JOIN_SUFFIX(ta2,t3,ta1) */
-FROM ta1.* USING t1 AS ta1 JOIN t1 AS ta2 ON 1
-RIGHT OUTER JOIN t2 ON (ta1.val = t2.val)
-WHERE (9) IN (SELECT val FROM t3);
-EXPLAIN
--> Delete from ta1 (buffered)  (rows=0.1)
-    -> Hash semijoin (no condition)  (rows=0.1)
-        -> Left hash join (ta1.val = t2.val)  (rows=1)
-            -> Table scan on t2  (rows=1)
-            -> Hash
-                -> Inner hash join (no condition)  (rows=1)
-                    -> Table scan on ta2  (rows=1)
-                    -> Hash
-                        -> Table scan on ta1  (rows=1)
-        -> Hash
-            -> Filter: (t3.val = 9)  (rows=0.1)
-                -> Table scan on t3  (rows=1)
-
-Both hints should be ignored
-EXPLAIN FORMAT=TREE DELETE /*+ JOIN_PREFIX(ta1,t2,t3) JOIN_SUFFIX(t3,ta2) */
-FROM ta1.* USING t1 AS ta1 JOIN t1 AS ta2 ON 1
-RIGHT OUTER JOIN t2 ON (ta1.val = t2.val)
-WHERE (9) IN (SELECT val FROM t3);
-EXPLAIN
--> Delete from ta1 (buffered)  (rows=0.1)
-    -> Left hash join (ta1.val = t2.val)  (rows=0.1)
-        -> Hash semijoin (no condition)  (rows=0.1)
-            -> Table scan on t2  (rows=1)
-            -> Hash
-                -> Filter: (t3.val = 9)  (rows=0.1)
-                    -> Table scan on t3  (rows=1)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=1)
-                -> Table scan on ta1  (rows=1)
-                -> Hash
-                    -> Table scan on ta2  (rows=1)
-
-Warnings:
-Warning	3515	Hints aren't supported in hypergraph: first table in join order cannot be semijoin/antijoin nest
-Lateral joins with hints
-# Applicable hint
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(t1) */ 1 FROM t1,LATERAL (SELECT DISTINCT t2.val FROM t2 WHERE t1.val = t2.val) AS dt;
-EXPLAIN
--> Nested loop inner join  (rows=1)
-    -> Table scan on t1  (rows=1)
-    -> Stream results  (rows=1)
-        -> Sort with duplicate removal: t2.val  (rows=1)
-            -> Filter: (t1.val = t2.val)  (rows=1)
-                -> Table scan on t2  (rows=1)
-
-Warnings:
-Note	1276	Field or reference 'test.t1.val' of SELECT #2 was resolved in SELECT #1
-# Hint ignored, hypergraph retries optimization after deleting hint
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_PREFIX(dt) */ 1 FROM t1,LATERAL (SELECT DISTINCT t2.val FROM t2 WHERE t1.val = t2.val) AS dt;
-EXPLAIN
--> Nested loop inner join  (rows=1)
-    -> Table scan on t1  (rows=1)
-    -> Stream results  (rows=1)
-        -> Sort with duplicate removal: t2.val  (rows=1)
-            -> Filter: (t1.val = t2.val)  (rows=1)
-                -> Table scan on t2  (rows=1)
-
-Warnings:
-Note	1276	Field or reference 'test.t1.val' of SELECT #2 was resolved in SELECT #1
-DROP TABLE t1,t2,t3;
-Bug#36533749 WL#15853:Element_type& mem_root_deque<Element_type>: Assertion `!empty()' failed
-CREATE TABLE t1 (f1 INT NOT NULL);
-INSERT INTO t1 VALUES (9),(0), (7);
-CREATE TABLE t2 (f1 INT NOT NULL);
+SET explain_format = TREE;
+# WL#8017 Infrastructure for Optimizer Hints
+CREATE TABLE t1(f1 INT, f2 INT);
+INSERT INTO t1 VALUES
+(1,1),(2,2),(3,3);
+CREATE TABLE t2(f1 INT NOT NULL, f2 INT NOT NULL, f3 CHAR(200), KEY(f1, f2));
 INSERT INTO t2 VALUES
-(5),(3),(0),(3),(1),(0),(1),(7),(1),(0),(0),(8),(4),(9),(0),(2),(0),(8),(5),(1);
-CREATE TABLE t3 (f1 INT NOT NULL);
-INSERT INTO t3 VALUES (9),(0), (7), (4), (5);
-CREATE TABLE t4 (f1 INT NOT NULL);
-INSERT INTO t4 VALUES (0), (7);
-CREATE TABLE t5 (f1 INT NOT NULL, PRIMARY KEY(f1));
-INSERT INTO t5 VALUES (7);
-ANALYZE TABLE t1, t2, t3, t4, t5;
+(1,1, 'qwerty'),(1,2, 'qwerty'),(1,3, 'qwerty'),
+(2,1, 'qwerty'),(2,2, 'qwerty'),(2,3, 'qwerty'), (2,4, 'qwerty'),(2,5, 'qwerty'),
+(3,1, 'qwerty'),(3,4, 'qwerty'),
+(4,1, 'qwerty'),(4,2, 'qwerty'),(4,3, 'qwerty'), (4,4, 'qwerty'),
+(1,1, 'qwerty'),(1,2, 'qwerty'),(1,3, 'qwerty'),
+(2,1, 'qwerty'),(2,2, 'qwerty'),(2,3, 'qwerty'), (2,4, 'qwerty'),(2,5, 'qwerty'),
+(3,1, 'qwerty'),(3,4, 'qwerty'),
+(4,1, 'qwerty'),(4,2, 'qwerty'),(4,3, 'qwerty'), (4,4, 'qwerty');
+CREATE TABLE t3 (f1 INT NOT NULL, f2 INT, f3 VARCHAR(32),
+PRIMARY KEY(f1), KEY f2_idx(f1), KEY f3_idx(f3));
+INSERT INTO t3 VALUES
+(1, 1, 'qwerty'), (2, 1, 'ytrewq'),
+(3, 2, 'uiop'), (4, 2, 'poiu'), (5, 2, 'lkjh'),
+(6, 2, 'uiop'), (7, 2, 'poiu'), (8, 2, 'lkjh'),
+(9, 2, 'uiop'), (10, 2, 'poiu'), (11, 2, 'lkjh'),
+(12, 2, 'uiop'), (13, 2, 'poiu'), (14, 2, 'lkjh');
+INSERT INTO t3 SELECT f1 + 20, f2, f3 FROM t3;
+INSERT INTO t3 SELECT f1 + 40, f2, f3 FROM t3;
+ANALYZE TABLE t1;
 Table	Op	Msg_type	Msg_text
 test.t1	analyze	status	OK
+ANALYZE TABLE t2;
+Table	Op	Msg_type	Msg_text
 test.t2	analyze	status	OK
+ANALYZE TABLE t3;
+Table	Op	Msg_type	Msg_text
 test.t3	analyze	status	OK
-test.t4	analyze	status	OK
-test.t5	analyze	status	OK
-# Both hints applicable
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t3,t2) JOIN_PREFIX(t3) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+# NO_RANGE_OPTIMIZATION hint testing
+set optimizer_switch=default;
+# Check statistics with no hint
+FLUSH STATUS;
+SELECT f1 FROM t3 WHERE f1 > 30 AND f1 < 33;
+f1
+31
+32
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	0
+Handler_read_key	1
+Handler_read_last	0
+Handler_read_next	2
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	0
+# Check statistics with hint
+FLUSH STATUS;
+SELECT /*+ NO_RANGE_OPTIMIZATION(t3) */ f1 FROM t3 WHERE f1 > 30 AND f1 < 33;
+f1
+31
+32
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	1
+Handler_read_key	1
+Handler_read_last	0
+Handler_read_next	56
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	0
+EXPLAIN SELECT f1 FROM t3 WHERE f1 > 30 AND f1 < 33;
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.f1 = t5.f1)  (rows=42.4)
-        -> Hash semijoin (t1.f1 = t4.f1)  (rows=42.4)
-            -> Inner hash join (no condition)  (rows=300)
-                -> Table scan on t2  (rows=20)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=15)
-                        -> Table scan on t1  (rows=3)
-                        -> Hash
-                            -> Table scan on t3  (rows=5)
-            -> Hash
-                -> Table scan on t4  (rows=2)
-        -> Hash
-            -> Table scan on t5  (rows=1)
+-> Covering index range scan on t3 using f2_idx over (30 < f1 < 33)  (rows=2)
 
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t3,t2) JOIN_SUFFIX(t2) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+# Turn off range access for PRIMARY key
+# Should use range access by f2_idx key
+EXPLAIN SELECT /*+ NO_RANGE_OPTIMIZATION(t3 PRIMARY) */ f1 FROM t3 WHERE f1 > 30 AND f1 < 33;
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=42.4)
-        -> Hash semijoin (t2.f1 = t5.f1)  (rows=8.49)
-            -> Hash semijoin (t1.f1 = t4.f1)  (rows=8.49)
-                -> Inner hash join (no condition)  (rows=60)
-                    -> Table scan on t2  (rows=20)
-                    -> Hash
-                        -> Table scan on t1  (rows=3)
-                -> Hash
-                    -> Table scan on t4  (rows=2)
-            -> Hash
-                -> Table scan on t5  (rows=1)
-        -> Hash
-            -> Table scan on t3  (rows=5)
+-> Covering index range scan on t3 using f2_idx over (30 < f1 < 33)  (rows=2)
 
-Warnings:
-Warning	3515	Hints aren't supported in hypergraph: semijoin/antijoin table precedes a table which it depends on
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t3,t2,t4) JOIN_SUFFIX(t1,t4) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+# Turn off range access for PRIMARY & f2_idx keys
+# Should use skip scan for f3_idx index
+EXPLAIN SELECT /*+ NO_RANGE_OPTIMIZATION(t3 PRIMARY, f2_idx) */ f1 FROM t3 WHERE f1 > 30 AND f1 < 33;
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t1.f1 = t4.f1)  (rows=42.4)
-        -> Inner hash join (no condition)  (rows=300)
-            -> Table scan on t1  (rows=3)
-            -> Hash
-                -> Hash semijoin (t2.f1 = t5.f1)  (rows=100)
-                    -> Inner hash join (no condition)  (rows=100)
-                        -> Table scan on t2  (rows=20)
-                        -> Hash
-                            -> Table scan on t3  (rows=5)
-                    -> Hash
-                        -> Table scan on t5  (rows=1)
-        -> Hash
-            -> Table scan on t4  (rows=2)
+-> Filter: (t3.f1 < 33)  (rows=6.22)
+    -> Covering index skip scan on t3 using f3_idx over 30 < f1  (rows=6.22)
 
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t1,t2,t4) JOIN_PREFIX(t1,t2) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+# Turn off range access for all keys
+# Should use index access
+EXPLAIN SELECT /*+ NO_RANGE_OPTIMIZATION(t3) */ f1 FROM t3 WHERE f1 > 30 AND f1 < 33;
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.f1 = t5.f1)  (rows=42.4)
-        -> Inner hash join (no condition)  (rows=42.4)
-            -> Table scan on t3  (rows=5)
-            -> Hash
-                -> Hash semijoin (t1.f1 = t4.f1)  (rows=8.49)
-                    -> Inner hash join (no condition)  (rows=60)
-                        -> Table scan on t2  (rows=20)
-                        -> Hash
-                            -> Table scan on t1  (rows=3)
-                    -> Hash
-                        -> Table scan on t4  (rows=2)
-        -> Hash
-            -> Table scan on t5  (rows=1)
+-> Filter: ((t3.f1 > 30) and (t3.f1 < 33))  (rows=6.22)
+    -> Covering index scan on t3 using f2_idx  (rows=56)
 
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t1,t2,t4) JOIN_SUFFIX(t2,t3,t4) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+# Turn off range access for PRIMARY & f2_idx keys
+# Should use index access
+EXPLAIN SELECT /*+ NO_RANGE_OPTIMIZATION(t3 PRIMARY) NO_RANGE_OPTIMIZATION(t3 f2_idx) */ f1 FROM t3 WHERE f1 > 30 AND f1 < 33;
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.f1 = t5.f1)  (rows=42.4)
-        -> Hash semijoin (t1.f1 = t4.f1)  (rows=42.4)
-            -> Inner hash join (no condition)  (rows=300)
-                -> Table scan on t3  (rows=5)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=60)
-                        -> Table scan on t2  (rows=20)
-                        -> Hash
-                            -> Table scan on t1  (rows=3)
-            -> Hash
-                -> Table scan on t4  (rows=2)
-        -> Hash
-            -> Table scan on t5  (rows=1)
+-> Filter: (t3.f1 < 33)  (rows=6.22)
+    -> Covering index skip scan on t3 using f3_idx over 30 < f1  (rows=6.22)
 
-Warnings:
-Warning	3515	Hints aren't supported in hypergraph: semijoin/antijoin table precedes a table which it depends on
-# Conflicting hints
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t3,t2) JOIN_PREFIX(t2) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+# NO_ICP hint testing
+set optimizer_switch='index_condition_pushdown=on';
+EXPLAIN SELECT  f2 FROM
+(SELECT f2, f3, f1 FROM t3 WHERE f1 > 27 AND f3 = 'poiu') AS TD
+WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.f1 = t5.f1)  (rows=42.4)
-        -> Hash semijoin (t1.f1 = t4.f1)  (rows=42.4)
-            -> Inner hash join (no condition)  (rows=300)
-                -> Table scan on t2  (rows=20)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=15)
-                        -> Table scan on t3  (rows=5)
-                        -> Hash
-                            -> Table scan on t1  (rows=3)
-            -> Hash
-                -> Table scan on t4  (rows=2)
-        -> Hash
-            -> Table scan on t5  (rows=1)
+-> Intersect rows sorted by row ID  (rows=10)
+    -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
 
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t3,t2) JOIN_SUFFIX(t3) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+EXPLAIN SELECT /*+ NO_ICP(t3@qb1 f3_idx) */ f2 FROM
+(SELECT /*+ QB_NAME(QB1) */ f2, f3, f1 FROM t3 WHERE f1 > 27 AND f3 = 'poiu') AS TD
+WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.f1 = t5.f1)  (rows=42.4)
-        -> Hash semijoin (t1.f1 = t4.f1)  (rows=42.4)
-            -> Inner hash join (no condition)  (rows=300)
-                -> Table scan on t2  (rows=20)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=15)
-                        -> Table scan on t3  (rows=5)
-                        -> Hash
-                            -> Table scan on t1  (rows=3)
-            -> Hash
-                -> Table scan on t4  (rows=2)
-        -> Hash
-            -> Table scan on t5  (rows=1)
+-> Intersect rows sorted by row ID  (rows=10)
+    -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
 
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t3,t2,t4) JOIN_PREFIX(t1,t2) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+EXPLAIN SELECT /*+ NO_ICP(t3@qb1) */ f2 FROM
+(SELECT /*+ QB_NAME(QB1) */ f2, f3, f1 FROM t3 WHERE f1 > 27 AND f3 = 'poiu') AS TD
+WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.f1 = t5.f1)  (rows=42.4)
-        -> Hash semijoin (t1.f1 = t4.f1)  (rows=42.4)
-            -> Inner hash join (no condition)  (rows=300)
-                -> Table scan on t2  (rows=20)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=15)
-                        -> Table scan on t3  (rows=5)
-                        -> Hash
-                            -> Table scan on t1  (rows=3)
-            -> Hash
-                -> Table scan on t4  (rows=2)
-        -> Hash
-            -> Table scan on t5  (rows=1)
+-> Intersect rows sorted by row ID  (rows=10)
+    -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
 
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t3,t2,t4) JOIN_SUFFIX(t1,t2) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+# Expected warning for f1_idx key, unresolved name.
+EXPLAIN SELECT f2 FROM
+(SELECT /*+ NO_ICP(t3 f3_idx, f1_idx, f2_idx) */ f2, f3, f1 FROM t3 WHERE f1 > 27 AND f3 = 'poiu') AS TD
+WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=42.4)
-        -> Hash semijoin (t2.f1 = t5.f1)  (rows=8.49)
-            -> Inner hash join (no condition)  (rows=8.49)
-                -> Table scan on t2  (rows=20)
-                -> Hash
-                    -> Hash semijoin (t1.f1 = t4.f1)  (rows=0.424)
-                        -> Table scan on t1  (rows=3)
-                        -> Hash
-                            -> Table scan on t4  (rows=2)
-            -> Hash
-                -> Table scan on t5  (rows=1)
-        -> Hash
-            -> Table scan on t3  (rows=5)
+-> Intersect rows sorted by row ID  (rows=10)
+    -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
 
 Warnings:
-Warning	3515	Hints aren't supported in hypergraph: semijoin/antijoin table precedes a table which it depends on
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t1,t2,t4) JOIN_PREFIX(t1,t4) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+Warning	3128	Unresolved name `t3`@`select#2` `f1_idx` for NO_ICP hint
+# ICP should still be used.
+EXPLAIN SELECT f2 FROM
+(SELECT /*+ NO_ICP(t3 f1_idx, f2_idx) */ f2, f3, f1 FROM t3 WHERE f1 > 27 AND f3 = 'poiu') AS TD
+WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=42.4)
-        -> Hash semijoin (t2.f1 = t5.f1)  (rows=8.49)
-            -> Hash semijoin (t1.f1 = t4.f1)  (rows=8.49)
-                -> Inner hash join (no condition)  (rows=60)
-                    -> Table scan on t2  (rows=20)
-                    -> Hash
-                        -> Table scan on t1  (rows=3)
-                -> Hash
-                    -> Table scan on t4  (rows=2)
-            -> Hash
-                -> Table scan on t5  (rows=1)
-        -> Hash
-            -> Table scan on t3  (rows=5)
+-> Intersect rows sorted by row ID  (rows=10)
+    -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
 
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t1,t2,t4) JOIN_SUFFIX(t4,t2) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+Warnings:
+Warning	3128	Unresolved name `t3`@`select#2` `f1_idx` for NO_ICP hint
+# BKA & NO_BKA hint testing
+set optimizer_switch=default;
+set optimizer_switch='batched_key_access=off,mrr_cost_based=off';
+# Check statistics without hint
+FLUSH STATUS;
+SELECT t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+f1	f2	f3
+1	1	qwerty
+1	1	qwerty
+2	2	qwerty
+2	2	qwerty
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	2
+Handler_read_key	2
+Handler_read_last	0
+Handler_read_next	0
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	33
+# Check statistics with hint
+FLUSH STATUS;
+SELECT /*+ BKA() */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+f1	f2	f3
+1	1	qwerty
+1	1	qwerty
+2	2	qwerty
+2	2	qwerty
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	2
+Handler_read_key	2
+Handler_read_last	0
+Handler_read_next	0
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	33
+EXPLAIN SELECT t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=42.4)
-        -> Hash semijoin (t2.f1 = t5.f1)  (rows=8.49)
-            -> Hash semijoin (t1.f1 = t4.f1)  (rows=8.49)
-                -> Inner hash join (no condition)  (rows=60)
-                    -> Table scan on t2  (rows=20)
-                    -> Hash
-                        -> Table scan on t1  (rows=3)
-                -> Hash
-                    -> Table scan on t4  (rows=2)
-            -> Hash
-                -> Table scan on t5  (rows=1)
-        -> Hash
-            -> Table scan on t3  (rows=5)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t1,t3,t2) JOIN_SUFFIX(t3,t1,t2) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4);
-EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Inner hash join (no condition)  (rows=42.4)
-        -> Inner hash join (no condition)  (rows=8.49)
-            -> Table scan on t2  (rows=20)
-            -> Hash
-                -> Hash semijoin (t1.f1 = t4.f1)  (rows=0.424)
-                    -> Table scan on t1  (rows=3)
-                    -> Hash
-                        -> Table scan on t4  (rows=2)
-        -> Hash
-            -> Table scan on t3  (rows=5)
-
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(t2,t4,t1) */ 1 FROM t1 JOIN t2 ON 1 RIGHT JOIN t3 ON 1 JOIN t4 ON 1;
-EXPLAIN
--> Inner hash join (no condition)  (rows=600)
-    -> Left hash join (no condition)  (rows=300)
-        -> Table scan on t3  (rows=5)
-        -> Hash
-            -> Inner hash join (no condition)  (rows=60)
-                -> Table scan on t2  (rows=20)
-                -> Hash
-                    -> Table scan on t1  (rows=3)
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
     -> Hash
-        -> Table scan on t4  (rows=2)
+        -> Table scan on t1  (rows=3)
 
-explain format=tree SELECT /*+ JOIN_PREFIX(t3,t1) */ count(*) FROM t1 JOIN t2 STRAIGHT_JOIN t3 WHERE t1.f1 IN (SELECT f1 FROM t4) AND t2.f1 IN (SELECT f1 FROM t5);
+EXPLAIN SELECT /*+ BKA(t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
 EXPLAIN
--> Aggregate: count(0)  (rows=1)
-    -> Hash semijoin (t2.f1 = t5.f1)  (rows=42.4)
-        -> Hash semijoin (t1.f1 = t4.f1)  (rows=42.4)
-            -> Inner hash join (no condition)  (rows=300)
-                -> Table scan on t3  (rows=5)
-                -> Hash
-                    -> Inner hash join (no condition)  (rows=60)
-                        -> Table scan on t2  (rows=20)
-                        -> Hash
-                            -> Table scan on t1  (rows=3)
-            -> Hash
-                -> Table scan on t4  (rows=2)
-        -> Hash
-            -> Table scan on t5  (rows=1)
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
 
-DROP TABLE t1, t2, t3, t4, t5;
-Bug#36533931 WL#15853: Result diff seen when using join_prefix hint
-CREATE TABLE t1(f1 INT NOT NULL);
-INSERT INTO t1 VALUES (10);
-CREATE TABLE t2
-(
-f1 INT NOT NULL AUTO_INCREMENT,
-f2 INT DEFAULT NULL,
-PRIMARY KEY (f1),
-KEY (f2)
-);
-INSERT INTO t2 VALUES (1, 7), (2, 1), (4, 7);
-CREATE TABLE t3(f1 INT DEFAULT NULL);
-INSERT INTO t3 VALUES (2);
+EXPLAIN SELECT /*+ BKA() */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ BKA(t1, t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ BKA(t1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ QB_NAME(QB1) BKA(t2@QB1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+set optimizer_switch='batched_key_access=off,mrr_cost_based=on';
+EXPLAIN SELECT t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ BKA(t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ BKA() */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ BKA(t1, t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ QB_NAME(QB1) BKA(t2@QB1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+set optimizer_switch='batched_key_access=on,mrr_cost_based=off';
+EXPLAIN SELECT t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+set optimizer_switch='mrr=off';
+EXPLAIN SELECT t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+# MRR switch should not affect BKA.
+# BKA should be used for table t2.
+EXPLAIN SELECT /*+ BKA(t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+set optimizer_switch='mrr=on';
+EXPLAIN SELECT /*+ NO_BKA(t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ NO_BKA() */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ NO_BKA(t1, t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+EXPLAIN SELECT /*+ QB_NAME(QB1) NO_BKA(t2@QB1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+# UPDATE|DELETE|INSERT|REPLACE hint testing
+set optimizer_switch='batched_key_access=off,mrr_cost_based=off,semijoin=off,materialization=off';
+EXPLAIN UPDATE t3
+SET f3 = 'mnbv' WHERE f1 > 30 AND f1 < 33 AND (t3.f1, t3.f2, t3.f3) IN
+(SELECT t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Update t3 (immediate)  (rows=2)
+    -> Filter: <in_optimizer>((t3.f1,t3.f2,t3.f3),<exists>(select #2))  (rows=2)
+        -> Index range scan on t3 using PRIMARY over (30 < f1 < 33)  (rows=2)
+        -> Select #2 (subquery in condition; dependent)
+            -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=0.00833)
+                -> Table scan on t1  (rows=3)
+                -> Hash
+                    -> Filter: ((<cache>(t3.f2) = t2.f2) and (<cache>(t3.f1) = t2.f1) and (<cache>(t3.f3) = t2.f3))  (rows=0.1)
+                        -> Table scan on t2  (rows=28)
+
+# Turn off range access for PRIMARY key.
+# Range access should be used for f2_idx key.
+EXPLAIN UPDATE /*+ NO_RANGE_OPTIMIZATION(t3 PRIMARY) */ t3
+SET f3 = 'mnbv' WHERE f1 > 30 AND f1 < 33 AND (t3.f1, t3.f2, t3.f3) IN
+(SELECT /*+ BKA(t2) NO_BNL(t1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Update t3 (immediate)  (rows=2)
+    -> Filter: <in_optimizer>((t3.f1,t3.f2,t3.f3),<exists>(select #2))  (rows=2)
+        -> Index range scan on t3 using f2_idx over (30 < f1 < 33)  (rows=2)
+        -> Select #2 (subquery in condition; dependent)
+            -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=0.00833)
+                -> Table scan on t1  (rows=3)
+                -> Hash
+                    -> Filter: ((<cache>(t3.f2) = t2.f2) and (<cache>(t3.f1) = t2.f1) and (<cache>(t3.f3) = t2.f3))  (rows=0.1)
+                        -> Table scan on t2  (rows=28)
+
+EXPLAIN DELETE FROM t3
+WHERE f1 > 30 AND f1 < 33 AND (t3.f1, t3.f2, t3.f3) IN
+(SELECT /*+ QB_NAME(qb1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Delete from t3 (immediate)  (rows=2)
+    -> Filter: <in_optimizer>((t3.f1,t3.f2,t3.f3),<exists>(select #2))  (rows=2)
+        -> Index range scan on t3 using PRIMARY over (30 < f1 < 33)  (rows=2)
+        -> Select #2 (subquery in condition; dependent)
+            -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=0.00833)
+                -> Table scan on t1  (rows=3)
+                -> Hash
+                    -> Filter: ((<cache>(t3.f2) = t2.f2) and (<cache>(t3.f1) = t2.f1) and (<cache>(t3.f3) = t2.f3))  (rows=0.1)
+                        -> Table scan on t2  (rows=28)
+
+# Turn off range access. Range access should not be used.
+# Turn off BNL. BNL should not be used.
+EXPLAIN DELETE /*+ NO_RANGE_OPTIMIZATION(t3 PRIMARY, f2_idx) NO_BNL(t1@QB1) */ FROM t3
+WHERE f1 > 30 AND f1 < 33 AND (t3.f1, t3.f2, t3.f3) IN
+(SELECT /*+ QB_NAME(qb1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Delete from t3 (immediate)  (rows=6.22)
+    -> Filter: ((t3.f1 > 30) and (t3.f1 < 33) and <in_optimizer>((t3.f1,t3.f2,t3.f3),<exists>(select #2)))  (rows=6.22)
+        -> Table scan on t3  (rows=56)
+        -> Select #2 (subquery in condition; dependent)
+            -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=0.00833)
+                -> Table scan on t1  (rows=3)
+                -> Hash
+                    -> Filter: ((<cache>(t3.f2) = t2.f2) and (<cache>(t3.f1) = t2.f1) and (<cache>(t3.f3) = t2.f3))  (rows=0.1)
+                        -> Table scan on t2  (rows=28)
+
+EXPLAIN INSERT INTO t3(f1, f2, f3)
+(SELECT t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Insert into t3
+    -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+        -> Table scan on t2  (rows=28)
+        -> Hash
+            -> Table scan on t1  (rows=3)
+
+# Turn off ICP. ICP should not be used.
+EXPLAIN INSERT INTO t3(f1, f2, f3)
+(SELECT /*+ NO_ICP(t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Insert into t3
+    -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+        -> Table scan on t2  (rows=28)
+        -> Hash
+            -> Table scan on t1  (rows=3)
+
+# Turn off ICP. ICP should not be used.
+EXPLAIN INSERT /*+ NO_ICP(t2@QB1 f1) */ INTO t3(f1, f2, f3)
+(SELECT /*+ QB_NAME(qb1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Insert into t3
+    -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+        -> Table scan on t2  (rows=28)
+        -> Hash
+            -> Table scan on t1  (rows=3)
+
+EXPLAIN REPLACE INTO t3(f1, f2, f3)
+(SELECT t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Replace into t3
+    -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+        -> Table scan on t2  (rows=28)
+        -> Hash
+            -> Table scan on t1  (rows=3)
+
+# Turn off ICP. ICP should not be used.
+EXPLAIN REPLACE INTO t3(f1, f2, f3)
+(SELECT /*+ NO_ICP(t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1);
+EXPLAIN
+-> Replace into t3
+    -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+        -> Table scan on t2  (rows=28)
+        -> Hash
+            -> Table scan on t1  (rows=3)
+
+# Turn off ICP for nonexistent table. ICP should be used.
+EXPLAIN REPLACE /*+ NO_ICP(t2@qb1) */ INTO t3(f1, f2, f3)
+SELECT /*+ QB_NAME(qb2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Replace into t3
+    -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+        -> Table scan on t2  (rows=28)
+        -> Hash
+            -> Table scan on t1  (rows=3)
+
+Warnings:
+Warning	3127	Query block name `qb1` is not found for NO_ICP hint
+# Turn off ICP. ICP should not be used.
+EXPLAIN REPLACE /*+ NO_ICP(t2@qb1) */ INTO t3(f1, f2, f3)
+SELECT /*+ QB_NAME(qb1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Replace into t3
+    -> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+        -> Table scan on t2  (rows=28)
+        -> Hash
+            -> Table scan on t1  (rows=3)
+
+# Misc tests
+# Should issue warning
+EXPLAIN SELECT /*+ QB_NAME(qb1) QB_NAME(qb1 ) */ * FROM t2;
+EXPLAIN
+-> Table scan on t2  (rows=28)
+
+Warnings:
+Warning	3126	Hint QB_NAME(`qb1`) is ignored as conflicting/duplicated
+# Should issue warning
+EXPLAIN SELECT /*+ BKA(@qb1) QB_NAME(qb1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+Warnings:
+Warning	3127	Query block name `qb1` is not found for BKA hint
+# Should not crash
+PREPARE stmt1 FROM "SELECT /*+ BKA(t2) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1";
+EXECUTE stmt1;
+f1	f2	f3
+1	1	qwerty
+2	2	qwerty
+1	1	qwerty
+2	2	qwerty
+EXECUTE stmt1;
+f1	f2	f3
+1	1	qwerty
+2	2	qwerty
+1	1	qwerty
+2	2	qwerty
+DEALLOCATE PREPARE stmt1;
+# Check use of alias
+EXPLAIN SELECT tbl2.f1, tbl2.f2, tbl2.f3 FROM t1 tbl1,t2 tbl2
+WHERE tbl1.f1=tbl2.f1 AND tbl2.f2 BETWEEN tbl1.f1 and tbl1.f2 and tbl2.f2 + 1 >= tbl1.f1 + 1;
+EXPLAIN
+-> Inner hash join (tbl1.f1 = tbl2.f1), extra conditions: (tbl2.f2 between tbl1.f1 and tbl1.f2) and ((tbl2.f2 + 1) >= (tbl1.f1 + 1))  (rows=2.33)
+    -> Table scan on tbl2  (rows=28)
+    -> Hash
+        -> Table scan on tbl1  (rows=3)
+
+# Turn on BKA for multiple tables. BKA should be used for tbl2.
+EXPLAIN SELECT /*+ BKA(tbl1, tbl2) */ tbl2.f1, tbl2.f2, tbl2.f3 FROM t1 tbl1,t2 tbl2
+WHERE tbl1.f1=tbl2.f1 AND tbl2.f2 BETWEEN tbl1.f1 and tbl1.f2 and tbl2.f2 + 1 >= tbl1.f1 + 1;
+EXPLAIN
+-> Inner hash join (tbl1.f1 = tbl2.f1), extra conditions: (tbl2.f2 between tbl1.f1 and tbl1.f2) and ((tbl2.f2 + 1) >= (tbl1.f1 + 1))  (rows=2.33)
+    -> Table scan on tbl2  (rows=28)
+    -> Hash
+        -> Table scan on tbl1  (rows=3)
+
+# Print warnings for nonexistent names
+EXPLAIN
+SELECT /*+ BKA(t2) NO_BNL(t1) BKA(t3) NO_RANGE_OPTIMIZATION(t3 idx1) NO_RANGE_OPTIMIZATION(t3) */
+t2.f1, t2.f2, t2.f3 FROM t1,t2 WHERE t1.f1=t2.f1 AND
+t2.f2 BETWEEN t1.f1 AND t1.f2 AND t2.f2 + 1 >= t1.f1 + 1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+Warnings:
+Warning	3128	Unresolved name `t3`@`select#1` for BKA hint
+Warning	3128	Unresolved name `t3`@`select#1` for NO_RANGE_OPTIMIZATION hint
+Warning	3128	Unresolved name `t3`@`select#1` `idx1` for NO_RANGE_OPTIMIZATION hint
+# Check illegal syntax
+EXPLAIN SELECT /*+ BKA(qb1 t3@qb1) */ f2 FROM
+(SELECT /*+ QB_NAME(qb1) */ f2, f3, f1 FROM t3 WHERE f1 > 2 AND f3 = 'poiu') AS TD
+WHERE TD.f1 > 2 AND TD.f3 = 'poiu';
+EXPLAIN
+-> Intersect rows sorted by row ID  (rows=16)
+    -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 2 < f1)  (rows=16)
+
+Warnings:
+Warning	1064	Optimizer hint syntax error near 't3@qb1) */ f2 FROM
+(SELECT /*+ QB_NAME(qb1) */ f2, f3, f1 FROM t3 WHERE f1 > 2 A' at line 1
+# Check illegal syntax
+EXPLAIN SELECT * FROM
+(SELECT /*+ QB_NAME(qb1) BKA(@qb1 t1@qb1, t2@qb1, t3) */ t2.f1, t2.f2, t2.f3 FROM t1,t2,t3) tt;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=4704)
+    -> Inner hash join (no condition)  (rows=84)
+        -> Table scan on t2  (rows=28)
+        -> Hash
+            -> Table scan on t1  (rows=3)
+    -> Hash
+        -> Covering index scan on t3 using f2_idx  (rows=56)
+
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'qb1, t2@qb1, t3) */ t2.f1, t2.f2, t2.f3 FROM t1,t2,t3) tt' at line 2
+# Check '@qb_name table_name' syntax. BKA should be used for t2.
+EXPLAIN SELECT /*+ BKA(@qb1 t2) */ * FROM (SELECT /*+ QB_NAME(QB1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1) AS s1;
+EXPLAIN
+-> Inner hash join (t1.f1 = t2.f1), extra conditions: (t2.f2 between t1.f1 and t1.f2) and ((t2.f2 + 1) >= (t1.f1 + 1))  (rows=2.33)
+    -> Table scan on t2  (rows=28)
+    -> Hash
+        -> Table scan on t1  (rows=3)
+
+# Check that original table name is not recognized if alias is used.
+EXPLAIN SELECT * FROM (SELECT /*+ BKA(t2) */ tb2.f1, tb2.f2, tb2.f3 FROM t1 tb1,t2 tb2
+WHERE tb1.f1=tb2.f1 AND tb2.f2 BETWEEN tb1.f1 and tb1.f2 and tb2.f2 + 1 >= tb1.f1 + 1) AS s1;
+EXPLAIN
+-> Inner hash join (tb1.f1 = tb2.f1), extra conditions: (tb2.f2 between tb1.f1 and tb1.f2) and ((tb2.f2 + 1) >= (tb1.f1 + 1))  (rows=2.33)
+    -> Table scan on tb2  (rows=28)
+    -> Hash
+        -> Table scan on tb1  (rows=3)
+
+Warnings:
+Warning	3128	Unresolved name `t2`@`select#2` for BKA hint
+# Table t2 should use BKA.
+EXPLAIN SELECT * FROM (SELECT /*+ BKA(tb2) */ tb2.f1, tb2.f2, tb2.f3 FROM t1 tb1,t2 tb2
+WHERE tb1.f1=tb2.f1 AND tb2.f2 BETWEEN tb1.f1 and tb1.f2 and tb2.f2 + 1 >= tb1.f1 + 1) AS s1;
+EXPLAIN
+-> Inner hash join (tb1.f1 = tb2.f1), extra conditions: (tb2.f2 between tb1.f1 and tb1.f2) and ((tb2.f2 + 1) >= (tb1.f1 + 1))  (rows=2.33)
+    -> Table scan on tb2  (rows=28)
+    -> Hash
+        -> Table scan on tb1  (rows=3)
+
+# Check that PS and conventional statements give the same result.
+FLUSH STATUS;
+SELECT /*+ BKA(@qb1 t2) */ * FROM (SELECT /*+ QB_NAME(QB1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1) AS s1;
+f1	f2	f3
+1	1	qwerty
+2	2	qwerty
+1	1	qwerty
+2	2	qwerty
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	2
+Handler_read_key	2
+Handler_read_last	0
+Handler_read_next	0
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	33
+PREPARE stmt1 FROM "SELECT /*+ BKA(@qb1 t2) */ * FROM (SELECT /*+ QB_NAME(QB1) */ t2.f1, t2.f2, t2.f3 FROM t1,t2
+WHERE t1.f1=t2.f1 AND t2.f2 BETWEEN t1.f1 and t1.f2 and t2.f2 + 1 >= t1.f1 + 1) AS s1";
+FLUSH STATUS;
+EXECUTE stmt1;
+f1	f2	f3
+1	1	qwerty
+2	2	qwerty
+1	1	qwerty
+2	2	qwerty
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	2
+Handler_read_key	2
+Handler_read_last	0
+Handler_read_next	0
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	33
+FLUSH STATUS;
+EXECUTE stmt1;
+f1	f2	f3
+1	1	qwerty
+2	2	qwerty
+1	1	qwerty
+2	2	qwerty
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	2
+Handler_read_key	2
+Handler_read_last	0
+Handler_read_next	0
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	33
+DEALLOCATE PREPARE stmt1;
+DROP TABLE t1, t2, t3;
+# BNL & NO_BNL hint testing
+set optimizer_switch=default;
+set optimizer_switch='block_nested_loop=on';
+CREATE TABLE t1 (a INT, b INT);
+INSERT INTO t1 VALUES (1,1),(2,2);
+CREATE TABLE t2 (a INT, b INT);
+INSERT INTO t2 VALUES (1,1),(2,2);
+CREATE TABLE t3 (a INT, b INT);
+INSERT INTO t3 VALUES (1,1),(2,2);
+# Check statistics without hint
+FLUSH STATUS;
+SELECT t1.* FROM t1,t2,t3;
+a	b
+1	1
+1	1
+1	1
+1	1
+2	2
+2	2
+2	2
+2	2
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	3
+Handler_read_key	3
+Handler_read_last	0
+Handler_read_next	0
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	9
+# Check statistics with hint
+FLUSH STATUS;
+SELECT /*+ NO_BNL() */t1.* FROM t1,t2,t3;
+a	b
+1	1
+1	1
+1	1
+1	1
+2	2
+2	2
+2	2
+2	2
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	3
+Handler_read_key	3
+Handler_read_last	0
+Handler_read_next	0
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	9
+EXPLAIN SELECT t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+EXPLAIN SELECT /*+ NO_BNL() */t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+EXPLAIN SELECT /*+ NO_BNL(t2, t3) */t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+EXPLAIN SELECT /*+ NO_BNL(t1, t3) */t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+set optimizer_switch='block_nested_loop=off';
+EXPLAIN SELECT t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+EXPLAIN SELECT /*+ BNL() */t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+EXPLAIN SELECT /*+ BNL(t2, t3) */t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+EXPLAIN SELECT /*+ BNL(t1, t3) */t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+EXPLAIN SELECT /*+ BNL(t2) BNL(t3) */t1.* FROM t1,t2,t3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=2)
+        -> Hash
+            -> Table scan on t2  (rows=2)
+    -> Hash
+        -> Table scan on t3  (rows=2)
+
+DROP TABLE t1, t2, t3;
+# BNL in subquery
+set optimizer_switch = DEFAULT;
+CREATE TABLE t1 (a INT, b INT, PRIMARY KEY (a));
+CREATE TABLE t2 (a INT, INDEX a (a));
+CREATE TABLE t3 (a INT, b INT, INDEX a (a,b));
+INSERT INTO t1 VALUES (1,10), (2,20), (3,30),  (4,40);
+INSERT INTO t2 VALUES (2), (3), (4), (5);
+INSERT INTO t3 VALUES (10,3), (20,4), (30,5);
 ANALYZE TABLE t1, t2, t3;
 Table	Op	Msg_type	Msg_text
 test.t1	analyze	status	OK
 test.t2	analyze	status	OK
 test.t3	analyze	status	OK
-SELECT /*+ JOIN_PREFIX(t2@qb2,t3@qb1,ta3,ta4) */ COUNT(*) FROM t1 JOIN t2 AS ta3 JOIN t2 AS ta4 WHERE ta4.f1 IN (SELECT /*+ QB_NAME(qb1) */ f1 FROM t3) AND ta3.f2 IN (SELECT /*+ QB_NAME(qb2) */ f2 FROM t2);
-COUNT(*)
-3
-Warnings:
-Warning	3515	Hints aren't supported in hypergraph: first table in join order cannot be semijoin/antijoin nest
+SET optimizer_prune_level = 0;
+EXPLAIN SELECT /*+ QB_NAME(q) */ * FROM t1 JOIN t2 ON t1.b = t2.a WHERE
+t2.a IN (SELECT /*+ QB_NAME(subq1) */ t3.b FROM t3 JOIN t1 t4 ON t3.b = t4.b);
+EXPLAIN
+-> Nested loop inner join  (rows=1.73)
+    -> Hash semijoin (FirstMatch) (t1.b = t4.b)  (rows=1.73)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Inner hash join (t3.b = t4.b)  (rows=3)
+                -> Table scan on t4  (rows=4)
+                -> Hash
+                    -> Table scan on t3  (rows=3)
+    -> Covering index lookup on t2 using a (a = t1.b)  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(q) NO_BNL() */ * FROM t1 JOIN t2 ON t1.b = t2.a WHERE
+t2.a IN (SELECT /*+ QB_NAME(subq1) */ t3.b FROM t3 JOIN t1 t4 ON t3.b = t4.b);
+EXPLAIN
+-> Nested loop inner join  (rows=1.73)
+    -> Hash semijoin (FirstMatch) (t1.b = t4.b)  (rows=1.73)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Inner hash join (t3.b = t4.b)  (rows=3)
+                -> Table scan on t4  (rows=4)
+                -> Hash
+                    -> Table scan on t3  (rows=3)
+    -> Covering index lookup on t2 using a (a = t1.b)  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(q) NO_BNL(t1, t2) */ * FROM t1 JOIN t2 ON t1.b = t2.a WHERE
+t2.a IN (SELECT /*+ QB_NAME(subq1) */ t3.b FROM t3 JOIN t1 t4 ON t3.b = t4.b);
+EXPLAIN
+-> Nested loop inner join  (rows=1.73)
+    -> Hash semijoin (FirstMatch) (t1.b = t4.b)  (rows=1.73)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Inner hash join (t3.b = t4.b)  (rows=3)
+                -> Table scan on t4  (rows=4)
+                -> Hash
+                    -> Table scan on t3  (rows=3)
+    -> Covering index lookup on t2 using a (a = t1.b)  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(q) NO_BNL(@subq1) */ * FROM t1 JOIN t2 ON t1.b = t2.a WHERE
+t2.a IN (SELECT /*+ QB_NAME(subq1) */ t3.b FROM t3 JOIN t1 t4 ON t3.b = t4.b);
+EXPLAIN
+-> Nested loop inner join  (rows=1.73)
+    -> Hash semijoin (FirstMatch) (t1.b = t4.b)  (rows=1.73)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Inner hash join (t3.b = t4.b)  (rows=3)
+                -> Table scan on t4  (rows=4)
+                -> Hash
+                    -> Table scan on t3  (rows=3)
+    -> Covering index lookup on t2 using a (a = t1.b)  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(q) NO_BNL(t4@subq1) */ * FROM t1 JOIN t2 ON t1.b = t2.a WHERE
+t2.a IN (SELECT /*+ QB_NAME(subq1) */ t3.b FROM t3 JOIN t1 t4 ON t3.b = t4.b);
+EXPLAIN
+-> Nested loop inner join  (rows=1.73)
+    -> Hash semijoin (FirstMatch) (t1.b = t4.b)  (rows=1.73)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Inner hash join (t3.b = t4.b)  (rows=3)
+                -> Table scan on t4  (rows=4)
+                -> Hash
+                    -> Table scan on t3  (rows=3)
+    -> Covering index lookup on t2 using a (a = t1.b)  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(q) NO_BNL(t3@subq1,t4@subq1) */ * FROM t1 JOIN t2 ON t1.b = t2.a WHERE
+t2.a IN (SELECT /*+ QB_NAME(subq1) */ t3.b FROM t3 JOIN t1 t4 ON t3.b = t4.b);
+EXPLAIN
+-> Nested loop inner join  (rows=1.73)
+    -> Hash semijoin (FirstMatch) (t1.b = t4.b)  (rows=1.73)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Inner hash join (t3.b = t4.b)  (rows=3)
+                -> Table scan on t4  (rows=4)
+                -> Hash
+                    -> Table scan on t3  (rows=3)
+    -> Covering index lookup on t2 using a (a = t1.b)  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(q) NO_BNL(@subq1 t3, t4) */ * FROM t1 JOIN t2 ON t1.b = t2.a WHERE
+t2.a IN (SELECT /*+ QB_NAME(subq1) */ t3.b FROM t3 JOIN t1 t4 ON t3.b = t4.b);
+EXPLAIN
+-> Nested loop inner join  (rows=1.73)
+    -> Hash semijoin (FirstMatch) (t1.b = t4.b)  (rows=1.73)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Inner hash join (t3.b = t4.b)  (rows=3)
+                -> Table scan on t4  (rows=4)
+                -> Hash
+                    -> Table scan on t3  (rows=3)
+    -> Covering index lookup on t2 using a (a = t1.b)  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(q) */ * FROM t1 JOIN t2 ON t1.b = t2.a WHERE
+t2.a IN (SELECT /*+ QB_NAME(subq1)  NO_BNL(t3, t4) */ t3.b FROM t3 JOIN t1 t4 ON t3.b = t4.b);
+EXPLAIN
+-> Nested loop inner join  (rows=1.73)
+    -> Hash semijoin (FirstMatch) (t1.b = t4.b)  (rows=1.73)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Inner hash join (t3.b = t4.b)  (rows=3)
+                -> Table scan on t4  (rows=4)
+                -> Hash
+                    -> Table scan on t3  (rows=3)
+    -> Covering index lookup on t2 using a (a = t1.b)  (rows=1)
+
+SET optimizer_prune_level = DEFAULT;
 DROP TABLE t1, t2, t3;
-CREATE TABLE t1 (f1 INT NOT NULL);
-INSERT INTO t1 VALUES (9),(0),(7);
-CREATE TABLE t2 (f1 INT NOT NULL);
-INSERT INTO t2 VALUES
-(5),(3),(0),(3),(1),(0),(1),(7),(1),(0),(0),(8),(4),(9),(0),(2),(0),(8),(5),(1);
-CREATE TABLE t3 (f1 INT NOT NULL);
-INSERT INTO t3 VALUES (9),(0),(7),(4),(5);
-CREATE TABLE t4 (f1 INT NOT NULL);
-INSERT INTO t4 VALUES (0),(7);
-CREATE TABLE t5 (f1 INT NOT NULL, PRIMARY KEY(f1));
-INSERT INTO t5 VALUES (7);
-CREATE TABLE t6(f1 INT NOT NULL, PRIMARY KEY(f1));
-INSERT INTO t6 VALUES (7);
-ANALYZE TABLE t1, t2, t3, t4, t5, t6;
-Table	Op	Msg_type	Msg_text
-test.t1	analyze	status	OK
-test.t2	analyze	status	OK
-test.t3	analyze	status	OK
-test.t4	analyze	status	OK
-test.t5	analyze	status	OK
-test.t6	analyze	status	OK
-SELECT /*+ QB_NAME(q1) JOIN_PREFIX(t3,t2,t2@subq2) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT /*+ QB_NAME(subq1) */ f1 FROM t2) AND t2.f1 IN (SELECT /*+ QB_NAME(subq2) */ f1 FROM t2);
-count(*)
-300
-SELECT /*+ JOIN_PREFIX(t2,t5@subq2,t4@subq1) JOIN_ORDER(t4@subq1,t3) JOIN_SUFFIX(t1) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT /*+ QB_NAME(subq1) */ f1 FROM t4) AND t2.f1 IN (SELECT /*+ QB_NAME(subq2) */ f1 FROM t5);
-count(*)
-10
-Warnings:
-Warning	3515	Hints aren't supported in hypergraph: semijoin/antijoin table precedes a table which it depends on
-SELECT /*+ JOIN_PREFIX(t1,t2) */ count(*) FROM t2 LEFT JOIN t1 on t2.f1=t1.f1;
-count(*)
-20
-Bug#36590872 WL#15853: HG doesn't generate the warning when it specifies an unknown table
-SELECT /*+ JOIN_ORDER(t1,t7,t5) */ count(*) FROM t1 JOIN t2 JOIN t3 WHERE t1.f1 IN (SELECT /*+ QB_NAME(subq1) */ f1 FROM t4) AND t2.f1 IN (SELECT /*+ QB_NAME(subq2) */ f1 FROM t5);
-count(*)
-10
-Warnings:
-Warning	3128	Unresolved name `t7` for JOIN_ORDER hint
-DROP TABLE t1, t2, t3, t4, t5, t6;
-Bug#36592566 WL#15853:: Assertion `table_num_to_node_num[table_num] != -1' failed.
-CREATE TABLE base (pk integer auto_increment, a1 int, a2 varchar(10), a3 varchar(255), primary key(pk));
-SELECT /*+ JOIN_SUFFIX(t2) */ t1.A1 AS field1 FROM base AS t1 LEFT OUTER JOIN base AS t2 ON t1.a1 = t2.pk LEFT JOIN base AS t3 ON t2.a2 = t3.a3;
-field1
-DROP TABLE base;
-CREATE TABLE base(pk integer auto_increment, col_int int, col_int_key int, col_varchar_10_character_set_utf8mb4_key varchar(10) character set utf8mb4, col_varchar_255_character_set_latin1 varchar(255) character set latin1, primary key(pk));
-SELECT/*+ JOIN_SUFFIX(alias3) */ DISTINCT SQL_SMALL_RESULT alias1.col_int AS field1, alias2.pk AS field2 FROM base AS alias1 RIGHT JOIN base AS alias2 LEFT OUTER JOIN base AS alias3 ON alias2.col_varchar_10_character_set_utf8mb4_key = alias3.col_varchar_255_character_set_latin1 ON alias1.pk = alias3.col_int_key WHERE alias3.pk >= alias2.col_int_key GROUP BY field1, field2 ORDER BY field2 ASC;
-field1	field2
-DROP TABLE base;
-Bug#36605912 WL#15853: Assertion `!join_list.empty()' failed.
-CREATE TABLE B (pk integer auto_increment, col_int int, col_int_key int, col_varchar_10_character_set_utf8mb4 varchar(10) character set utf8mb4, col_varchar_10_character_set_latin1_key varchar(10) character set latin1, primary key(pk));
-SELECT /*+ JOIN_SUFFIX(alias4) */ alias1.col_int AS field4 FROM B AS alias1 LEFT JOIN B AS alias2 LEFT OUTER JOIN B AS alias3 ON alias2.col_int_key = alias3.col_int_key RIGHT JOIN B AS alias4 ON alias3.col_varchar_10_character_set_latin1_key = alias4.col_varchar_10_character_set_utf8mb4 ON alias1.pk = alias4.pk WHERE (alias4.pk IS NOT NULL OR alias3.pk != alias1.col_int);
-field4
-DROP TABLE B;
-Bug#36604616 WL#15853: Assertion `IsMultipleEquals(cond) || IsSubset(cond->used_tables() & ~PSEUDO_TABLE_BITS, expr->tables_in_subtree)' failed.
-CREATE TABLE t1(c1 mediumint DEFAULT NULL, c2 char(255) DEFAULT NULL, c3 varchar(10) DEFAULT NULL, c4 varchar(500) DEFAULT NULL, c5 char(10) DEFAULT NULL, c6 tinyint DEFAULT NULL, c7 mediumint DEFAULT NULL, c8 int DEFAULT NULL, c9 float DEFAULT NULL, pk int NOT NULL, PRIMARY KEY (pk)) ENGINE=InnoDB;
+# MRR & NO_MRR hint testing
+set optimizer_switch=default;
+CREATE TABLE t1
+(
+f1 int NOT NULL DEFAULT '0',
+f2 int NOT NULL DEFAULT '0',
+f3 int NOT NULL DEFAULT '0',
+INDEX idx1(f2, f3), INDEX idx2(f3)
+);
+INSERT INTO t1(f1) VALUES (1), (2), (3), (4), (5), (6), (7), (8);
+INSERT INTO t1(f2, f3) VALUES (3,4), (3,4);
 ANALYZE TABLE t1;
 Table	Op	Msg_type	Msg_text
 test.t1	analyze	status	OK
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(alias3,alias3,alias1) */  alias1.c1 AS field1 FROM t1 AS alias1 INNER JOIN t1 AS alias2 INNER JOIN t1 AS alias3 INNER JOIN t1 AS alias4 ON alias3.c2 >= alias4.c3 ON alias2.c4 != alias4.c5 ON alias1.c6 <= alias4.c7  LEFT OUTER JOIN t1 AS alias5 ON alias2.c8 = alias5.c9 WHERE alias3.pk <= 3 HAVING (field1 < 8 AND field1 != 8) ORDER BY field1;
+set optimizer_switch='mrr=on,mrr_cost_based=off';
+# Check statistics without hint
+FLUSH STATUS;
+SELECT * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+f1	f2	f3
+0	3	4
+0	3	4
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	0
+Handler_read_key	3
+Handler_read_last	0
+Handler_read_next	2
+Handler_read_prev	0
+Handler_read_rnd	2
+Handler_read_rnd_next	0
+# Check statistics with hint
+FLUSH STATUS;
+SELECT /*+ NO_MRR(t1) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+f1	f2	f3
+0	3	4
+0	3	4
+SHOW STATUS LIKE 'handler_read%';
+Variable_name	Value
+Handler_read_first	1
+Handler_read_key	1
+Handler_read_last	0
+Handler_read_next	0
+Handler_read_prev	0
+Handler_read_rnd	0
+Handler_read_rnd_next	11
+EXPLAIN SELECT * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
 EXPLAIN
--> Sort: alias1.c1  (rows=0.03)
-    -> Filter: ((field1 < 8) and (field1 <> 8))  (rows=0.03)
-        -> Left hash join (alias2.c8 = alias5.c9)  (rows=0.1)
-            -> Inner hash join (no condition), extra conditions: (alias1.c6 <= alias4.c7) and (alias2.c4 <> alias4.c5) and (alias3.c2 >= alias4.c3)  (rows=0.1)
-                -> Inner hash join (no condition)  (rows=1)
-                    -> Table scan on alias1  (rows=1)
-                    -> Hash
-                        -> Inner hash join (no condition)  (rows=1)
-                            -> Filter: (alias3.pk <= 3)  (rows=1)
-                                -> Table scan on alias3  (rows=1)
-                            -> Hash
-                                -> Table scan on alias2  (rows=1)
-                -> Hash
-                    -> Table scan on alias4  (rows=1)
-            -> Hash
-                -> Table scan on alias5  (rows=1)
+-> Filter: (t1.f2 <= 3)  (rows=2)
+    -> Index range scan (Multi-Range Read) on t1 using idx2 over (3 <= f3)  (rows=2)
+
+# Turn off MRR. MRR should not be used.
+EXPLAIN SELECT /*+ NO_MRR(t1) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: ((t1.f2 <= 3) and (3 <= t1.f3))  (rows=2)
+    -> Table scan on t1  (rows=10)
+
+# Turn off MRR. MRR should not be used.
+EXPLAIN SELECT /*+ NO_MRR(t1 idx2) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: ((t1.f2 <= 3) and (3 <= t1.f3))  (rows=2)
+    -> Table scan on t1  (rows=10)
+
+# Turn off MRR for unused key. MRR should be used.
+EXPLAIN SELECT /*+ NO_MRR(t1 idx1) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: (t1.f2 <= 3)  (rows=2)
+    -> Index range scan (Multi-Range Read) on t1 using idx2 over (3 <= f3)  (rows=2)
+
+set optimizer_switch='mrr=off,mrr_cost_based=off';
+EXPLAIN SELECT * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: ((t1.f2 <= 3) and (3 <= t1.f3))  (rows=2)
+    -> Table scan on t1  (rows=10)
+
+# Turn on MRR. MRR should be used.
+EXPLAIN SELECT /*+ MRR(t1) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: (t1.f2 <= 3)  (rows=2)
+    -> Index range scan (Multi-Range Read) on t1 using idx2 over (3 <= f3)  (rows=2)
+
+# Turn on MRR. MRR should be used.
+EXPLAIN SELECT /*+ MRR(t1 IDX2) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: (t1.f2 <= 3)  (rows=2)
+    -> Index range scan (Multi-Range Read) on t1 using idx2 over (3 <= f3)  (rows=2)
+
+# Turn on MRR for unused key. MRR should not be used.
+EXPLAIN SELECT /*+ MRR(t1 idx1) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: ((t1.f2 <= 3) and (3 <= t1.f3))  (rows=2)
+    -> Table scan on t1  (rows=10)
+
+set optimizer_switch='mrr=off,mrr_cost_based=on';
+EXPLAIN SELECT * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: ((t1.f2 <= 3) and (3 <= t1.f3))  (rows=2)
+    -> Table scan on t1  (rows=10)
+
+# Turn on MRR. MRR should be used.
+EXPLAIN SELECT /*+ MRR(t1) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: (t1.f2 <= 3)  (rows=2)
+    -> Index range scan (Multi-Range Read) on t1 using idx2 over (3 <= f3)  (rows=2)
+
+# Turn on MRR. MRR should be used.
+EXPLAIN SELECT /*+ MRR(t1 idx2) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: (t1.f2 <= 3)  (rows=2)
+    -> Index range scan (Multi-Range Read) on t1 using idx2 over (3 <= f3)  (rows=2)
+
+# Turn on MRR for unused key. MRR should not be used.
+EXPLAIN SELECT /*+ MRR(t1 IDX1) */ * FROM t1 WHERE f2 <= 3 AND 3 <= f3;
+EXPLAIN
+-> Filter: ((t1.f2 <= 3) and (3 <= t1.f3))  (rows=2)
+    -> Table scan on t1  (rows=10)
 
 DROP TABLE t1;
-Bug#36622538 WL#15853:: Assertion `table_num_to_node_num[table_num] != -1' failed.
-CREATE TABLE t1 (pk integer auto_increment, col_int int, col_int_key int, col_varchar_10_character_set_latin1 varchar(10) character set latin1, col_varchar_10_character_set_latin1_key varchar(10) character set latin1, primary key(pk));
-SELECT /*+ JOIN_ORDER(table1,table3,table3) JOIN_FIXED_ORDER() JOIN_ORDER(table3,table1,table2) */ table2.col_int_key AS field1, table3.col_int AS field2, table2.col_int_key AS field3, table2.pk AS field4 FROM t1 AS table1 LEFT JOIN t1 AS table2 RIGHT JOIN t1 AS table3 ON table2.col_int = table3.pk ON table1.col_varchar_10_character_set_latin1_key = table3.col_varchar_10_character_set_latin1 WHERE table3.col_int_key BETWEEN 1 AND (1 + 2) GROUP BY table2.col_int_key, table3.col_int, table2.col_int_key, table2.pk;
-field1	field2	field3	field4
-Warnings:
-Warning	3126	Hint JOIN_FIXED_ORDER( ) is ignored as conflicting/duplicated
-DROP TABLE t1;
-Multiple levels of nesting
-CREATE TABLE t2(f1 VARCHAR(255) DEFAULT NULL, f2 INT DEFAULT NULL, KEY (f1), KEY (f2));
-CREATE TABLE t4(f1 INT DEFAULT NULL, f2 INT DEFAULT NULL, KEY (f1));
-CREATE TABLE t5(f1 INT NOT NULL AUTO_INCREMENT, f2 INT DEFAULT NULL, PRIMARY KEY (f1));
-CREATE TABLE t6(f1 INT NOT NULL AUTO_INCREMENT, PRIMARY KEY (f1));
-CREATE TABLE t7(f1 VARCHAR(255) DEFAULT NULL);
-CREATE TABLE t10(f1 INT NOT NULL AUTO_INCREMENT,f2 INT DEFAULT NULL,f3 VARCHAR(10) DEFAULT NULL, PRIMARY KEY (f1),KEY (f2),KEY (f3));
-CREATE TABLE t11(f1 INT DEFAULT NULL,f2 VARCHAR(10) DEFAULT NULL, KEY (f1),KEY (f2));
-ANALYZE TABLE t2, t4, t5, t6, t7, t10, t11;
-Table	Op	Msg_type	Msg_text
-test.t2	analyze	status	OK
-test.t4	analyze	status	OK
-test.t5	analyze	status	OK
-test.t6	analyze	status	OK
-test.t7	analyze	status	OK
-test.t10	analyze	status	OK
-test.t11	analyze	status	OK
-EXPLAIN FORMAT=TREE SELECT /*+ JOIN_ORDER(alias11,alias8) */ 1
-FROM t4 AS alias4
-LEFT JOIN t5 AS alias5 JOIN t6 AS alias6 ON alias5.f2 = alias6.f1
-LEFT JOIN t7 AS alias7 JOIN t2 AS alias8 ON alias7.f1 = alias8.f1
-ON alias5.f1 = alias8.f2 ON alias4.f2 = alias6.f1
-JOIN t10 AS alias10 JOIN t11 AS alias11 ON alias10.f1 = alias11.f1
-ON alias4.f2 = alias11.f2;
+#
+# Bug#21205282 CRASH/ASSERTION IN JOIN_CACHE::SET_MATCH_FLAG_IF_NONE WITH NO_BNL HINT
+#
+CREATE TABLE t(a INT);
+INSERT INTO t VALUES (1);
+SET optimizer_switch='block_nested_loop=on';
+EXPLAIN SELECT 1 FROM t t1 LEFT JOIN t t2 ON 1 LEFT JOIN (t t3 LEFT JOIN t t4 ON 1) ON 1;
 EXPLAIN
--> Inner hash join (alias10.f1 = alias11.f1)  (rows=1)
-    -> Table scan on alias10  (rows=1)
+-> Left hash join (no condition)  (rows=1)
+    -> Left hash join (no condition)  (rows=1)
+        -> Table scan on t1  (rows=1)
+        -> Hash
+            -> Table scan on t2  (rows=1)
     -> Hash
-        -> Inner hash join (cast(alias4.f2 as double) = cast(alias11.f2 as double))  (rows=1)
-            -> Left hash join (alias4.f2 = alias5.f2)  (rows=1)
-                -> Table scan on alias4  (rows=1)
-                -> Hash
-                    -> Left hash join (alias5.f1 = alias8.f2)  (rows=1)
-                        -> Inner hash join (alias5.f2 = alias6.f1)  (rows=1)
-                            -> Table scan on alias5  (rows=1)
-                            -> Hash
-                                -> Table scan on alias6  (rows=1)
-                        -> Hash
-                            -> Inner hash join (<hash>(alias7.f1)=<hash>(alias8.f1)), extra conditions: (alias7.f1 = alias8.f1)  (rows=1)
-                                -> Table scan on alias7  (rows=1)
-                                -> Hash
-                                    -> Table scan on alias8  (rows=1)
+        -> Left hash join (no condition)  (rows=1)
+            -> Table scan on t3  (rows=1)
             -> Hash
-                -> Table scan on alias11  (rows=1)
+                -> Table scan on t4  (rows=1)
 
-DROP TABLES t2, t4, t5, t6, t7, t10, t11;
+EXPLAIN SELECT /*+ NO_BNL(t1) */ 1 FROM t t1 LEFT JOIN t t2 ON 1 LEFT JOIN (t t3 LEFT JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Left hash join (no condition)  (rows=1)
+        -> Table scan on t1  (rows=1)
+        -> Hash
+            -> Table scan on t2  (rows=1)
+    -> Hash
+        -> Left hash join (no condition)  (rows=1)
+            -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BNL(t2) */ 1 FROM t t1 LEFT JOIN t t2 ON 1 LEFT JOIN (t t3 LEFT JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Left hash join (no condition)  (rows=1)
+        -> Table scan on t1  (rows=1)
+        -> Hash
+            -> Table scan on t2  (rows=1)
+    -> Hash
+        -> Left hash join (no condition)  (rows=1)
+            -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BNL(t3) */ 1 FROM t t1 LEFT JOIN t t2 ON 1 LEFT JOIN (t t3 LEFT JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Left hash join (no condition)  (rows=1)
+        -> Table scan on t1  (rows=1)
+        -> Hash
+            -> Table scan on t2  (rows=1)
+    -> Hash
+        -> Left hash join (no condition)  (rows=1)
+            -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BNL(t4) */ 1 FROM t t1 LEFT JOIN t t2 ON 1 LEFT JOIN (t t3 LEFT JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Left hash join (no condition)  (rows=1)
+        -> Table scan on t1  (rows=1)
+        -> Hash
+            -> Table scan on t2  (rows=1)
+    -> Hash
+        -> Left hash join (no condition)  (rows=1)
+            -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BNL(t3) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 LEFT JOIN t t4 ON 1) ON 1 WHERE 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+SELECT /*+ NO_BNL(t4) */ 1 FROM t t1 LEFT JOIN t t2 ON 1 LEFT JOIN (t t3 LEFT JOIN t t4 ON 1) ON 1;
+1
+1
+SELECT /*+ NO_BNL(t3) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 LEFT JOIN t t4 ON 1) ON 1 WHERE 1;
+1
+1
+SET optimizer_switch='block_nested_loop=off';
+EXPLAIN SELECT 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 INNER JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t1) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 INNER JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t2) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 INNER JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t3) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 INNER JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t4) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 INNER JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t2, t3) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 INNER JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t3, t4) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 INNER JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t2, t3, t4) */ 1 FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON 1 INNER JOIN t t4 ON 1) ON 1;
+EXPLAIN
+-> Left hash join (no condition)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=1)
+            -> Left hash join (no condition)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+DROP TABLE t;
+CREATE TABLE t(a INT, b INT, KEY k(a));
+INSERT INTO t VALUES (1,1);
+EXPLAIN SELECT * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 USING(a) LEFT JOIN t t4 USING(a)) USING(a);
+EXPLAIN
+-> Left hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.a = t4.a)  (rows=1)
+            -> Left hash join (t2.a = t3.a)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t1) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 USING(a) LEFT JOIN t t4 USING(a)) USING(a);
+EXPLAIN
+-> Left hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.a = t4.a)  (rows=1)
+            -> Left hash join (t2.a = t3.a)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t2) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 USING(a) LEFT JOIN t t4 USING(a)) USING(a);
+EXPLAIN
+-> Left hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.a = t4.a)  (rows=1)
+            -> Left hash join (t2.a = t3.a)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t3) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 USING(a) LEFT JOIN t t4 USING(a)) USING(a);
+EXPLAIN
+-> Left hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.a = t4.a)  (rows=1)
+            -> Left hash join (t2.a = t3.a)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t4) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 USING(a) LEFT JOIN t t4 USING(a)) USING(a);
+EXPLAIN
+-> Left hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.a = t4.a)  (rows=1)
+            -> Left hash join (t2.a = t3.a)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t2, t3) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 USING(a) LEFT JOIN t t4 USING(a)) USING(a);
+EXPLAIN
+-> Left hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.a = t4.a)  (rows=1)
+            -> Left hash join (t2.a = t3.a)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t2, t4) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 USING(a) LEFT JOIN t t4 USING(a)) USING(a);
+EXPLAIN
+-> Left hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.a = t4.a)  (rows=1)
+            -> Left hash join (t2.a = t3.a)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t2, t3, t4) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 USING(a) LEFT JOIN t t4 USING(a)) USING(a);
+EXPLAIN
+-> Left hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.a = t4.a)  (rows=1)
+            -> Left hash join (t2.a = t3.a)  (rows=1)
+                -> Table scan on t2  (rows=1)
+                -> Hash
+                    -> Table scan on t3  (rows=1)
+            -> Hash
+                -> Table scan on t4  (rows=1)
+
+SET optimizer_switch='block_nested_loop=on,batched_key_access=on,mrr_cost_based=off';
+EXPLAIN SELECT * FROM t t1 INNER JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b LEFT JOIN t t4 ON t3.b=t4.b) ON t1.a=t2.a;
+EXPLAIN
+-> Inner hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.b = t3.b)  (rows=1)
+            -> Table scan on t2  (rows=1)
+            -> Hash
+                -> Left hash join (t3.b = t4.b)  (rows=1)
+                    -> Table scan on t3  (rows=1)
+                    -> Hash
+                        -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BKA(t1) */ * FROM t t1 INNER JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b LEFT JOIN t t4 ON t3.b=t4.b) ON t1.a=t2.a;
+EXPLAIN
+-> Inner hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.b = t3.b)  (rows=1)
+            -> Table scan on t2  (rows=1)
+            -> Hash
+                -> Left hash join (t3.b = t4.b)  (rows=1)
+                    -> Table scan on t3  (rows=1)
+                    -> Hash
+                        -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BKA(t2) */ * FROM t t1 INNER JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b LEFT JOIN t t4 ON t3.b=t4.b) ON t1.a=t2.a;
+EXPLAIN
+-> Inner hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.b = t3.b)  (rows=1)
+            -> Table scan on t2  (rows=1)
+            -> Hash
+                -> Left hash join (t3.b = t4.b)  (rows=1)
+                    -> Table scan on t3  (rows=1)
+                    -> Hash
+                        -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BNL(t3) */ * FROM t t1 INNER JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b LEFT JOIN t t4 ON t3.b=t4.b) ON t1.a=t2.a;
+EXPLAIN
+-> Inner hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.b = t3.b)  (rows=1)
+            -> Table scan on t2  (rows=1)
+            -> Hash
+                -> Left hash join (t3.b = t4.b)  (rows=1)
+                    -> Table scan on t3  (rows=1)
+                    -> Hash
+                        -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BNL(t4) */ * FROM t t1 INNER JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b LEFT JOIN t t4 ON t3.b=t4.b) ON t1.a=t2.a;
+EXPLAIN
+-> Inner hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.b = t3.b)  (rows=1)
+            -> Table scan on t2  (rows=1)
+            -> Hash
+                -> Left hash join (t3.b = t4.b)  (rows=1)
+                    -> Table scan on t3  (rows=1)
+                    -> Hash
+                        -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BKA(t2) NO_BNL(t3) */ * FROM t t1 INNER JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b LEFT JOIN t t4 ON t3.b=t4.b) ON t1.a=t2.a;
+EXPLAIN
+-> Inner hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.b = t3.b)  (rows=1)
+            -> Table scan on t2  (rows=1)
+            -> Hash
+                -> Left hash join (t3.b = t4.b)  (rows=1)
+                    -> Table scan on t3  (rows=1)
+                    -> Hash
+                        -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BNL(t3) NO_BKA(t4) */ * FROM t t1 INNER JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b LEFT JOIN t t4 ON t3.b=t4.b) ON t1.a=t2.a;
+EXPLAIN
+-> Inner hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.b = t3.b)  (rows=1)
+            -> Table scan on t2  (rows=1)
+            -> Hash
+                -> Left hash join (t3.b = t4.b)  (rows=1)
+                    -> Table scan on t3  (rows=1)
+                    -> Hash
+                        -> Table scan on t4  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BKA(t2) NO_BNL(t3) NO_BKA(t4) */ * FROM t t1 INNER JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b LEFT JOIN t t4 ON t3.b=t4.b) ON t1.a=t2.a;
+EXPLAIN
+-> Inner hash join (t1.a = t2.a)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Left hash join (t2.b = t3.b)  (rows=1)
+            -> Table scan on t2  (rows=1)
+            -> Hash
+                -> Left hash join (t3.b = t4.b)  (rows=1)
+                    -> Table scan on t3  (rows=1)
+                    -> Hash
+                        -> Table scan on t4  (rows=1)
+
+SET optimizer_switch='batched_key_access=off';
+EXPLAIN SELECT * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t1) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ NO_BNL(t2) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t3) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t4) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t2, t3) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t3, t4) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+SET optimizer_switch='block_nested_loop=off';
+EXPLAIN SELECT * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t1) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t2) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t3) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t4) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t2, t3) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BKA(t3, t4) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+EXPLAIN SELECT /*+ BNL(t2, t3, t4) */ * FROM t t1 LEFT JOIN (t t2 LEFT JOIN t t3 ON t2.b=t3.b INNER JOIN t t4 ON t3.a=t4.a) ON t1.b=t2.b;
+EXPLAIN
+-> Left hash join (t1.b = t3.b)  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Inner hash join (t3.a = t4.a)  (rows=0.1)
+            -> Table scan on t4  (rows=1)
+            -> Hash
+                -> Inner hash join (t2.b = t3.b)  (rows=0.1)
+                    -> Table scan on t2  (rows=1)
+                    -> Hash
+                        -> Table scan on t3  (rows=1)
+
+DROP TABLE t;
+set optimizer_switch=default;
+#
+# Duplicate hints
+#
+CREATE TABLE t1 (i INT PRIMARY KEY);
+SELECT /*+ BKA() BKA() */ 1;
+1
+1
+Warnings:
+Warning	3126	Hint BKA( ) is ignored as conflicting/duplicated
+SELECT /*+ BKA(t1) BKA(t1) */ * FROM t1;
+i
+Warnings:
+Warning	3126	Hint BKA(`t1` ) is ignored as conflicting/duplicated
+SELECT /*+ QB_NAME(q1) BKA(t1@q1) BKA(t1@q1) */ * FROM t1;
+i
+Warnings:
+Warning	3126	Hint BKA(`t1`@`q1` ) is ignored as conflicting/duplicated
+SELECT /*+ QB_NAME(q1) NO_ICP(@q1 t1 PRIMARY) NO_ICP(@q1 t1 PRIMARY) */ * FROM t1;
+i
+Warnings:
+Warning	3126	Hint NO_ICP(`t1`@`q1` `PRIMARY` ) is ignored as conflicting/duplicated
+DROP TABLE t1;
+#
+# Bug#21192857 ASSERTION FAILED: KEYINFO_ARRAY.SIZE() == 0, FILE OPT_HINTS.CC:280
+#
+CREATE TABLE t1(a INT, KEY(a));
+INSERT INTO t1(a) SELECT /*+ NO_RANGE_OPTIMIZATION(t1 a)*/ 1 FROM t1;
+DROP TABLE t1;
+# WL#8016 Parser for optimizer hints
+CREATE TABLE t1 (i INT, j INT);
+CREATE INDEX i1 ON t1(i);
+CREATE INDEX i2 ON t1(j);
+
+# empty hint comment is ok:
+
+SELECT /*+*/ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '*/' at line 1
+SELECT /*+ */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '*/' at line 1
+SELECT /*+ * ** / // /* */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '* ** / // /* */ 1' at line 1
+SELECT /*+ @ */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '@ */ 1' at line 1
+SELECT /*+ @foo */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '@foo */ 1' at line 1
+SELECT /*+ foo@bar */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'foo@bar */ 1' at line 1
+SELECT /*+ foo @bar */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'foo @bar */ 1' at line 1
+SELECT /*+ `@` */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '`@` */ 1' at line 1
+SELECT /*+ `@foo` */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '`@foo` */ 1' at line 1
+SELECT /*+ `foo@bar` */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '`foo@bar` */ 1' at line 1
+SELECT /*+ `foo @bar` */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '`foo @bar` */ 1' at line 1
+SELECT /*+ BKA( @) */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1' at line 1
+SELECT /*+ BKA( @) */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1' at line 1
+SELECT /*+ BKA(t1 @) */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '@) */ 1' at line 1
+
+# We don't support "*/" inside quoted identifiers (syntax error):
+
+SELECT /*+ BKA(`test*/`) */ 1;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '`) */ 1' at line 1
+
+# valid hint sequences:
+
+SELECT  /*+ NO_ICP() */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1' at line 1
+SELECT  /*+NO_ICP()*/ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ')*/ 1' at line 1
+SELECT  /*+ NO_ICP () */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1' at line 1
+SELECT  /*+ NO_ICP (  ) */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1' at line 1
+SELECT  /*+ NO_ICP() */ 1 UNION SELECT 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1 UNION SELECT 1' at line 1
+(SELECT /*+ NO_ICP() */ 1) UNION (SELECT 1);
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1) UNION (SELECT 1)' at line 1
+((SELECT  /* + NO_ICP() */ 1));
+1
+1
+EXPLAIN SELECT /*+ QB_NAME(qb1) */ 1 UNION SELECT /*+ QB_NAME(qb2) */ 1;
+EXPLAIN
+-> Table scan on <union temporary>  (rows=2)
+    -> Union materialize with deduplication  (rows=2)
+        -> Rows fetched before execution  (rows=1)
+        -> Rows fetched before execution  (rows=1)
+
+EXPLAIN (SELECT /*+ QB_NAME(qb1) */ 1) UNION (SELECT /*+ QB_NAME(qb2) */ 1);
+EXPLAIN
+-> Table scan on <union temporary>  (rows=2)
+    -> Union materialize with deduplication  (rows=2)
+        -> Rows fetched before execution  (rows=1)
+        -> Rows fetched before execution  (rows=1)
+
+UPDATE  /*+ NO_ICP() */ t1 SET i = 10;
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ t1 SET i = 10' at line 1
+INSERT  /*+ NO_ICP() */ INTO t1 VALUES ();
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ INTO t1 VALUES ()' at line 1
+REPLACE /*+ NO_ICP() */ INTO t1 VALUES ();
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ INTO t1 VALUES ()' at line 1
+DELETE  /*+ NO_ICP() */ FROM t1 WHERE 1;
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ FROM t1 WHERE 1' at line 1
+SELECT /*+ BKA(t1) */    1 FROM t1;
+1
+SELECT /*+ BKA(a b) */   1 FROM t1 a, t1 b;
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'b) */   1 FROM t1 a, t1 b' at line 1
+SELECT /*+ NO_ICP(i1) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name `i1`@`select#1` for NO_ICP hint
+SELECT /*+ NO_ICP(i1 i2) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name `i1`@`select#1` `i2` for NO_ICP hint
+SELECT /*+ NO_ICP(@qb ident) */ 1 FROM t1;
+1
+Warnings:
+Warning	3127	Query block name `qb` is not found for NO_ICP hint
+#
+# test explainable statements for hint support:
+# they should warn with a hint syntax error near "test */"
+#
+EXPLAIN SELECT /*+ test */ 1;
+EXPLAIN
+-> Rows fetched before execution  (rows=1)
+
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'test */ 1' at line 1
+EXPLAIN INSERT /*+ test */ INTO t1 VALUES (10, 10);
+EXPLAIN
+-> Insert into t1
+    -> Rows fetched before execution
+
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'test */ INTO t1 VALUES (10, 10)' at line 1
+EXPLAIN REPLACE /*+ test */ INTO t1 VALUES (10, 10);
+EXPLAIN
+-> Replace into t1
+    -> Rows fetched before execution
+
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'test */ INTO t1 VALUES (10, 10)' at line 1
+EXPLAIN UPDATE /*+ test */ t1 SET i = 10 WHERE j = 10;
+EXPLAIN
+-> Update t1 (immediate)  (rows=1)
+    -> Filter: (t1.j = 10)  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'test */ t1 SET i = 10 WHERE j = 10' at line 1
+EXPLAIN DELETE /*+ test */ FROM t1 WHERE i = 10;
+EXPLAIN
+-> Delete from t1 (immediate)  (rows=1)
+    -> Filter: (t1.i = 10)  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'test */ FROM t1 WHERE i = 10' at line 1
+
+# non-alphabetic and non-ASCII identifiers:
+
+CREATE INDEX 3rd_index ON t1(i, j);
+SELECT /*+ NO_ICP(3rd_index) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name `3rd_index`@`select#1` for NO_ICP hint
+CREATE INDEX `$index` ON t1(j, i);
+SELECT /*+ NO_ICP($index) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name `$index`@`select#1` for NO_ICP hint
+CREATE TABLE ` quoted name тест` (i INT);
+SELECT /*+ BKA(` quoted name тест`) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name ` quoted name тест`@`select#1` for BKA hint
+SELECT /*+ BKA(` quoted name тест`@`select#1`) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name ` quoted name тест`@`select#1` for BKA hint
+DROP TABLE ` quoted name тест`;
+SET SQL_MODE = 'ANSI_QUOTES';
+CREATE TABLE " quoted name тест" (i INT);
+SELECT /*+ BKA(" quoted name тест") */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name " quoted name тест"@"select#1" for BKA hint
+SELECT /*+ BKA(" quoted name тест"@"select#1") */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name " quoted name тест"@"select#1" for BKA hint
+CREATE TABLE `test1``test2``` (i INT);
+SELECT /*+ BKA(`test1``test2```) */ 1;
+1
+1
+Warnings:
+Warning	3128	Unresolved name "test1`test2`"@"select#1" for BKA hint
+SELECT /*+ BKA("test1""test2""") */ 1;
+1
+1
+Warnings:
+Warning	3128	Unresolved name "test1""test2"""@"select#1" for BKA hint
+SET SQL_MODE = '';
+# should warn:
+SELECT /*+ BKA(" quoted name тест") */ 1 FROM t1;
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '" quoted name тест") */ 1 FROM t1' at line 1
+DROP TABLE ` quoted name тест`;
+DROP TABLE `test1``test2```;
+EXPLAIN SELECT /*+ QB_NAME(`*`) */ 1;
+EXPLAIN
+-> Rows fetched before execution  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(`a*`) */ 1;
+EXPLAIN
+-> Rows fetched before execution  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(`*b`) */ 1;
+EXPLAIN
+-> Rows fetched before execution  (rows=1)
+
+EXPLAIN SELECT /*+ QB_NAME(`a
+b`) */ 1;
+EXPLAIN
+-> Rows fetched before execution  (rows=1)
+
+# hint syntax error: empty quoted identifier
+EXPLAIN SELECT /*+ QB_NAME(``) */ 1;
+EXPLAIN
+-> Rows fetched before execution  (rows=1)
+
+Warnings:
+Warning	1064	Optimizer hint syntax error near '``) */ 1' at line 1
+SET NAMES utf8mb3;
+Warnings:
+Warning	1287	'utf8mb3' is deprecated and will be removed in a future release. Please use utf8mb4 instead
+EXPLAIN SELECT /*+ QB_NAME(`�``�`) */ 1;
+EXPLAIN
+-> Rows fetched before execution  (rows=1)
+
+CREATE TABLE tableТ (i INT);
+SELECT /*+ BKA(tableТ) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name `tableТ`@`select#1` for BKA hint
+SELECT /*+ BKA(test@tableТ) */ 1 FROM t1;
+1
+Warnings:
+Warning	3127	Query block name `tableТ` is not found for BKA hint
+DROP TABLE tableТ;
+CREATE TABLE таблица (i INT);
+SELECT /*+ BKA(`таблица`) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name `таблица`@`select#1` for BKA hint
+SELECT /*+ BKA(таблица) */ 1 FROM t1;
+1
+Warnings:
+Warning	3128	Unresolved name `таблица`@`select#1` for BKA hint
+SELECT /*+ BKA(test@таблица) */ 1 FROM t1;
+1
+Warnings:
+Warning	3127	Query block name `таблица` is not found for BKA hint
+# broken multibyte char, should warn:
+SELECT /*+ NO_ICP(`�`) */ 1 FROM t1;
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '`?`) */ 1 FROM t1' at line 1
+DROP TABLE таблица;
+SET NAMES DEFAULT;
+
+# derived tables and other subqueries:
+
+SELECT * FROM (SELECT /*+ DEBUG_HINT3 */ 1) a;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'DEBUG_HINT3 */ 1) a' at line 1
+SELECT (SELECT /*+ DEBUG_HINT3 */ 1);
+(SELECT /*+ DEBUG_HINT3 */ 1)
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'DEBUG_HINT3 */ 1)' at line 1
+SELECT 1 FROM DUAL WHERE 1 IN (SELECT /*+ DEBUG_HINT3 */ 1);
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'DEBUG_HINT3 */ 1)' at line 1
+
+# invalid hint sequences (should warn):
+
+SELECT /*+ 10 */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '10 */ 1' at line 1
+SELECT /*+ NO_ICP() */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1' at line 1
+SELECT /*+ NO_ICP(10) */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '10) */ 1' at line 1
+SELECT /*+ NO_ICP( */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '*/' at line 1
+SELECT /*+ NO_ICP) */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1' at line 1
+SELECT /*+ NO_ICP(t1 */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '*/' at line 1
+SELECT /*+ NO_ICP(t1 ( */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '( */ 1' at line 1
+(SELECT 1) UNION (SELECT /*+ NO_ICP() */ 1);
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1)' at line 1
+INSERT INTO t1 VALUES (1, 1), (2, 2);
+
+# wrong place for hint, so recognize that stuff as a regular commentary:
+
+SELECT 1 FROM /*+ regular commentary, not a hint! */ t1;
+1
+1
+1
+SELECT 1 FROM /*+ #1 */ t1 WHERE /*+ #2 */ 1 /*+ #3 */;
+1
+1
+1
+SELECT /*+ NO_ICP() */ 1
+FROM /*+ regular commentary, not a hint! */ t1;
+1
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near ') */ 1
+FROM /*+ regular commentary, not a hint! */ t1' at line 1
+SELECT /*+ NO_ICP(t1) bad_hint */ 1 FROM t1;
+1
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near 'bad_hint */ 1 FROM t1' at line 1
+SELECT /*+
+NO_ICP(@qb ident)
+*/ 1 FROM t1;
+1
+1
+1
+Warnings:
+Warning	3127	Query block name `qb` is not found for NO_ICP hint
+SELECT /*+
+? bad syntax
+*/ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '? bad syntax
+*/ 1' at line 2
+SELECT
+/*+ ? bad syntax */ 1;
+1
+1
+Warnings:
+Warning	1064	Optimizer hint syntax error near '? bad syntax */ 1' at line 2
+DROP TABLE t1;
+#
+# Bug #21095608: OPTIMIZER HINT PARSER DOESN'T ACCEPT NUMBER-PREFIXED
+#                QUERY BLOCK NAMES AFTER @
+#
+CREATE TABLE t1 (i INT);
+EXPLAIN SELECT /*+ QB_NAME(1a) BKA(t1@1a) */ 1 FROM t1;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+DROP TABLE t1;
+#
+# Bug #21148405: OPTIMIZER HINTS: READ OF FREE MEMORY FOR INVALID HINTS
+#
+CREATE PROCEDURE p1()
+BEGIN
+DECLARE cur1 CURSOR FOR  SELECT /*+ NO_MRR(q w)*/1;
+OPEN cur1;
+END|
+CALL p1();
+Warnings:
+Warning	3128	Unresolved name `q`@`select#1` `w` for NO_MRR hint
+CALL p1();
+DROP PROCEDURE p1;
+#
+# WL#9307 MERGE/NO_MERGE hint for derived table, view
+#
+create table t1(a int);
+explain select * from (select * from t1) as dt;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+explain select /*+ merge(dt) */ * from (select * from t1) as dt;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+explain select /*+ no_merge(dt) */ * from (select * from t1) as dt;
+EXPLAIN
+-> Table scan on dt  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+# Also testing that case of letters is irrelevant.
+explain select /*+ no_mERge(dt) */ * from (select * from t1) as dt;
+EXPLAIN
+-> Table scan on dt  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+create view v1 as (select * from t1);
+explain select * from v1;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+explain select /*+ merge(v1) */ * from v1;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+explain select /*+ no_merge(v1) */ * from v1;
+EXPLAIN
+-> Table scan on v1  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+drop view v1;
+# hint is OVERRIDDEN by algorithm=
+create algorithm=merge view v1 as (select * from t1);
+explain select * from v1;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+explain select /*+ merge(v1) */ * from v1;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+explain select /*+ no_merge(v1) */ * from v1;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+drop view v1;
+create algorithm=temptable view v1 as (select * from t1);
+explain select * from v1;
+EXPLAIN
+-> Table scan on v1  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+explain select /*+ merge(v1) */ * from v1;
+EXPLAIN
+-> Table scan on v1  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+explain select /*+ no_merge(v1) */ * from v1;
+EXPLAIN
+-> Table scan on v1  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+drop view v1;
+# hint OVERRIDES optimizer_switch
+set optimizer_switch="derived_merge=off";
+explain select * from (select * from t1) as dt;
+EXPLAIN
+-> Table scan on dt  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+explain select /*+ merge(dt) */ * from (select * from t1) as dt;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+explain select /*+ no_merge(dt) */ * from (select * from t1) as dt;
+EXPLAIN
+-> Table scan on dt  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+create view v1 as (select * from t1);
+explain select * from v1;
+EXPLAIN
+-> Table scan on v1  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+explain select /*+ merge(v1) */ * from v1;
+EXPLAIN
+-> Table scan on t1  (rows=1)
+
+explain select /*+ no_merge(v1) */ * from v1;
+EXPLAIN
+-> Table scan on v1  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t1  (rows=1)
+
+drop view v1;
+set optimizer_switch=default;
+# Can apply to certain derived tables
+create table t2(a int, b int);
+create table t3 like t2;
+explain select /*+ no_merge(dt) merge(dt2) */ *
+from (select * from t1) as dt, (select * from t2) as dt2;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=1)
+    -> Table scan on dt  (rows=1)
+        -> Materialize  (rows=1)
+            -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Table scan on t2  (rows=1)
+
+# Or to all:
+explain select /*+ no_merge() */ *
+from (select * from t1) as dt, (select * from t2) as dt2;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=1)
+    -> Table scan on dt  (rows=1)
+        -> Materialize  (rows=1)
+            -> Table scan on t1  (rows=1)
+    -> Hash
+        -> Table scan on dt2  (rows=1)
+            -> Materialize  (rows=1)
+                -> Table scan on t2  (rows=1)
+
+# And be specified in outer blocks, with naming:
+explain select /*+ no_merge(dt@qb1) merge(dt2@qb1) */ * from t1 where a =
+(select /*+ qb_name(qb1) */ 3
+from (select * from t1) as dt, (select * from t2) as dt2);
+EXPLAIN
+-> Filter: (t1.a = (select #2))  (rows=0.1)
+    -> Table scan on t1  (rows=1)
+    -> Select #2 (subquery in condition; run only once)
+        -> Inner hash join (no condition)  (rows=1)
+            -> Table scan on dt  (rows=1)
+                -> Materialize  (rows=1)
+                    -> Table scan on t1  (rows=1)
+            -> Hash
+                -> Table scan on t2  (rows=1)
+
+# with another syntax:
+explain select /*+ no_merge(@qb1 dt) merge(@qb1 dt2) */ * from t1 where a =
+(select /*+ qb_name(qb1) */ 3
+from (select * from t1) as dt, (select * from t2) as dt2);
+EXPLAIN
+-> Filter: (t1.a = (select #2))  (rows=0.1)
+    -> Table scan on t1  (rows=1)
+    -> Select #2 (subquery in condition; run only once)
+        -> Inner hash join (no condition)  (rows=1)
+            -> Table scan on dt  (rows=1)
+                -> Materialize  (rows=1)
+                    -> Table scan on t1  (rows=1)
+            -> Hash
+                -> Table scan on t2  (rows=1)
+
+# A hint can list more than one table
+explain select /*+ merge(dt2) no_merge(dt,dt3) */ *
+from (select * from t1) as dt, (select * from t2) as dt2,
+(select * from t3) as dt3;
+EXPLAIN
+-> Inner hash join (no condition)  (rows=1)
+    -> Inner hash join (no condition)  (rows=1)
+        -> Table scan on dt  (rows=1)
+            -> Materialize  (rows=1)
+                -> Table scan on t1  (rows=1)
+        -> Hash
+            -> Table scan on t2  (rows=1)
+    -> Hash
+        -> Table scan on dt3  (rows=1)
+            -> Materialize  (rows=1)
+                -> Table scan on t3  (rows=1)
+
+# Merge hint OVERRIDES heuristics, for example the one which
+# materializes when user variables are set.
+explain select * from
+(
+select * from t1
+where (1,a,2) =  (
+select @n:=@n+1, t2.a, sum(t2.b)
+from (select @n:=1) as dt, t2
+group by t2.a
+)
+) as dt2
+;
+EXPLAIN
+-> Table scan on dt2  (rows=1)
+    -> Materialize  (rows=1)
+        -> Filter: ((1,t1.a,2) = (select #3))  (rows=1)
+            -> Table scan on t1  (rows=1)
+            -> Select #3 (subquery in condition; uncacheable)
+                -> Group aggregate: sum(t2.b)  (rows=1)
+                    -> Sort: t2.a  (rows=1)
+                        -> Inner hash join (no condition)  (rows=1)
+                            -> Table scan on dt  (rows=1)
+                                -> Materialize  (rows=1)
+                                    -> Rows fetched before execution  (rows=1)
+                            -> Hash
+                                -> Table scan on t2  (rows=1)
+
+Warnings:
+Warning	1287	Setting user variables within expressions is deprecated and will be removed in a future release. Consider alternatives: 'SET variable=expression, ...', or 'SELECT expression(s) INTO variables(s)'.
+Warning	1287	Setting user variables within expressions is deprecated and will be removed in a future release. Consider alternatives: 'SET variable=expression, ...', or 'SELECT expression(s) INTO variables(s)'.
+explain select /*+ merge(dt2) */ * from
+(
+select * from t1
+where (1,a,2) =  (
+select @n:=@n+1, t2.a, sum(t2.b)
+from (select @n:=1) as dt, t2
+group by t2.a
+)
+) as dt2
+;
+EXPLAIN
+-> Filter: ((1,t1.a,2) = (select #3))  (rows=1)
+    -> Table scan on t1  (rows=1)
+    -> Select #3 (subquery in condition; uncacheable)
+        -> Group aggregate: sum(t2.b)  (rows=1)
+            -> Sort: t2.a  (rows=1)
+                -> Inner hash join (no condition)  (rows=1)
+                    -> Table scan on dt  (rows=1)
+                        -> Materialize  (rows=1)
+                            -> Rows fetched before execution  (rows=1)
+                    -> Hash
+                        -> Table scan on t2  (rows=1)
+
+Warnings:
+Warning	1287	Setting user variables within expressions is deprecated and will be removed in a future release. Consider alternatives: 'SET variable=expression, ...', or 'SELECT expression(s) INTO variables(s)'.
+Warning	1287	Setting user variables within expressions is deprecated and will be removed in a future release. Consider alternatives: 'SET variable=expression, ...', or 'SELECT expression(s) INTO variables(s)'.
+# ALGORITHM clause overrides heuristics too
+create view v1 as select (select t1.a from t1 where t1.a=t2.a) from t2;
+explain select * from v1;
+EXPLAIN
+-> Table scan on v1  (rows=1)
+    -> Materialize  (rows=1)
+        -> Table scan on t2  (rows=1)
+        -> Select #3 (subquery in projection; dependent)
+            -> Filter: (t1.a = t2.a)  (rows=0.1)
+                -> Table scan on t1  (rows=1)
+
+Warnings:
+Note	1276	Field or reference 'test.t2.a' of SELECT #3 was resolved in SELECT #2
+drop view v1;
+create algorithm=merge view v1 as select (select t1.a from t1 where t1.a=t2.a) from t2;
+explain select * from v1;
+EXPLAIN
+-> Table scan on t2  (rows=1)
+-> Select #3 (subquery in projection; dependent)
+    -> Filter: (t1.a = t2.a)  (rows=0.1)
+        -> Table scan on t1  (rows=1)
+
+Warnings:
+Note	1276	Field or reference 'test.t2.a' of SELECT #3 was resolved in SELECT #2
+drop view v1;
+# Hint for index is useless and should be ignored
+select /*+ no_mrr(dt idx1) */ * from (select 1 from t1 limit 1) dt;
+1
+Warnings:
+Warning	3128	Unresolved name `dt`@`select#1` `idx1` for NO_MRR hint
+select /*+ no_mrr(dt idx1) */ * from (select 1 from t1) dt;
+1
+Warnings:
+Warning	3128	Unresolved name `dt`@`select#1` `idx1` for NO_MRR hint
+# Hint for UPDATE
+insert into t1 values(1),(2);
+create view v1 as
+select  * from t1 where a <> 0;
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain update t3, v1 set t3.a=v1.a+10 where t3.a-v1.a=0;
+EXPLAIN
+-> Update t3 (buffered)  (rows=3.6)
+    -> Inner hash join (no condition), extra conditions: ((t3.a - t1.a) = 0)  (rows=3.6)
+        -> Table scan on t3  (rows=2)
+        -> Hash
+            -> Filter: (t1.a <> 0)  (rows=1.8)
+                -> Table scan on t1  (rows=2)
+
+update t3, v1 set t3.a=v1.a+10 where t3.a-v1.a=0;
+select * from t3;
+a	b
+11	1
+12	2
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain update /*+ no_merge(v1) */ t3, v1 set t3.a=v1.a+10 where t3.a-v1.a=0;
+EXPLAIN
+-> Update t3 (buffered)  (rows=3.6)
+    -> Inner hash join (no condition), extra conditions: ((t3.a - v1.a) = 0)  (rows=3.6)
+        -> Table scan on t3  (rows=2)
+        -> Hash
+            -> Table scan on v1  (rows=1.8)
+                -> Materialize  (rows=1.8)
+                    -> Filter: (t1.a <> 0)  (rows=1.8)
+                        -> Table scan on t1  (rows=2)
+
+update /*+ no_merge(v1) */ t3, v1 set t3.a=v1.a+10 where t3.a-v1.a=0;
+select * from t3;
+a	b
+11	1
+12	2
+# Update v1
+delete from t3;
+insert into t3 values(1,1),(2,2);
+delete from t1;
+insert into t1 values(1),(2);
+explain update t3, v1 set v1.a=t3.a+10 where t3.a-v1.a=0;
+EXPLAIN
+-> Update t1 (buffered)  (rows=3.6)
+    -> Inner hash join (no condition), extra conditions: ((t3.a - t1.a) = 0)  (rows=3.6)
+        -> Table scan on t3  (rows=2)
+        -> Hash
+            -> Filter: (t1.a <> 0)  (rows=1.8)
+                -> Table scan on t1  (rows=2)
+
+update t3, v1 set v1.a=t3.a+10 where t3.a-v1.a=0;
+select * from t1;
+a
+11
+12
+delete from t1;
+insert into t1 values(1),(2);
+update /*+ no_merge(v1) */ t3, v1 set v1.a=t3.a+10 where t3.a-v1.a=0;
+ERROR HY000: The target table v1 of the UPDATE is not updatable
+select * from t1;
+a
+1
+2
+# A derived table in UPDATE
+delete from t1;
+insert into t1 values(1),(2);
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain update t3, (select * from t1) dt set t3.a=dt.a+10 where t3.a-dt.a=0;
+EXPLAIN
+-> Update t3 (buffered)  (rows=4)
+    -> Inner hash join (no condition), extra conditions: ((t3.a - t1.a) = 0)  (rows=4)
+        -> Table scan on t3  (rows=2)
+        -> Hash
+            -> Table scan on t1  (rows=2)
+
+update t3, (select * from t1) dt set t3.a=dt.a+10 where t3.a-dt.a=0;
+select * from t3;
+a	b
+11	1
+12	2
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain update /*+ no_merge(dt) */ t3, (select * from t1) dt set t3.a=dt.a+10 where t3.a-dt.a=0;
+EXPLAIN
+-> Update t3 (buffered)  (rows=4)
+    -> Inner hash join (no condition), extra conditions: ((t3.a - dt.a) = 0)  (rows=4)
+        -> Table scan on t3  (rows=2)
+        -> Hash
+            -> Table scan on dt  (rows=2)
+                -> Materialize  (rows=2)
+                    -> Table scan on t1  (rows=2)
+
+update /*+ no_merge(dt) */ t3, (select * from t1) dt set t3.a=dt.a+10 where t3.a-dt.a=0;
+select * from t3;
+a	b
+11	1
+12	2
+# A derived table in first-level subquery of UPDATE, the update
+# target not being in the derived table. Before the WL, the
+# derived table would always be materialized; now it's only
+# heuristic and can be overridden.
+delete from t1;
+insert into t1 values(1),(2);
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain update t3 set b=NULL
+where a in (select /*+ qb_name(sub) */ a
+from (select * from t1 where a>1) dt);
+EXPLAIN
+-> Update t3 (immediate)  (rows=0.133)
+    -> Nested loop semijoin (FirstMatch)  (rows=0.133)
+        -> Table scan on t3  (rows=2)
+        -> Covering index lookup on dt using <auto_key0> (a = t3.a)  (rows=0.0667)
+            -> Materialize  (rows=0.667)
+                -> Filter: (t1.a > 1)  (rows=0.667)
+                    -> Table scan on t1  (rows=2)
+
+update t3 set b=NULL
+where a in (select /*+ qb_name(sub) */ a
+from (select * from t1 where a>1) dt);
+select * from t3;
+a	b
+1	1
+2	NULL
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain update /*+ merge(dt@sub) */ t3 set b=NULL
+where a in (select /*+ qb_name(sub) */ a
+from (select * from t1 where a>1) dt);
+EXPLAIN
+-> Update t3 (buffered)  (rows=0.133)
+    -> Hash semijoin (FirstMatch) (t3.a = t1.a)  (rows=0.133)
+        -> Table scan on t3  (rows=2)
+        -> Hash
+            -> Filter: (t1.a > 1)  (rows=0.667)
+                -> Table scan on t1  (rows=2)
+
+update /*+ merge(dt@sub) */ t3 set b=NULL
+where a in (select /*+ qb_name(sub) */ a
+from (select * from t1 where a>1) dt);
+select * from t3;
+a	b
+1	1
+2	NULL
+# A derived table in UPDATE, the update target being in the
+# derived table.
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain update t3 set b=NULL
+where a in (select /*+ qb_name(sub) */ a
+from (select * from t3 where b>1) dt);
+EXPLAIN
+-> Update t3 (immediate)  (rows=0.133)
+    -> Nested loop semijoin (FirstMatch)  (rows=0.133)
+        -> Table scan on t3  (rows=2)
+        -> Index lookup on dt using <auto_key0> (a = t3.a)  (rows=0.0667)
+            -> Materialize  (rows=0.667)
+                -> Filter: (t3.b > 1)  (rows=0.667)
+                    -> Table scan on t3  (rows=2)
+
+update t3 set b=NULL
+where a in (select /*+ qb_name(sub) */ a
+from (select * from t3 where b>1) dt);
+select * from t3;
+a	b
+1	1
+2	NULL
+delete from t3;
+insert into t3 values(1,1),(2,2);
+# The heuristic which materializes, intends to allow the query;
+# if you disable it, the query cannot run:
+update /*+ merge(dt@sub) */ t3 set b=NULL
+where a in (select /*+ qb_name(sub) */ a
+from (select * from t3 where b>1) dt);
+ERROR HY000: You can't specify target table 't3' for update in FROM clause
+select * from t3;
+a	b
+1	1
+2	2
+# DELETE.
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain delete t3.* from t3, v1 where t3.a-v1.a=0;
+EXPLAIN
+-> Delete from t3 (buffered)  (rows=3.6)
+    -> Inner hash join (no condition), extra conditions: ((t3.a - t1.a) = 0)  (rows=3.6)
+        -> Table scan on t3  (rows=2)
+        -> Hash
+            -> Filter: (t1.a <> 0)  (rows=1.8)
+                -> Table scan on t1  (rows=2)
+
+delete t3.* from t3, v1 where t3.a-v1.a=0;
+select * from t3;
+a	b
+delete from t3;
+insert into t3 values(1,1),(2,2);
+explain delete /*+ no_merge(v1) */ t3.* from t3, v1 where t3.a-v1.a=0;
+EXPLAIN
+-> Delete from t3 (buffered)  (rows=3.6)
+    -> Inner hash join (no condition), extra conditions: ((t3.a - v1.a) = 0)  (rows=3.6)
+        -> Table scan on t3  (rows=2)
+        -> Hash
+            -> Table scan on v1  (rows=1.8)
+                -> Materialize  (rows=1.8)
+                    -> Filter: (t1.a <> 0)  (rows=1.8)
+                        -> Table scan on t1  (rows=2)
+
+delete /*+ no_merge(v1) */ t3.* from t3, v1 where t3.a-v1.a=0;
+select * from t3;
+a	b
+drop view v1;
+drop table t1,t2,t3;
+#
+# Non-terminated comment test
+#
+PREPARE stmt FROM 'SELECT /*+ 10';
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '/*+ 10' at line 1
+#
+# Bug#34976138 records_in_range does too many disk reads
+#
+CREATE TABLE t (id int AUTO_INCREMENT, cid int NOT NULL, price float NOT NULL,
+PRIMARY KEY (id), KEY key1 (price, cid));
+INSERT INTO t(cid, price) values(1, 10), (2, 100), (3, 55), (4, 20), (5, 30),
+(6, 27), (7, 217), (8, 927), (9, 207);
+ANALYZE TABLE t;
+Table	Op	Msg_type	Msg_text
+test.t	analyze	status	OK
+SET SESSION OPTIMIZER_TRACE="enabled=on";
+# Case without FORCE INDEX, this should do an index dive during query
+# optimization.
+EXPLAIN SELECT price, cid FROM t WHERE (price >= 10)
+ORDER BY price, cid LIMIT 3;
+EXPLAIN
+-> Limit: 3 row(s)  (rows=3)
+    -> Covering index range scan on t using key1 over (10 <= price)  (rows=9)
+
+SELECT price, cid FROM t WHERE (price >= 10) ORDER BY price, cid LIMIT 3;
+price	cid
+10	1
+20	4
+27	6
+SELECT REGEXP_SUBSTR(trace, 'index_dive[^,]*',1,1,'n') FROM
+INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+REGEXP_SUBSTR(trace, 'index_dive[^,]*',1,1,'n')
+NULL
+# Case with ORDER BY and FORCE INDEX, this should skip the index dive
+# during query optimization.
+EXPLAIN SELECT price, cid FROM t FORCE INDEX (key1) WHERE (price >= 10)
+ORDER BY price, cid LIMIT 3;
+EXPLAIN
+-> Limit: 3 row(s)  (rows=3)
+    -> Covering index range scan on t using key1 over (10 <= price)  (rows=9)
+
+SELECT price, cid FROM t FORCE INDEX (key1) WHERE (price >= 10)
+ORDER BY price, cid LIMIT 3;
+price	cid
+10	1
+20	4
+27	6
+SELECT REGEXP_SUBSTR(trace, 'index_dive[^,]*',1,1,'n') FROM
+INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+REGEXP_SUBSTR(trace, 'index_dive[^,]*',1,1,'n')
+NULL
+# Case with DESC ORDER BY and FORCE INDEX, this should skip index dive
+# during query optimization.
+EXPLAIN SELECT price, cid FROM t FORCE INDEX (key1) WHERE (price >= 10)
+ORDER BY price DESC, cid DESC LIMIT 3;
+EXPLAIN
+-> Limit: 3 row(s)  (rows=3)
+    -> Covering index range scan on t using key1 over (10 <= price) (reverse)  (rows=9)
+
+SELECT price, cid FROM t FORCE INDEX (key1) WHERE (price >= 200)
+ORDER BY price DESC, cid DESC LIMIT 3;
+price	cid
+927	8
+217	7
+207	9
+SELECT REGEXP_SUBSTR(trace, 'index_dive[^,]*',1,1,'n') FROM
+INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+REGEXP_SUBSTR(trace, 'index_dive[^,]*',1,1,'n')
+NULL
+# Case where FORCE INDEX can't provide order. This should not skip
+# Index dives.
+SELECT price, cid FROM t FORCE INDEX(key1) WHERE price >= 20 ORDER BY cid;
+price	cid
+100	2
+55	3
+20	4
+30	5
+27	6
+217	7
+927	8
+207	9
+SELECT REGEXP_SUBSTR(trace, 'index_dive[^,]*',1,1,'n') FROM
+INFORMATION_SCHEMA.OPTIMIZER_TRACE;
+REGEXP_SUBSTR(trace, 'index_dive[^,]*',1,1,'n')
+NULL
+SET SESSION OPTIMIZER_TRACE="enabled=off";
+DROP TABLE t;
+# Statement modifiers for SELECT which affect temporary table creation
+CREATE TABLE t1 (
+f1 int unsigned NOT NULL auto_increment primary key,
+f2 varchar(100) NOT NULL default ''
+);
+CREATE TABLE t2 (
+f1 varchar(10) NOT NULL default '',
+f2 char(3) NOT NULL default '',
+PRIMARY KEY  (`f1`),
+KEY `k1` (`f2`,`f1`)
+);
+INSERT INTO t1 values(NULL, '');
+INSERT INTO t2 VALUES ('486878','WDT'),('486910','WDT');
+EXPLAIN FORMAT=TREE SELECT avg(t2.f1) FROM t1, t2 where t2.f2 = 'SIR' GROUP BY t1.f1;
+EXPLAIN
+-> Group aggregate: avg(t2.f1)  (rows=1)
+    -> Sort: t1.f1  (rows=1)
+        -> Inner hash join (no condition)  (rows=1)
+            -> Table scan on t1  (rows=1)
+            -> Hash
+                -> Filter: (t2.f2 = 'SIR')  (rows=1)
+                    -> Table scan on t2  (rows=2)
+
+# SELECT SQL_BUFFER_RESULT should use temporary table
+EXPLAIN FORMAT=TREE SELECT SQL_BUFFER_RESULT avg(t2.f1) FROM t1, t2 where t2.f2 = 'SIR' GROUP BY t1.f1;
+EXPLAIN
+-> Table scan on <temporary>  (rows=1)
+    -> Temporary table  (rows=1)
+        -> Group aggregate: avg(t2.f1)  (rows=1)
+            -> Sort: t1.f1  (rows=1)
+                -> Inner hash join (no condition)  (rows=1)
+                    -> Table scan on t1  (rows=1)
+                    -> Hash
+                        -> Filter: (t2.f2 = 'SIR')  (rows=1)
+                            -> Table scan on t2  (rows=2)
+
+# SELECT SQL_BIG_RESULT should not use temporary table
+EXPLAIN FORMAT=TREE SELECT SQL_BIG_RESULT avg(t2.f1) FROM t1, t2 where t2.f2 = 'SIR' GROUP BY t1.f1;
+EXPLAIN
+-> Group aggregate: avg(t2.f1)  (rows=1)
+    -> Sort: t1.f1  (rows=1)
+        -> Inner hash join (no condition)  (rows=1)
+            -> Table scan on t1  (rows=1)
+            -> Hash
+                -> Filter: (t2.f2 = 'SIR')  (rows=1)
+                    -> Table scan on t2  (rows=2)
+
+DROP TABLE t1, t2;

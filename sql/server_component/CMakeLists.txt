@@ -84,6 +84,7 @@ SET(MYSQL_SERVER_COMPONENT_SOURCES
   mysql_simple_error_log_imp.cc
   mysql_statement_service_imp.cc
   mysql_signal_handler_imp.cc
+  applier_metrics_service_imp.cc
   )
 
 # This static library is used to build mysqld binary and in some unit test cases
@@ -94,3 +95,6 @@ TARGET_COMPILE_DEFINITIONS(mysql_server_component_services
 TARGET_LINK_LIBRARIES(mysql_server_component_services PRIVATE extra::rapidjson)
 TARGET_LINK_LIBRARIES(mysql_server_component_services PRIVATE ext::zlib)
 ADD_DEPENDENCIES(mysql_server_component_services GenError)
+
+TARGET_INCLUDE_DIRECTORIES(mysql_server_component_services SYSTEM PRIVATE 
+  ${CMAKE_SOURCE_DIR}/extra/unordered_dense/unordered_dense-4.4.0/include)

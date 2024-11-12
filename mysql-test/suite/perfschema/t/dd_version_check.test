@@ -141,6 +141,10 @@ insert into test.pfs_published_schema
         "fb9c8d88611c3d935e3d78daff4f3faf2595896a342dd2c121b3081131df593f");
 
 insert into test.pfs_published_schema
+ values("MySQL 8.0.40", 80040,
+        "b56610322b2a64779b7cfe96976cd0b5c6542a098bec88dacb0bb8a1fe7be458");
+
+insert into test.pfs_published_schema
  values("MySQL 8.2.0", 80200,
         "a0a5ec52fc2e8aaf0fde0d304c3647ef54ea34cbe9e286c72e9874ca7f0815e6");
 
@@ -159,8 +163,22 @@ insert into test.pfs_published_schema
         "465e86aaeee818c0aeeef15780883765c9d2d758b41499c0e5165fa725d9e045");
 
 insert into test.pfs_published_schema
+ values("MySQL 8.4.3", 80403,
+        "d80d586539a4f2292716e8620fe48360b9a9a2bf34bf06f45e25a0a5616cb0a5");
+
+insert into test.pfs_published_schema
  values("MySQL 9.0.0", 90000,
+<<<<<<< HEAD
         "226c2d04698e23d7a4a4ee497790850d300a5b5cb96f48eb3d73030f75ba3e50");
+||||||| merged common ancestors
+        "2616977dc6227148a18b0db345f8300a49990d008fd2558ee0dc624435c29661");
+=======
+        "fefb8c85575ab81e8c5a9517b11d21180bf8ae90213740e8636ef0ebf59cfe94");
+
+insert into test.pfs_published_schema
+ values("MySQL 9.1.0", 90100,
+        "b4d93fec13a721f3070b8e87b8025b1e224b35325b3e00085926bbfa1b792b60");
+>>>>>>> mysql-9.1.0
 
 create table test.pfs_check_table
   (id int NOT NULL AUTO_INCREMENT,

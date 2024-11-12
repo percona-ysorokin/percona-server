@@ -183,7 +183,7 @@ class Item_json_func : public Item_func {
     @param parent_args  arguments to forward to Item_func's constructor
   */
   template <typename... Args>
-  Item_json_func(THD *thd, Args &&... parent_args)
+  Item_json_func(THD *thd, Args &&...parent_args)
       : Item_func(std::forward<Args>(parent_args)...),
         m_path_cache(thd, arg_count) {
     set_data_type_json();
@@ -346,6 +346,7 @@ class Item_func_json_schema_valid final : public Item_bool_func {
   ~Item_func_json_schema_valid() override;
 
   const char *func_name() const override { return "json_schema_valid"; }
+  enum Functype functype() const override { return JSON_SCHEMA_VALID_FUNC; }
 
   bool val_bool() override;
 
@@ -371,6 +372,10 @@ class Item_func_json_schema_validation_report final : public Item_json_func {
 
   const char *func_name() const override {
     return "json_schema_validation_report";
+  }
+
+  enum Functype functype() const override {
+    return JSON_SCHEMA_VALIDATION_REPORT_FUNC;
   }
 
   bool val_json(Json_wrapper *wr) override;
@@ -611,7 +616,7 @@ class Item_func_json_extract final : public Item_json_func {
 class Item_func_modify_json_in_path : public Item_json_func {
  protected:
   template <typename... Args>
-  explicit Item_func_modify_json_in_path(Args &&... parent_args)
+  explicit Item_func_modify_json_in_path(Args &&...parent_args)
       : Item_json_func(std::forward<Args>(parent_args)...) {
     // The function does not necessarily return NULL when an argument is NULL.
     // It returns NULL only if the first argument is NULL, or if one of the JSON
@@ -682,7 +687,7 @@ class Item_func_json_set_replace : public Item_func_modify_json_in_path {
 
  protected:
   template <typename... Args>
-  explicit Item_func_json_set_replace(bool json_set, Args &&... parent_args)
+  explicit Item_func_json_set_replace(bool json_set, Args &&...parent_args)
       : Item_func_modify_json_in_path(std::forward<Args>(parent_args)...),
         m_json_set(json_set),
         m_path(key_memory_JSON) {}
@@ -697,7 +702,7 @@ class Item_func_json_set_replace : public Item_func_modify_json_in_path {
 class Item_func_json_set final : public Item_func_json_set_replace {
  public:
   template <typename... Args>
-  explicit Item_func_json_set(Args &&... parent_args)
+  explicit Item_func_json_set(Args &&...parent_args)
       : Item_func_json_set_replace(true, std::forward<Args>(parent_args)...) {}
 
   const char *func_name() const override { return "json_set"; }
@@ -709,7 +714,7 @@ class Item_func_json_set final : public Item_func_json_set_replace {
 class Item_func_json_replace final : public Item_func_json_set_replace {
  public:
   template <typename... Args>
-  explicit Item_func_json_replace(Args &&... parent_args)
+  explicit Item_func_json_replace(Args &&...parent_args)
       : Item_func_json_set_replace(false, std::forward<Args>(parent_args)...) {}
 
   const char *func_name() const override { return "json_replace"; }
@@ -721,7 +726,7 @@ class Item_func_json_replace final : public Item_func_json_set_replace {
 class Item_func_json_array final : public Item_json_func {
  public:
   template <typename... Args>
-  explicit Item_func_json_array(Args &&... parent_args)
+  explicit Item_func_json_array(Args &&...parent_args)
       : Item_json_func(std::forward<Args>(parent_args)...) {
     // Does not return NULL on NULL input. A NULL argument is interpreted as the
     // JSON null literal.
@@ -785,7 +790,7 @@ class Item_func_json_search : public Item_json_func {
     @param parent_args arguments to pass to Item_json_func's constructor
   */
   template <typename... Args>
-  Item_func_json_search(Args &&... parent_args)
+  Item_func_json_search(Args &&...parent_args)
       : Item_json_func(std::forward<Args>(parent_args)...),
         m_cached_ooa(ooa_uninitialized) {}
 
@@ -819,7 +824,7 @@ class Item_func_json_remove : public Item_json_func {
 
  public:
   template <typename... Args>
-  Item_func_json_remove(Args &&... parent_args)
+  Item_func_json_remove(Args &&...parent_args)
       : Item_json_func(std::forward<Args>(parent_args)...) {}
 
   const char *func_name() const override { return "json_remove"; }

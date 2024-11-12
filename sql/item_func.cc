@@ -146,14 +146,14 @@
 #include "sql/strfunc.h"  // find_type
 #include "sql/system_variables.h"
 #include "sql/thd_raii.h"
-#include "sql/val_int_compare.h"    // Integer_value
-#include "sql/vector_conversion.h"  // get_dimensions
+#include "sql/val_int_compare.h"  // Integer_value
 #include "sql_string.h"
 #include "storage/perfschema/terminology_use_previous_enum.h"
 #include "string_with_len.h"
 #include "template_utils.h"
 #include "template_utils.h"  // pointer_cast
 #include "thr_mutex.h"
+#include "vector-common/vector_constants.h"  // get_dimensions
 
 using std::max;
 using std::min;
@@ -1534,13 +1534,11 @@ void Item_num_op::set_numeric_type(void) {
     hybrid_type = INT_RESULT;
     result_precision();
   }
-  DBUG_PRINT("info", ("Type: %s", (hybrid_type == REAL_RESULT
-                                       ? "REAL_RESULT"
-                                       : hybrid_type == DECIMAL_RESULT
-                                             ? "DECIMAL_RESULT"
-                                             : hybrid_type == INT_RESULT
-                                                   ? "INT_RESULT"
-                                                   : "--ILLEGAL!!!--")));
+  DBUG_PRINT("info",
+             ("Type: %s", (hybrid_type == REAL_RESULT      ? "REAL_RESULT"
+                           : hybrid_type == DECIMAL_RESULT ? "DECIMAL_RESULT"
+                           : hybrid_type == INT_RESULT     ? "INT_RESULT"
+                                                       : "--ILLEGAL!!!--")));
 }
 
 /**
@@ -1570,13 +1568,11 @@ void Item_func_num1::set_numeric_type() {
     default:
       assert(0);
   }
-  DBUG_PRINT("info", ("Type: %s", (hybrid_type == REAL_RESULT
-                                       ? "REAL_RESULT"
-                                       : hybrid_type == DECIMAL_RESULT
-                                             ? "DECIMAL_RESULT"
-                                             : hybrid_type == INT_RESULT
-                                                   ? "INT_RESULT"
-                                                   : "--ILLEGAL!!!--")));
+  DBUG_PRINT("info",
+             ("Type: %s", (hybrid_type == REAL_RESULT      ? "REAL_RESULT"
+                           : hybrid_type == DECIMAL_RESULT ? "DECIMAL_RESULT"
+                           : hybrid_type == INT_RESULT     ? "INT_RESULT"
+                                                       : "--ILLEGAL!!!--")));
 }
 
 void Item_func_num1::fix_num_length_and_dec() {
@@ -3373,13 +3369,11 @@ bool Item_func_int_val::resolve_type_inner(THD *) {
     default:
       assert(0);
   }
-  DBUG_PRINT("info", ("Type: %s", (hybrid_type == REAL_RESULT
-                                       ? "REAL_RESULT"
-                                       : hybrid_type == DECIMAL_RESULT
-                                             ? "DECIMAL_RESULT"
-                                             : hybrid_type == INT_RESULT
-                                                   ? "INT_RESULT"
-                                                   : "--ILLEGAL!!!--")));
+  DBUG_PRINT("info",
+             ("Type: %s", (hybrid_type == REAL_RESULT      ? "REAL_RESULT"
+                           : hybrid_type == DECIMAL_RESULT ? "DECIMAL_RESULT"
+                           : hybrid_type == INT_RESULT     ? "INT_RESULT"
+                                                       : "--ILLEGAL!!!--")));
 
   return false;
 }
@@ -3792,9 +3786,11 @@ double Item_func_units::val_real() {
 
 bool Item_func_min_max::resolve_type(THD *thd) {
   // If no arguments have type, type of this operator cannot be determined yet
-  if (args[0]->data_type() == MYSQL_TYPE_INVALID &&
-      args[1]->data_type() == MYSQL_TYPE_INVALID)
-    return false;
+  uint i;
+  for (i = 0; i < arg_count; i++) {
+    if (args[i]->data_type() != MYSQL_TYPE_INVALID) break;
+  }
+  if (i == arg_count) return false;
 
   if (resolve_type_inner(thd)) return true;
   if (reject_geometry_args()) return true;
@@ -3986,8 +3982,11 @@ String *Item_func_min_max::str_op(String *str) {
     */
     String *val_buf = res_in_str ? &m_string_buf : str;
     assert(!res || (res != val_buf && !res->uses_buffer_owned_by(val_buf)));
-    String *val = args[i]->val_str(val_buf);
-    if ((null_value = args[i]->null_value)) return nullptr;
+    String *val = eval_string_arg(collation.collation, args[i], val_buf);
+    if (val == nullptr) {
+      assert(current_thd->is_error() || (args[i]->null_value && is_nullable()));
+      return error_str();
+    }
     if (i == 0 ||
         (sortcmp(val, res, collation.collation) < 0) == m_is_least_func) {
       res = val;
@@ -4796,7 +4795,8 @@ bool udf_handler::call_init_func() {
     f_args.attribute_lengths[i] = args[i]->item_name.length();
     m_args_extension.charset_info[i] = args[i]->collation.collation;
 
-    if (args[i]->const_for_execution() && !args[i]->has_subquery()) {
+    if (args[i]->const_for_execution() && !args[i]->has_subquery() &&
+        !args[i]->has_stored_program()) {
       switch (args[i]->result_type()) {
         case STRING_RESULT:
         case DECIMAL_RESULT: {
@@ -8570,12 +8570,11 @@ bool Item_func_sp::fix_fields(THD *thd, Item **ref) {
     if (args[i]->data_type() == MYSQL_TYPE_INVALID) {
       sp_variable *var = sp_ctx->find_variable(i);
       if (args[i]->propagate_type(
-              thd,
-              is_numeric_type(var->type)
-                  ? Type_properties(var->type, var->field_def.is_unsigned)
-                  : is_string_type(var->type)
-                        ? Type_properties(var->type, var->field_def.charset)
-                        : Type_properties(var->type)))
+              thd, is_numeric_type(var->type)
+                       ? Type_properties(var->type, var->field_def.is_unsigned)
+                   : is_string_type(var->type)
+                       ? Type_properties(var->type, var->field_def.charset)
+                       : Type_properties(var->type)))
         return true;
     }
   }

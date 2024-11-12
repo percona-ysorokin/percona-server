@@ -26,9 +26,16 @@ MYSQL_ADD_PLUGIN(connection_control
   connection_control.cc
   security_context_wrapper.cc
   connection_delay.cc
+<<<<<<< HEAD
   log_rate_limiter.cc
+||||||| merged common ancestors
+=======
+  option_usage.cc
+>>>>>>> mysql-9.1.0
   MODULE_ONLY
-  LINK_LIBRARIES extra::rapidjson
+  LINK_LIBRARIES
+    extra::rapidjson
+    library_mysys
   )
 
 ADD_DEFINITIONS(-DMYSQL_SERVER)

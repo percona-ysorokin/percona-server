@@ -30,12 +30,19 @@ ADD_CONVENIENCE_LIBRARY(mytime ${MY_TIME_SOURCES})
 INCLUDE_DIRECTORIES(SYSTEM ${BOOST_PATCHES_DIR} ${BOOST_INCLUDE_DIR})
 
 SET(MYSYS_SOURCES
+<<<<<<< HEAD
   array.cc
   buffered_error_log.cc
+||||||| merged common ancestors
+  array.cc
+=======
+  base64_encode.cc
+>>>>>>> mysql-9.1.0
   charset.cc
   dbug.cc
   decimal.cc
   errors.cc
+  escape_string.cc
   lf_alloc-pin.cc
   lf_dynarray.cc
   lf_hash.cc
@@ -89,6 +96,7 @@ SET(MYSYS_SOURCES
   my_rdtsc.cc
   my_read.cc
   my_rename.cc
+  my_rm_dir_w_symlink.cc
   my_seek.cc
   my_static.cc
   my_string.cc
@@ -100,6 +108,7 @@ SET(MYSYS_SOURCES
   my_thread.cc
   my_thr_init.cc
   my_user.cc
+  my_version.cc
   my_write.cc
   pack.cc
   print_version.cc

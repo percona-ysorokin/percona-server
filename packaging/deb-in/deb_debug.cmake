@@ -28,11 +28,13 @@ SET (DEB_RULES_DEBUG_CMAKE
 		-DBUILD_CONFIG=mysql_release \\
 		-DCMAKE_INSTALL_PREFIX=/usr \\
 		-DCMAKE_BUILD_TYPE=Debug \\
+		-DMYSQL_MAINTAINER_MODE=0 \\
 		-DINSTALL_DOCDIR=share/mysql/docs \\
 		-DINSTALL_LIBDIR=lib/$(DEB_HOST_MULTIARCH) \\
 		-DSYSCONFDIR=/etc/mysql \\
 		-DMYSQL_UNIX_ADDR=/var/run/mysqld/mysqld.sock \\
 		-DWITH_MECAB=system \\
+		-DWITH_ZLIB=${DEB_ZLIB_OPTION} \\
 		-DWITH_NUMA=ON \\
 		-DCOMPILATION_COMMENT=\"MySQL ${DEB_PRODUCTNAMEC} - ${DEB_LICENSENAME} - Debug\" \\
 		-DCOMPILATION_COMMENT_SERVER=\"MySQL ${DEB_PRODUCTNAMEC} Server - ${DEB_LICENSENAME} - Debug\" \\
@@ -100,6 +102,7 @@ usr/lib/mysql/plugin/debug/auth_test_plugin.so
 usr/lib/mysql/plugin/debug/authentication_ldap_sasl_client.so
 usr/lib/mysql/plugin/debug/authentication_webauthn_client.so
 usr/lib/mysql/plugin/debug/authentication_kerberos_client.so
+usr/lib/mysql/plugin/debug/authentication_openid_connect_client.so
 usr/lib/mysql/plugin/debug/authentication_oci_client.so
 usr/lib/mysql/plugin/debug/mysql_native_password.so
 usr/lib/mysql/plugin/debug/component_example_component1.so
@@ -192,6 +195,8 @@ usr/lib/mysql/plugin/debug/component_test_mysql_system_variable_set.so
 usr/lib/mysql/plugin/debug/component_test_table_access.so
 usr/lib/mysql/plugin/debug/component_test_sensitive_system_variables.so
 usr/lib/mysql/plugin/debug/component_test_status_var_reader.so
+usr/lib/mysql/plugin/debug/component_test_server_telemetry_logs_client.so
+usr/lib/mysql/plugin/debug/component_test_server_telemetry_logs_export.so
 usr/lib/mysql/plugin/debug/component_test_server_telemetry_metrics.so
 usr/lib/mysql/plugin/debug/component_test_server_telemetry_traces.so
 usr/lib/mysql/plugin/debug/component_test_mysql_thd_store_service.so
@@ -210,6 +215,7 @@ IF (DEB_PRODUCT STREQUAL "commercial")
 usr/lib/mysql/plugin/debug/authentication_pam.so
 usr/lib/mysql/plugin/debug/authentication_ldap_sasl.so
 usr/lib/mysql/plugin/debug/authentication_kerberos.so
+usr/lib/mysql/plugin/debug/authentication_openid_connect.so
 usr/lib/mysql/plugin/debug/authentication_ldap_simple.so
 usr/lib/mysql/plugin/debug/telemetry_client.so
 usr/lib/mysql/plugin/debug/keyring_okv.so
@@ -225,18 +231,33 @@ usr/lib/mysql/plugin/debug/component_mle.so
 usr/lib/mysql/plugin/debug/component_scheduler.so
 usr/lib/mysql/plugin/debug/component_telemetry.so
 usr/lib/mysql/plugin/debug/component_option_tracker.so
+usr/lib/mysql/plugin/debug/component_group_replication_flow_control_stats.so
+usr/lib/mysql/plugin/debug/component_replication_applier_metrics.so
 usr/lib/mysql/plugin/debug/authentication_webauthn.so
 ")
   ENDIF()
+
   IF (DEB_AWS_SDK)
+    SET (DEB_CMAKE_EXTRAS "${DEB_CMAKE_EXTRAS} -DWITH_KEYRING_AWS=ON -DWITH_AWS_SDK=${DEB_AWS_SDK} -DDEB_AWS_SDK=${DEB_AWS_SDK}")
     SET (DEB_INSTALL_DEBUG_SERVER_PLUGINS "${DEB_INSTALL_DEBUG_SERVER_PLUGINS}
 usr/lib/mysql/plugin/debug/keyring_aws.so
 ")
+
+    IF (DEFINED ENV{AWS_VER})
+      IF ($ENV{AWS_VER} STREQUAL "1.11")
+	      SET (DEB_INSTALL_DEBUG_SERVER_PLUGINS "${DEB_INSTALL_DEBUG_SERVER_PLUGINS}
+usr/lib/mysql/plugin/debug/component_keyring_aws.so
+")
+      ELSE()
+        MESSAGE(STATUS "Unsupported AWS SDK version: $ENV{AWS_VER}, skip packaging component_keyring_aws.")
+      ENDIF()
+    ELSE()
+      MESSAGE(STATUS "Environment variable AWS_VER not set, skip packaging component_keyring_aws.")
+    ENDIF()
   ENDIF()
   SET (DEB_INSTALL_DEBUG_TEST_PLUGINS "${DEB_INSTALL_DEBUG_TEST_PLUGINS}
 usr/lib/mysql/plugin/debug/component_test_global_priv_registration.so
 usr/lib/mysql/plugin/debug/component_test_page_track_component.so
-usr/lib/mysql/plugin/debug/component_test_option_tracker.so
 ")
 
 ENDIF()

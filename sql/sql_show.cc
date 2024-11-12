@@ -2924,9 +2924,9 @@ class List_process_list : public Do_THD_Impl {
         thd_info->host = host;
       } else
         thd_info->host = m_client_thd->mem_strdup(
-            inspect_sctx_host_or_ip.str[0]
-                ? inspect_sctx_host_or_ip.str
-                : inspect_sctx_host.length ? inspect_sctx_host.str : "");
+            inspect_sctx_host_or_ip.str[0] ? inspect_sctx_host_or_ip.str
+            : inspect_sctx_host.length     ? inspect_sctx_host.str
+                                           : "");
     }  // We've copied the security context, so release the lock.
 
     DBUG_EXECUTE_IF("processlist_acquiring_dump_threads_LOCK_thd_data", {
@@ -4708,6 +4708,7 @@ static int get_schema_tmp_table_columns_record(THD *thd, Table_ref *tables,
 
     // COLUMN_KEY
     pos = pointer_cast<const uchar *>(
+<<<<<<< HEAD
         field->is_flag_set(PRI_KEY_FLAG)
             ? "PRI"
             : field->is_flag_set(UNIQUE_KEY_FLAG)
@@ -4715,6 +4716,18 @@ static int get_schema_tmp_table_columns_record(THD *thd, Table_ref *tables,
                   : (field->is_flag_set(MULTIPLE_KEY_FLAG))
                         ? "MUL"
                         : (field->is_flag_set(CLUSTERING_FLAG)) ? "CLU" : "");
+||||||| merged common ancestors
+        field->is_flag_set(PRI_KEY_FLAG)
+            ? "PRI"
+            : field->is_flag_set(UNIQUE_KEY_FLAG)
+                  ? "UNI"
+                  : field->is_flag_set(MULTIPLE_KEY_FLAG) ? "MUL" : "");
+=======
+        field->is_flag_set(PRI_KEY_FLAG)        ? "PRI"
+        : field->is_flag_set(UNIQUE_KEY_FLAG)   ? "UNI"
+        : field->is_flag_set(MULTIPLE_KEY_FLAG) ? "MUL"
+                                                : "");
+>>>>>>> mysql-9.1.0
     table->field[TMP_TABLE_COLUMNS_COLUMN_KEY]->store(
         (const char *)pos, strlen((const char *)pos), cs);
 
@@ -5028,7 +5041,7 @@ static int get_schema_tmp_table_keys_record(THD *thd, Table_ref *tables,
       // Expression for functional key parts
       if (key_part->field != nullptr &&
           key_part->field->is_field_for_functional_index()) {
-        Value_generator *gcol = key_info->key_part->field->gcol_info;
+        Value_generator *gcol = key_part->field->gcol_info;
 
         table->field[TMP_TABLE_KEYS_EXPRESSION]->store(
             gcol->expr_str.str, gcol->expr_str.length, cs);
@@ -5615,7 +5628,7 @@ ST_FIELD_INFO tmp_table_keys_fields_info[] = {
     {"INDEX_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, nullptr, 0},
     {"INDEX_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Key_name", 0},
     {"SEQ_IN_INDEX", 2, MYSQL_TYPE_LONGLONG, 0, 0, "Seq_in_index", 0},
-    {"COLUMN_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Column_name", 0},
+    {"COLUMN_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, "Column_name", 0},
     {"COLLATION", 1, MYSQL_TYPE_STRING, 0, 1, "Collation", 0},
     {"CARDINALITY", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0, 1,
      "Cardinality", 0},
@@ -6188,6 +6201,7 @@ static bool acquire_mdl_for_table(THD *thd, const char *db_name,
 }
 
 /**
+<<<<<<< HEAD
   Helper to lookup Trigger object by trigger name in a TABLE_SHARE.
 
   @param share TABLE_SHARE in which list of Trigger object lookup to
@@ -6214,6 +6228,35 @@ static Trigger *find_trigger_in_share(TABLE_SHARE *share,
 }
 
 /**
+||||||| merged common ancestors
+=======
+  Helper to look up a Trigger object in a TABLE_SHARE by trigger name.
+
+  @param share TABLE_SHARE in whose list of Trigger objects the lookup
+               is to be performed.
+  @param name  Name of trigger to find.
+
+  @return Pointer to Trigger object, or nullptr if no trigger with the
+          provided name was found.
+*/
+
+static Trigger *find_trigger_in_share(TABLE_SHARE *share,
+                                      const LEX_STRING &name) {
+  Trigger *t;
+  List_iterator_fast<Trigger> it(*(share->triggers));
+
+  while ((t = it++) != nullptr) {
+    if (!my_strnncoll(dd::Trigger::name_collation(),
+                      pointer_cast<const uchar *>(t->get_trigger_name().str),
+                      t->get_trigger_name().length,
+                      pointer_cast<const uchar *>(name.str), name.length))
+      return t;
+  }
+  return nullptr;
+}
+
+/**
+>>>>>>> mysql-9.1.0
   SHOW CREATE TRIGGER high-level implementation.
 
   @param thd      Thread context.

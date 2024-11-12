@@ -1513,6 +1513,12 @@ typedef handler *(*create_t)(handlerton *hton, TABLE_SHARE *table,
 
 typedef void (*drop_database_t)(handlerton *hton, char *path);
 
+typedef bool (*log_ddl_drop_schema_t)(handlerton *hton,
+                                      const char *schema_name);
+
+typedef bool (*log_ddl_create_schema_t)(handlerton *hton,
+                                        const char *schema_name);
+
 typedef int (*panic_t)(handlerton *hton, enum ha_panic_function flag);
 
 typedef int (*start_consistent_snapshot_t)(handlerton *hton, THD *thd);
@@ -2827,6 +2833,8 @@ struct handlerton {
   set_prepared_in_tc_by_xid_t set_prepared_in_tc_by_xid;
   create_t create;
   drop_database_t drop_database;
+  log_ddl_drop_schema_t log_ddl_drop_schema;
+  log_ddl_create_schema_t log_ddl_create_schema;
   panic_t panic;
   start_consistent_snapshot_t start_consistent_snapshot;
   clone_consistent_snapshot_t clone_consistent_snapshot;
@@ -3160,8 +3168,8 @@ inline constexpr const decltype(handlerton::flags) HTON_SUPPORTS_DISTANCE_SCAN{
     1 << 23};
 
 /* Whether the engine supports being specified as a default storage engine */
-inline constexpr const decltype(
-    handlerton::flags) HTON_NO_DEFAULT_ENGINE_SUPPORT{1 << 24};
+inline constexpr const decltype(handlerton::flags)
+    HTON_NO_DEFAULT_ENGINE_SUPPORT{1 << 24};
 
 /** Start of Percona specific HTON_* defines */
 
@@ -3319,6 +3327,10 @@ struct HA_CREATE_INFO {
   LEX_CSTRING secondary_engine{nullptr, 0};
   /** Secondary engine load status */
   bool secondary_load{false};
+
+  /** Part info in order to maintain in HA_CREATE_INFO the per-partition
+   * secondary_load status*/
+  partition_info *part_info{nullptr};
 
   const char *data_file_name{nullptr};
   const char *index_file_name{nullptr};
@@ -4287,9 +4299,7 @@ class Ft_hints {
 
      @return pointer to ft_hints struct
    */
-  struct ft_hints *get_hints() {
-    return &hints;
-  }
+  struct ft_hints *get_hints() { return &hints; }
 };
 
 /**
@@ -5559,10 +5569,9 @@ class handler {
   double estimate_in_memory_buffer(ulonglong table_index_size) const;
 
  public:
-  virtual ha_rows multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
-                                              void *seq_init_param,
-                                              uint n_ranges, uint *bufsz,
-                                              uint *flags, Cost_estimate *cost);
+  virtual ha_rows multi_range_read_info_const(
+      uint keyno, RANGE_SEQ_IF *seq, void *seq_init_param, uint n_ranges,
+      uint *bufsz, uint *flags, bool *force_default_mrr, Cost_estimate *cost);
   virtual ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
                                         uint *bufsz, uint *flags,
                                         Cost_estimate *cost);
@@ -7791,7 +7800,32 @@ void ha_pre_dd_shutdown(void);
 */
 bool ha_flush_logs(bool binlog_group_flush = false);
 void ha_drop_database(char *path);
+<<<<<<< HEAD
 class Create_field;
+||||||| merged common ancestors
+=======
+
+/**
+  Call "log_ddl_drop_schema" handletron for
+  storage engines who implement it.
+
+  @param schema_name name of the database to be dropped.
+  @retval false Succeed
+  @retval true Error
+*/
+bool ha_log_ddl_drop_schema(const char *schema_name);
+
+/**
+  Call "log_ddl_create_schema" handletron for
+  storage engines who implement it.
+
+  @param schema_name name of the database to be dropped.
+  @retval false Succeed
+  @retval true Error
+*/
+bool ha_log_ddl_create_schema(const char *schema_name);
+
+>>>>>>> mysql-9.1.0
 int ha_create_table(THD *thd, const char *path, const char *db,
                     const char *table_name, HA_CREATE_INFO *create_info,
                     const List<Create_field> *create_fields,

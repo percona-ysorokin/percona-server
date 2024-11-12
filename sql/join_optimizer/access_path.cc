@@ -365,6 +365,27 @@ bool ShouldEnableBatchMode(AccessPath *path) {
   }
 }
 
+// Check if a subquery present in a condition has forced materialization.
+bool IsForcedMaterialization(THD *thd, Item *cond) {
+  bool force_materialization = false;
+  WalkItem(cond, enum_walk::POSTFIX | enum_walk::SUBQUERY,
+           [&force_materialization, thd](Item *item) {
+             if (item->type() == Item::SUBQUERY_ITEM) {
+               if (!is_quantified_comp_predicate(item)) return false;
+               Item_in_subselect *item_subs =
+                   down_cast<Item_in_subselect *>(item);
+               Query_block *qb = item_subs->query_expr()->first_query_block();
+               if (qb->subquery_strategy(thd) ==
+                   Subquery_strategy::SUBQ_MATERIALIZATION) {
+                 force_materialization = true;
+                 return true;
+               }
+             }
+             return false;
+           });
+  return force_materialization;
+}
+
 /**
   If the path is a FILTER path marked that subqueries are to be materialized,
   do so. If not, do nothing.
@@ -378,11 +399,13 @@ bool ShouldEnableBatchMode(AccessPath *path) {
  */
 bool FinalizeMaterializedSubqueries(THD *thd, JOIN *join, AccessPath *path) {
   if (path->type != AccessPath::FILTER ||
-      !path->filter().materialize_subqueries) {
+      !(path->filter().materialize_subqueries ||
+        IsForcedMaterialization(thd, path->filter().condition))) {
     return false;
   }
   return WalkItem(
-      path->filter().condition, enum_walk::POSTFIX, [thd, join](Item *item) {
+      path->filter().condition, enum_walk::POSTFIX | enum_walk::SUBQUERY,
+      [thd, join](Item *item) {
         if (!is_quantified_comp_predicate(item)) {
           return false;
         }
@@ -392,6 +415,10 @@ bool FinalizeMaterializedSubqueries(THD *thd, JOIN *join, AccessPath *path) {
           return false;
         }
         Query_block *qb = item_subs->query_expr()->first_query_block();
+        // If IN-TO-EXISTS is forced, don't materialize.
+        if (qb->subquery_strategy(thd) == Subquery_strategy::SUBQ_EXISTS) {
+          return false;
+        }
         if (!item_subs->subquery_allows_materialization(thd, qb,
                                                         join->query_block)) {
           return false;
@@ -939,10 +966,6 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
                 ? &join->hash_table_generation
                 : nullptr;
 
-        const auto first_row_cost = [](const AccessPath &p) {
-          return p.init_cost() + p.cost() / std::max(p.num_output_rows(), 1.0);
-        };
-
         // If the probe (outer) input is empty, the join result will be empty,
         // and we do not need to read the build input. For inner join and
         // semijoin, the converse is also true. To benefit from this, we want to
@@ -953,7 +976,7 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
         // first for left join and antijoin.
         const HashJoinInput first_input =
             (thd->lex->using_hypergraph_optimizer() &&
-             first_row_cost(*param.inner) > first_row_cost(*param.outer))
+             param.inner->first_row_cost() > param.outer->first_row_cost())
                 ? HashJoinInput::kProbe
                 : HashJoinInput::kBuild;
 

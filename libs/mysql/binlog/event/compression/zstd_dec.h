@@ -27,9 +27,9 @@
 #define ZSTD_STATIC_LINKING_ONLY 1
 #include <zstd.h>
 
+#include "mysql/allocators/memory_resource.h"  // Memory_resource
 #include "mysql/binlog/event/compression/decompressor.h"
-#include "mysql/binlog/event/nodiscard.h"
-#include "mysql/binlog/event/resource/memory_resource.h"  // Memory_resource
+#include "mysql/utils/nodiscard.h"
 
 namespace mysql::binlog::event::compression {
 
@@ -39,8 +39,16 @@ class Zstd_dec : public Decompressor {
   using typename Decompressor::Char_t;
   using typename Decompressor::Grow_constraint_t;
   using typename Decompressor::Size_t;
+<<<<<<< HEAD
   using Memory_resource_t = mysql::binlog::event::resource::Memory_resource;
   static constexpr type type_code = ALGORITHM_ZSTD;
+||||||| merged common ancestors
+  using Memory_resource_t = mysql::binlog::event::resource::Memory_resource;
+  static constexpr type type_code = ZSTD;
+=======
+  using Memory_resource_t = mysql::allocators::Memory_resource;
+  static constexpr type type_code = ZSTD;
+>>>>>>> mysql-9.1.0
 
   Zstd_dec(const Memory_resource_t &memory_resource = Memory_resource_t());
   ~Zstd_dec() override;
