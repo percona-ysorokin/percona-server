@@ -1,3 +1,5 @@
+--source include/no_ps_protocol.inc
+
 --echo #
 --echo # Test coverage for limit on number of table objects in Table Cache
 --echo # with fully-loaded triggers.
