@@ -159,6 +159,8 @@ auto enum_field_type_to_int(enum_field_types field_type) -> uint64_t {
       return MYSQL_SP_ARG_TYPE_STRING;
     case MYSQL_TYPE_GEOMETRY:
       return MYSQL_SP_ARG_TYPE_GEOMETRY;
+    case MYSQL_TYPE_VECTOR:
+      return MYSQL_SP_ARG_TYPE_VECTOR;
     default:
       return MYSQL_SP_ARG_TYPE_INVALID;
   }
@@ -187,6 +189,9 @@ DEFINE_BOOL_METHOD(mysql_stmt_metadata_imp::param_metadata,
     return MYSQL_SUCCESS;
   } else if (strcmp(metadata, "charset") == 0) {
     *static_cast<const char **>(data) = param->collation.collation->csname;
+    return MYSQL_SUCCESS;
+  } else if (strcmp(metadata, "max_byte_length") == 0) {
+    *static_cast<size_t *>(data) = param->max_length;
     return MYSQL_SUCCESS;
   }
   return MYSQL_FAILURE;

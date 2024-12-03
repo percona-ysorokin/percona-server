@@ -71,6 +71,13 @@ TARGET_COMPILE_DEFINITIONS(router_mysqlxmessages
 TARGET_COMPILE_OPTIONS(router_mysqlxmessages
   PUBLIC ${XMSG_COMPILE_OPTS}
   )
+# See MY_PROTOBUF_FLAGS in MYSQL_PROTOBUF_GENERATE_CPP_LIBRARY
+IF(MY_COMPILER_IS_GNU_OR_CLANG AND NOT WIN32_CLANG)
+  MY_CHECK_CXX_COMPILER_WARNING("-Wshadow-field" HAS_WARN_FLAG)
+  IF(HAS_WARN_FLAG)
+    TARGET_COMPILE_OPTIONS(router_mysqlxmessages PRIVATE ${HAS_WARN_FLAG})
+  ENDIF()
+ENDIF()
 
 # with LTO:
 #
@@ -81,8 +88,8 @@ TARGET_COMPILE_OPTIONS(router_mysqlxmessages
 # note: at offset 16 into destination object 'find_' of size 8
 #
 IF((WITH_LTO OR CMAKE_COMPILER_FLAG_WITH_LTO) AND MY_COMPILER_IS_GNU)
-  MY_TARGET_LINK_OPTIONS(router_mysqlxmessages
-    "-Wno-error=stringop-overflow")
+  TARGET_LINK_OPTIONS(router_mysqlxmessages PRIVATE
+    -Wno-error=stringop-overflow)
 ENDIF()
 
 ## rebuild mysqlxclient as router_mysqlxclient
@@ -120,10 +127,7 @@ ROUTER_ADD_SHARED_LIBRARY(router_mysqlxclient
   ext::zlib
   OpenSSL::SSL
   OpenSSL::Crypto
-  PRIVATE
-  vio
-  strings
-  mysys
+  router_mysqlclient
   )
 
 TARGET_INCLUDE_DIRECTORIES(router_mysqlxclient

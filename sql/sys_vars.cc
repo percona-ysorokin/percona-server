@@ -549,6 +549,20 @@ static Sys_var_charptr Sys_pfs_instrument(
     CMD_LINE(OPT_ARG, OPT_PFS_INSTRUMENT), IN_FS_CHARSET, DEFAULT(""),
     PFS_TRAILING_PROPERTIES);
 
+static Sys_var_charptr Sys_pfs_meter(
+    "performance_schema_meter",
+    "Default startup value for a performance schema meter.",
+    READ_ONLY NOT_VISIBLE GLOBAL_VAR(pfs_param.m_pfs_meter),
+    CMD_LINE(OPT_ARG, OPT_PFS_METER), IN_FS_CHARSET, DEFAULT(""),
+    PFS_TRAILING_PROPERTIES);
+
+static Sys_var_charptr Sys_pfs_logger(
+    "performance_schema_logger",
+    "Default startup value for a performance schema logger.",
+    READ_ONLY NOT_VISIBLE GLOBAL_VAR(pfs_param.m_pfs_logger),
+    CMD_LINE(OPT_ARG, OPT_PFS_LOGGER), IN_FS_CHARSET, DEFAULT(""),
+    PFS_TRAILING_PROPERTIES);
+
 /**
   Update the performance_schema_show_processlist.
   Warn that the use of information_schema processlist is deprecated.
@@ -979,6 +993,13 @@ static Sys_var_ulong Sys_pfs_max_metric_classes(
     READ_ONLY GLOBAL_VAR(pfs_param.m_metric_class_sizing),
     CMD_LINE(REQUIRED_ARG), VALID_RANGE(0, 11000),
     DEFAULT(PFS_MAX_METRIC_CLASS), BLOCK_SIZE(1), PFS_TRAILING_PROPERTIES);
+
+static Sys_var_ulong Sys_pfs_max_logger_classes(
+    "performance_schema_max_logger_classes",
+    "Maximum number of logger source instruments.",
+    READ_ONLY GLOBAL_VAR(pfs_param.m_logger_class_sizing),
+    CMD_LINE(REQUIRED_ARG), VALID_RANGE(0, 200), DEFAULT(PFS_MAX_LOGGER_CLASS),
+    BLOCK_SIZE(1), PFS_TRAILING_PROPERTIES);
 
 static Sys_var_long Sys_pfs_digest_size(
     "performance_schema_digests_size",
@@ -3449,6 +3470,30 @@ static Sys_var_ulonglong Sys_global_connection_memory_limit(
     BLOCK_SIZE(1), &PLock_global_conn_mem_limit, NOT_IN_BINLOG,
     ON_CHECK(nullptr), ON_UPDATE(nullptr));
 
+static Sys_var_ulonglong Sys_global_connection_memory_status_limit(
+    "global_connection_memory_status_limit",
+    "Global connection memory usage threshold for triggering status update",
+    GLOBAL_VAR(global_conn_memory_status_limit), CMD_LINE(REQUIRED_ARG),
+#ifndef NDEBUG
+    VALID_RANGE(1, max_mem_sz), DEFAULT(max_mem_sz),
+#else
+    VALID_RANGE(1024 * 1024 * 16, max_mem_sz), DEFAULT(max_mem_sz),
+#endif
+    BLOCK_SIZE(1), &PLock_global_conn_mem_limit, NOT_IN_BINLOG,
+    ON_CHECK(nullptr), ON_UPDATE(nullptr));
+
+static Sys_var_ulonglong Sys_connection_memory_status_limit(
+    "connection_memory_status_limit",
+    "Maximum amount of memory connection can consume before status update",
+    GLOBAL_VAR(conn_memory_status_limit), CMD_LINE(REQUIRED_ARG),
+#ifndef NDEBUG
+    VALID_RANGE(1, max_mem_sz), DEFAULT(max_mem_sz),
+#else
+    VALID_RANGE(1024 * 1024 * 2, max_mem_sz), DEFAULT(max_mem_sz),
+#endif
+    BLOCK_SIZE(1), &PLock_global_conn_mem_limit, NOT_IN_BINLOG,
+    ON_CHECK(nullptr), ON_UPDATE(nullptr));
+
 static Sys_var_ulonglong Sys_connection_memory_limit(
     "connection_memory_limit",
     "Maximum amount of memory connection can consume",
@@ -5082,10 +5127,10 @@ static Sys_var_ulong Sys_table_cache_instances(
 
 static bool fix_table_cache_triggers(sys_var *, THD *, enum_var_type) {
   /*
-    Similarly to table_open_cache parameter table_open_cache_triggers value
-    needs to be divided by number of table cache instances to get per-instance
-    soft limit on number of TABLE objects with fully loaded triggers in a
-    table cache.
+    Similarly to the table_open_cache parameter, table_open_cache_triggers
+    needs to be divided by the number of table cache instances in order to
+    get the per-instance soft limit on the number of TABLE objects with
+    fully loaded triggers within a table cache.
   */
   table_cache_triggers_per_instance =
       table_cache_triggers / table_cache_instances;
@@ -5096,7 +5141,7 @@ static Sys_var_ulong Sys_table_cache_triggers(
     "table_open_cache_triggers",
     "The number of cached open tables with fully loaded triggers",
     GLOBAL_VAR(table_cache_triggers), CMD_LINE(REQUIRED_ARG),
-    /* Use 1 as lower bound to be consistent with table_open_cache variable.*/
+    /* Use 1 as lower bound to be consistent with table_open_cache variable. */
     VALID_RANGE(1, 512 * 1024), DEFAULT(512 * 1024), BLOCK_SIZE(1),
     NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(nullptr),
     ON_UPDATE(fix_table_cache_triggers), nullptr,
@@ -8173,14 +8218,10 @@ static Sys_var_ulonglong Sys_set_operations_buffer_size(
 //   a) set index, cf. explanation in comments for class SpillState
 //   b) chunk index
 //   c) row number
-//   d) optional string: "right_operand"
 // Syntax: <set-idx:integer 0-based> <chunk-idx:integer 0-based>
 //         <row_no:integer 1-based>
 // Example:
 //       SET SESSION debug_set_operations_secondary_overflow_at = '1 5 7';
-//       SET SESSION debug_set_operations_secondary_overflow_at =
-//           '1 5 7 right_operand';
-//
 // If the numbers given are outside range on the high side, they will never
 // trigger any secondary spill.
 static Sys_var_charptr Sys_debug_set_operations_secondary_overflow_at(

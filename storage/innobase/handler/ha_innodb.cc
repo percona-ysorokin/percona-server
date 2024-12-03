@@ -698,6 +698,7 @@ static PSI_memory_info pfs_instrumented_innodb_memory[] = {
 performance schema instrumented if "UNIV_PFS_MUTEX"
 is defined */
 static PSI_mutex_info all_innodb_mutexes[] = {
+    PSI_MUTEX_KEY(alter_stage_mutex, 0, 0, PSI_DOCUMENT_ME),
     PSI_MUTEX_KEY(autoinc_mutex, 0, 0, PSI_DOCUMENT_ME),
     PSI_MUTEX_KEY(autoinc_persisted_mutex, 0, 0, PSI_DOCUMENT_ME),
 #ifndef PFS_SKIP_BUFFER_MUTEX_RWLOCK
@@ -1516,6 +1517,20 @@ static int innobase_rollback(handlerton *hton, /*!< in/out: InnoDB handlerton */
                              bool rollback_trx); /*!< in: true - rollback entire
                                                  transaction false - rollback
                                                  the current statement only */
+
+/** Writes DELETE_SCHEMA_DIRECTORY_LOG for DROP SCHEMA
+ @param  hton  InnoDB handlerton
+ @param  schema_name name of the schema
+ @return bool  */
+static bool innobase_write_ddl_drop_schema(handlerton *hton,
+                                           const char *schema_name);
+
+/** Writes DELETE_SCHEMA_DIRECTORY_LOG for CREATE SCHEMA
+ @param  hton  InnoDB handlerton
+ @param  schema_name name of the schema
+ @return bool */
+static bool innobase_write_ddl_create_schema(handlerton *hton,
+                                             const char *schema_name);
 
 /** Rolls back a transaction to a savepoint.
  @return 0 if success, HA_ERR_NO_SAVEPOINT if no savepoint with the
@@ -5750,6 +5765,8 @@ static int innodb_init(void *p) {
   innobase_hton->state = SHOW_OPTION_YES;
   innobase_hton->db_type = DB_TYPE_INNODB;
   innobase_hton->savepoint_offset = sizeof(trx_named_savept_t);
+  innobase_hton->log_ddl_drop_schema = innobase_write_ddl_drop_schema;
+  innobase_hton->log_ddl_create_schema = innobase_write_ddl_create_schema;
   innobase_hton->close_connection = innobase_close_connection;
   innobase_hton->kill_connection = innobase_kill_connection;
   innobase_hton->savepoint_set = innobase_savepoint;
@@ -6836,6 +6853,57 @@ static int innobase_savepoint(
   }
 
   return convert_error_code_to_mysql(error, 0, nullptr);
+}
+
+/** Writes DELETE_SCHEMA_DIRECTORY_LOG. This function is used in both CREATE
+ SCHEMA and DROP SCHEMA call flows.
+ @retval  false success
+ @retval  true  failure */
+static bool write_delete_schema_directory_log(
+    handlerton *hton,          /*!< in: handle to the InnoDB
+                               handlerton */
+    const char *schema_name,   /*!< in: name of the schema
+                               being dropped or created */
+    const bool is_drop_schema) /*!< in: is this operation
+                                DROP SCHEMA? */
+{
+  ut_ad(!srv_read_only_mode);
+
+  THD *thd = current_thd;
+  trx_t *trx = check_trx_exists(thd);
+  innobase_register_trx(hton, thd, trx);
+  trx_start_if_not_started(trx, true, UT_LOCATION_HERE);
+
+  /* FN_REFLEN represents the maximum length a full path-name can have.
+  In this case, it is the maximum posssible length of a directory path. */
+  char path[FN_REFLEN + 1];
+  bool was_truncated = false;
+  build_table_filename(path, sizeof(path) - 1, schema_name, "", nullptr, 0,
+                       &was_truncated);
+  if (was_truncated) {
+    my_error(ER_IDENT_CAUSES_TOO_LONG_PATH, MYF(0), sizeof(path) - 1, path);
+    return true;
+  }
+
+  const dberr_t err =
+      log_ddl->write_delete_schema_directory_log(trx, path, is_drop_schema);
+
+  if (err != DB_SUCCESS) {
+    my_error(convert_error_code_to_mysql(err, 0, current_thd), MYF(0));
+    return true;
+  }
+
+  return false;
+}
+
+static bool innobase_write_ddl_drop_schema(handlerton *hton,
+                                           const char *schema_name) {
+  return write_delete_schema_directory_log(hton, schema_name, true);
+}
+
+static bool innobase_write_ddl_create_schema(handlerton *hton,
+                                             const char *schema_name) {
+  return write_delete_schema_directory_log(hton, schema_name, false);
 }
 
 /** Frees a possible InnoDB trx object associated with the current THD.
@@ -23808,11 +23876,15 @@ static MYSQL_SYSVAR_ULONG(log_write_ahead_size, srv_log_write_ahead_size,
                           INNODB_LOG_WRITE_AHEAD_SIZE_MAX,
                           OS_FILE_LOG_BLOCK_SIZE);
 
+/* The `thd_get_num_vcpus() >= 32` was derived from performance testing results
+  and relate to the `Bug #113485 Let innodb_dedicated_server set
+  innodb_log_writer_threads based on server size` feature request. */
 static MYSQL_SYSVAR_BOOL(
     log_writer_threads, srv_log_writer_threads, PLUGIN_VAR_RQCMDARG,
     "Whether the log writer threads should be activated (ON), or write/flush "
     "of the redo log should be done by each thread individually (OFF).",
-    nullptr, innodb_log_writer_threads_update, true);
+    nullptr, innodb_log_writer_threads_update,
+    std::thread::hardware_concurrency() >= 32);
 
 static MYSQL_SYSVAR_UINT(
     log_spin_cpu_abs_lwm, srv_log_spin_cpu_abs_lwm, PLUGIN_VAR_RQCMDARG,
@@ -24739,11 +24811,10 @@ int ha_innobase::multi_range_read_next(char **range_info) {
   return (m_ds_mrr.dsmrr_next(range_info));
 }
 
-ha_rows ha_innobase::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
-                                                 void *seq_init_param,
-                                                 uint n_ranges, uint *bufsz,
-                                                 uint *flags,
-                                                 Cost_estimate *cost) {
+ha_rows ha_innobase::multi_range_read_info_const(
+    uint keyno, RANGE_SEQ_IF *seq, void *seq_init_param, uint n_ranges,
+    uint *bufsz, uint *flags, bool *force_default_mrr [[maybe_unused]],
+    Cost_estimate *cost) {
   /* See comments in ha_myisam::multi_range_read_info_const */
   m_ds_mrr.init(table);
 

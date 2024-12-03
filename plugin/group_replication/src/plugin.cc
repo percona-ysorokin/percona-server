@@ -48,6 +48,7 @@
 #include "plugin/group_replication/include/plugin_status_variables.h"
 #include "plugin/group_replication/include/plugin_variables.h"
 #include "plugin/group_replication/include/plugin_variables/recovery_endpoints.h"
+#include "plugin/group_replication/include/services/flow_control/get_metrics.h"
 #include "plugin/group_replication/include/services/message_service/message_service.h"
 #include "plugin/group_replication/include/services/status_service/status_service.h"
 #include "plugin/group_replication/include/sql_service/sql_service_interface.h"
@@ -2177,6 +2178,14 @@ int plugin_group_replication_init(MYSQL_PLUGIN plugin_info) {
     return 1;
   }
 
+  if (gr::flow_control_metrics_service::
+          register_gr_flow_control_metrics_service()) {
+    LogPluginErr(ERROR_LEVEL, ER_GRP_RPL_ERROR_MSG,
+                 "Failed to initialize Group Replication flow control "
+                 "service.");
+    return 1;
+  }
+
   // Initialize the recovery SSL option map
   initialize_ssl_option_map();
 
@@ -2235,6 +2244,9 @@ int plugin_group_replication_deinit(void *p) {
   finalize_perfschema_module();
 
   gr::status_service::unregister_gr_status_service();
+
+  gr::flow_control_metrics_service::
+      unregister_gr_flow_control_metrics_service();
 
   if (plugin_group_replication_stop())
     LogPluginErr(ERROR_LEVEL, ER_GRP_RPL_FAILED_TO_STOP_ON_PLUGIN_UNINSTALL);
@@ -2385,6 +2397,15 @@ static int plugin_group_replication_check_uninstall(void *) {
              "Plugin is busy, it cannot be uninstalled. To"
              " force a stop run STOP GROUP_REPLICATION and then UNINSTALL"
              " PLUGIN group_replication.");
+    return 1;
+  }
+
+  if (gr::flow_control_metrics_service::
+          unregister_gr_flow_control_metrics_service()) {
+    my_error(ER_PLUGIN_CANNOT_BE_UNINSTALLED, MYF(0), "group_replication",
+             "Please uninstall the component"
+             " 'component_group_replication_flow_control_stats'"
+             " and then UNINSTALL PLUGIN group_replication.");
     return 1;
   }
 
@@ -3214,9 +3235,9 @@ static int check_flow_control_min_quota(MYSQL_THD, SYS_VAR *, void *save,
   if (check_flow_control_min_quota_long(in_val, true)) return 1;
 
   *(longlong *)save = (in_val < 0) ? 0
-                                   : (in_val < MAX_FLOW_CONTROL_THRESHOLD)
-                                         ? in_val
-                                         : MAX_FLOW_CONTROL_THRESHOLD;
+                      : (in_val < MAX_FLOW_CONTROL_THRESHOLD)
+                          ? in_val
+                          : MAX_FLOW_CONTROL_THRESHOLD;
 
   return 0;
 }
@@ -3232,9 +3253,9 @@ static int check_flow_control_min_recovery_quota(MYSQL_THD, SYS_VAR *,
   if (check_flow_control_min_recovery_quota_long(in_val, true)) return 1;
 
   *(longlong *)save = (in_val < 0) ? 0
-                                   : (in_val < MAX_FLOW_CONTROL_THRESHOLD)
-                                         ? in_val
-                                         : MAX_FLOW_CONTROL_THRESHOLD;
+                      : (in_val < MAX_FLOW_CONTROL_THRESHOLD)
+                          ? in_val
+                          : MAX_FLOW_CONTROL_THRESHOLD;
   return 0;
 }
 
@@ -3248,9 +3269,9 @@ static int check_flow_control_max_quota(MYSQL_THD, SYS_VAR *, void *save,
   if (check_flow_control_max_quota_long(in_val, true)) return 1;
 
   *(longlong *)save = (in_val < 0) ? 0
-                                   : (in_val < MAX_FLOW_CONTROL_THRESHOLD)
-                                         ? in_val
-                                         : MAX_FLOW_CONTROL_THRESHOLD;
+                      : (in_val < MAX_FLOW_CONTROL_THRESHOLD)
+                          ? in_val
+                          : MAX_FLOW_CONTROL_THRESHOLD;
 
   return 0;
 }
@@ -3274,11 +3295,10 @@ static int check_sysvar_ulong_timeout(MYSQL_THD, SYS_VAR *var, void *save,
   longlong in_val;
   value->val_int(value, &in_val);
 
-  *(longlong *)save = (in_val < minimum)
-                          ? minimum
-                          : (static_cast<ulonglong>(in_val) < LONG_TIMEOUT)
-                                ? in_val
-                                : LONG_TIMEOUT;
+  *(longlong *)save = (in_val < minimum) ? minimum
+                      : (static_cast<ulonglong>(in_val) < LONG_TIMEOUT)
+                          ? in_val
+                          : LONG_TIMEOUT;
 
   return 0;
 }
@@ -4033,10 +4053,9 @@ static int check_member_weight(MYSQL_THD, SYS_VAR *, void *save,
     }
   }
 
-  *(uint *)save =
-      (in_val < MIN_MEMBER_WEIGHT)
-          ? MIN_MEMBER_WEIGHT
-          : (in_val < MAX_MEMBER_WEIGHT) ? in_val : MAX_MEMBER_WEIGHT;
+  *(uint *)save = (in_val < MIN_MEMBER_WEIGHT)   ? MIN_MEMBER_WEIGHT
+                  : (in_val < MAX_MEMBER_WEIGHT) ? in_val
+                                                 : MAX_MEMBER_WEIGHT;
 
   return 0;
 }

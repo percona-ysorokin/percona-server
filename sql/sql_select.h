@@ -1048,28 +1048,12 @@ bool validate_use_secondary_engine(const LEX *lex);
 bool optimize_secondary_engine(THD *thd);
 
 /**
-  Calculates the cost of executing a statement, including all its
-  subqueries and stores it in thd->m_current_query_cost.
-
-  @param lex the statement
-*/
-void accumulate_statement_cost(const LEX *lex);
-
-/**
   Returns secondary_engine handler for the statement.
   If none exist, nullptr is returned.
 
   @param lex the statement
 */
 const handlerton *get_secondary_engine_handlerton(const LEX *lex);
-
-/**
-  Checks if any of the tables referenced belong to an external engine.
-  If an external table is found, return true, false otherwise.
-
-  @param lex the statement
-*/
-bool has_external_table(const LEX *lex);
 
 /**
   Sets the reason of failure for the statement to the external engine.

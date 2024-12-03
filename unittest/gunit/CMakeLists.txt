@@ -34,9 +34,6 @@ ENDIF()
 
 INCLUDE_DIRECTORIES(SYSTEM ${GMOCK_INCLUDE_DIRS})
 
-# TODO(sgunders): Remove when all GMock tests use MOCK_METHOD().
-STRING(REPLACE "-Wsuggest-override" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-
 MY_CHECK_CXX_COMPILER_FLAG("-fno-builtin-memcmp" HAVE_NO_BUILTIN_MEMCMP)
 
 SET(DISABLE_PSI_DEFINITIONS
@@ -84,6 +81,8 @@ ADD_STATIC_LIBRARY(gunit_large
   thread_utils.cc
   LINK_LIBRARIES ext::icu ext::zlib
 )
+TARGET_INCLUDE_DIRECTORIES(gunit_large SYSTEM PRIVATE 
+  ${CMAKE_SOURCE_DIR}/extra/unordered_dense/unordered_dense-4.4.0/include)
 
 # Add a library for enable_win_jemalloc.cc
 # and link it with both gunit_small and gunit_large below.
@@ -119,7 +118,6 @@ SET(TESTS
   decimal
   dns_srv_data
   dphyp
-  dynarray
   filesort_buffer
   filesort_compare
   filesort_mergechunk
@@ -130,6 +128,7 @@ SET(TESTS
   like_range
   m_string
   mdl
+  mem_root_array
   mem_root_deque
   mutex_lock
   my_alloc
@@ -276,6 +275,7 @@ SET(SERVER_TESTS
   opt_ref
   opt_trace
   persisted_variables
+  print_utils
   protocol_classic
   regexp_engine
   regexp_facade
@@ -394,8 +394,12 @@ MYSQL_ADD_EXECUTABLE(merge_large_tests-t ${ALL_LARGE_TESTS}
   LINK_LIBRARIES gunit_large server_unittest_library
   )
 IF(MY_COMPILER_IS_GNU)
-  MY_TARGET_LINK_OPTIONS(merge_large_tests-t "-Wno-alloc-size-larger-than")
+  TARGET_LINK_OPTIONS(merge_large_tests-t PRIVATE -Wno-alloc-size-larger-than)
 ENDIF()
+
+TARGET_INCLUDE_DIRECTORIES(merge_large_tests-t SYSTEM PRIVATE
+  ${CMAKE_SOURCE_DIR}/extra/unordered_dense/unordered_dense-4.4.0/include)
+
 
 FOREACH(test ${TESTS})
   MYSQL_ADD_EXECUTABLE(${test}-t ${test}-t.cc

@@ -218,3 +218,68 @@ ORDER BY len;
 
 DROP VIEW view_t1;
 DROP TABLE t1;
+
+--echo #
+--echo # Bug#36695371 wrong merge of derived table if unary nested
+--echo #
+CREATE TABLE t(pka INT NOT NULL AUTO_INCREMENT, a1 INT, a2 INT, PRIMARY KEY(pka));
+INSERT INTO t(a1,a2) VALUES (1,3), (2,5), (3,7), (4,8), (5,9), (6,10), (7,11);
+INSERT INTO t(a1,a2) SELECT a1,a2 FROM t;
+let $query =
+SELECT * FROM ( (SELECT a1,a2 FROM t ORDER BY a1,a2 ASC)
+                ORDER BY a2/a1 DESC LIMIT 7 ) AS derived;
+eval $query;
+--replace_regex $elide_costs
+--skip_if_hypergraph  # Different plan.
+eval EXPLAIN FORMAT=tree $query;
+eval CREATE VIEW v AS $query;
+SELECT * FROM v;
+--replace_regex $elide_costs
+--skip_if_hypergraph  # Different plan.
+eval EXPLAIN FORMAT=tree SELECT * FROM v;
+DROP VIEW v;
+DROP TABLE t;
+
+--echo #
+--echo # Bug#36739383 Assertion `false' materialize_iterator::SpillState::
+--echo #              read_next_row_secondary_over
+--echo #
+CREATE TABLE t(i int, b LONGTEXT);
+INSERT INTO t VALUES (0, REPEAT('x', 120000)),
+                     /* next row is too large on its own, drop spill
+                        handling entirely revert to indexed tmp table
+                        de-duplication */
+                     (0, REPEAT('y', @@set_operations_buffer_size)),
+                     (0, REPEAT('z', 12000));
+ANALYZE TABLE t;
+SET optimizer_trace='enabled=on';
+
+let $query =
+SELECT LENGTH(b) FROM (SELECT * FROM t INTERSECT SELECT * FROM t) derived;
+--sorted_result
+eval $query;
+
+--skip_if_hypergraph # different trace
+SELECT JSON_PRETTY(JSON_EXTRACT(
+  trace,
+  '$.steps[*].join_execution.steps[*]."materialize for intersect"')) AS info
+FROM information_schema.OPTIMIZER_TRACE AS t;
+
+TRUNCATE t;
+INSERT INTO t VALUES (0, REPEAT('x', 12000)),
+                     /* next row is too large because we can't fit two
+                        such in hash map drop spill handling entirely
+                        revert to indexed tmp table de-duplication */
+                     (0, REPEAT('x', 140000)),
+                     (0, REPEAT('z', 120000));
+ANALYZE TABLE t;
+--sorted_result
+eval $query;
+
+--skip_if_hypergraph # different trace
+SELECT JSON_PRETTY(JSON_EXTRACT(
+  trace,
+  '$.steps[*].join_execution.steps[*]."materialize for intersect"')) AS info
+FROM information_schema.OPTIMIZER_TRACE AS t;
+SET optimizer_trace='enabled=default';
+DROP TABLE t;

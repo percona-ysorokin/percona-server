@@ -4756,8 +4756,8 @@ template <typename Table>
         dict_mem_table_add_col(
             ctx->new_table, ctx->heap, field->field_name, col_type,
             dtype_form_prtype(field_type, charset_no), col_len,
-            !field->is_hidden_by_system(), UINT32_UNDEFINED, UINT8_UNDEFINED,
-            UINT8_UNDEFINED);
+            !field->is_hidden_by_system(), UINT32_UNDEFINED,
+            INVALID_ROW_VERSION, INVALID_ROW_VERSION);
       }
     }
 
@@ -7249,11 +7249,16 @@ after a successful commit_try_norebuild() call.
   of the column to 0. Here the columns are collected first. */
   get_col_list_to_be_dropped(ctx, drop_list, v_drop_list);
 
+  bool adding_fts_index{false};
+
   for (ulint i = 0; i < ctx->num_to_add_index; i++) {
     dict_index_t *index = ctx->add_index[i];
     assert(dict_index_get_online_status(index) == ONLINE_INDEX_COMPLETE);
     assert(!index->is_committed());
     index->set_committed(true);
+    if (index->type & DICT_FTS) {
+      adding_fts_index = true;
+    }
   }
 
   if (ctx->num_to_drop_index) {
@@ -7281,7 +7286,8 @@ after a successful commit_try_norebuild() call.
         assert(index->type == DICT_FTS || index->is_corrupted());
         assert(index->table->fts);
         ctx->fts_drop_aux_vec = new aux_name_vec_t;
-        fts_drop_index(index->table, index, trx, ctx->fts_drop_aux_vec);
+        fts_drop_index(index->table, index, trx, ctx->fts_drop_aux_vec,
+                       adding_fts_index);
       }
 
       /* It is a single table tablespace and the .ibd file is
@@ -7889,9 +7895,6 @@ rollback_trx:
 
       if (index->type & DICT_FTS) {
         assert(index->type == DICT_FTS);
-        /* We reset DICT_TF2_FTS here because the bit
-        is left unset when a drop proceeds the add. */
-        DICT_TF2_FLAG_SET(ctx->new_table, DICT_TF2_FTS);
         fts_add_index(index, ctx->new_table);
         add_fts = true;
       }
@@ -8150,7 +8153,7 @@ class Altered_partitions {
     m_ins_nodes[new_part_id] = prebuilt->ins_node;
     m_trx_ids[new_part_id] = prebuilt->trx_id;
     if (!prebuilt->sql_stat_start) {
-      m_sql_stat_start.set(new_part_id, false);
+      m_sql_stat_start.reset(new_part_id);
     }
   }
 
@@ -8237,7 +8240,7 @@ bool Altered_partitions::initialize() {
     return (true);
   }
 
-  m_sql_stat_start.init(m_bitset, UT_BITS_IN_BYTES(m_num_new_parts));
+  m_sql_stat_start = {m_bitset, UT_BITS_IN_BYTES(m_num_new_parts)};
 
   return (false);
 }
@@ -10270,9 +10273,8 @@ enum_alter_inplace_result ha_innopart::check_if_supported_inplace_alter(
         }
         /* INSTANT can't be done any more. Fall back to INPLACE. */
         break;
-      } else if (!is_valid_row_version(m_prebuilt->table->current_row_version +
-                                       1)) {
-        ut_ad(is_valid_row_version(m_prebuilt->table->current_row_version));
+      } else if (std::cmp_equal(m_prebuilt->table->current_row_version,
+                                MAX_ROW_VERSION)) {
         if (ha_alter_info->alter_info->requested_algorithm ==
             Alter_info::ALTER_TABLE_ALGORITHM_INSTANT) {
           my_error(ER_INNODB_MAX_ROW_VERSION, MYF(0),

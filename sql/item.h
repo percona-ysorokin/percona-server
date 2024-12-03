@@ -507,9 +507,9 @@ struct Check_function_as_value_generator_parameters {
   int get_unnamed_function_error_code() const {
     return ((source == VGS_GENERATED_COLUMN)
                 ? ER_GENERATED_COLUMN_FUNCTION_IS_NOT_ALLOWED
-                : (source == VGS_DEFAULT_EXPRESSION)
-                      ? ER_DEFAULT_VAL_GENERATED_FUNCTION_IS_NOT_ALLOWED
-                      : ER_CHECK_CONSTRAINT_FUNCTION_IS_NOT_ALLOWED);
+            : (source == VGS_DEFAULT_EXPRESSION)
+                ? ER_DEFAULT_VAL_GENERATED_FUNCTION_IS_NOT_ALLOWED
+                : ER_CHECK_CONSTRAINT_FUNCTION_IS_NOT_ALLOWED);
   }
 };
 /*
@@ -1005,7 +1005,8 @@ class Item : public Parse_tree_node {
   };
 
   enum Bool_test  ///< Modifier for result transformation
-  { BOOL_IS_TRUE = 0x00,
+  {
+    BOOL_IS_TRUE = 0x00,
     BOOL_IS_FALSE = 0x01,
     BOOL_IS_UNKNOWN = 0x02,
     BOOL_NOT_TRUE = 0x03,
@@ -1335,12 +1336,11 @@ class Item : public Parse_tree_node {
      */
     if (data_type() != MYSQL_TYPE_INVALID && !(pin && type() == PARAM_ITEM))
       return false;
-    if (propagate_type(thd,
-                       (def == MYSQL_TYPE_VARCHAR)
-                           ? Type_properties(def, Item::default_charset())
-                           : (def == MYSQL_TYPE_JSON)
-                                 ? Type_properties(def, &my_charset_utf8mb4_bin)
-                                 : Type_properties(def)))
+    if (propagate_type(thd, (def == MYSQL_TYPE_VARCHAR)
+                                ? Type_properties(def, Item::default_charset())
+                            : (def == MYSQL_TYPE_JSON)
+                                ? Type_properties(def, &my_charset_utf8mb4_bin)
+                                : Type_properties(def)))
       return true;
     if (pin) pin_data_type();
     if (inherit) set_data_type_inherited();
@@ -1706,6 +1706,7 @@ class Item : public Parse_tree_node {
     @param fsp Fractional seconds precision
   */
   inline void set_data_type_time(uint8 fsp) {
+    assert(fsp <= DATETIME_MAX_DECIMALS);
     set_data_type(MYSQL_TYPE_TIME);
     collation.set_numeric();
     decimals = fsp;
@@ -1718,6 +1719,7 @@ class Item : public Parse_tree_node {
     @param fsp Fractional seconds precision
   */
   inline void set_data_type_datetime(uint8 fsp) {
+    assert(fsp <= DATETIME_MAX_DECIMALS);
     set_data_type(MYSQL_TYPE_DATETIME);
     collation.set_numeric();
     decimals = fsp;
@@ -1730,6 +1732,7 @@ class Item : public Parse_tree_node {
     @param fsp Fractional seconds precision
   */
   inline void set_data_type_timestamp(uint8 fsp) {
+    assert(fsp <= DATETIME_MAX_DECIMALS);
     set_data_type(MYSQL_TYPE_TIMESTAMP);
     collation.set_numeric();
     decimals = fsp;
@@ -2736,6 +2739,7 @@ class Item : public Parse_tree_node {
 
   virtual bool collect_item_field_processor(uchar *) { return false; }
   virtual bool collect_item_field_or_ref_processor(uchar *) { return false; }
+  virtual bool collect_outer_field_processor(uchar *) { return false; }
 
   class Collect_item_fields_or_refs : public Item_tree_walker {
    public:
@@ -3276,7 +3280,19 @@ class Item : public Parse_tree_node {
   */
   virtual bool update_aggr_refs(uchar *) { return false; }
 
-  virtual Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs);
+  /**
+    Convert constant string in this object into the specified character set.
+
+    @param thd  thread handler
+    @param tocs target character set
+    @param ignore_errors if true, ignore errors in conversion
+
+    @returns pointer to new Item containing converted character string
+             = NULL: If conversion failed
+  */
+  Item *convert_charset(THD *thd, const CHARSET_INFO *tocs,
+                        bool ignore_errors = false);
+
   /**
     Delete this item.
     Note that item must have been cleanup up by calling Item::cleanup().
@@ -3517,7 +3533,6 @@ class Item : public Parse_tree_node {
   void aggregate_float_properties(enum_field_types type, Item **items,
                                   uint nitems);
   void aggregate_decimal_properties(Item **items, uint nitems);
-  uint32 aggregate_char_width(Item **items, uint nitems);
   void aggregate_temporal_properties(enum_field_types type, Item **items,
                                      uint nitems);
   bool aggregate_string_properties(enum_field_types type, const char *name,
@@ -3585,7 +3600,8 @@ class Item : public Parse_tree_node {
   */
   uint32 max_length;  ///< Maximum length, in bytes
   enum item_marker    ///< Values for member 'marker'
-  { MARKER_NONE = 0,
+  {
+    MARKER_NONE = 0,
     /// When contextualization or itemization adds an implicit comparison '0<>'
     /// (see make_condition()), to record that this Item_func_ne was created for
     /// this purpose; this value is tested during resolution.
@@ -3608,7 +3624,8 @@ class Item : public Parse_tree_node {
     MARKER_TRAVERSAL = 8,
     /// When pushing index conditions: it says whether a condition uses only
     /// indexed columns.
-    MARKER_ICP_COND_USES_INDEX_ONLY = 10 };
+    MARKER_ICP_COND_USES_INDEX_ONLY = 10
+  };
   /**
     This member has several successive meanings, depending on the phase we're
     in (@see item_marker).
@@ -4069,26 +4086,25 @@ class Item_name_const final : public Item {
   }
 };
 
+bool convert_const_strings(DTCollation &coll, Item **args, uint nargs,
+                           int item_sep);
 bool agg_item_collations_for_comparison(DTCollation &c, const char *name,
                                         Item **items, uint nitems, uint flags);
-bool agg_item_set_converter(DTCollation &coll, const char *fname, Item **args,
-                            uint nargs, uint flags, int item_sep,
-                            bool only_consts);
 bool agg_item_charsets(DTCollation &c, const char *name, Item **items,
-                       uint nitems, uint flags, int item_sep, bool only_consts);
+                       uint nitems, uint flags, int item_sep);
 inline bool agg_item_charsets_for_string_result(DTCollation &c,
                                                 const char *name, Item **items,
                                                 uint nitems, int item_sep = 1) {
   const uint flags = MY_COLL_ALLOW_SUPERSET_CONV |
                      MY_COLL_ALLOW_COERCIBLE_CONV | MY_COLL_ALLOW_NUMERIC_CONV;
-  return agg_item_charsets(c, name, items, nitems, flags, item_sep, false);
+  return agg_item_charsets(c, name, items, nitems, flags, item_sep);
 }
 inline bool agg_item_charsets_for_comparison(DTCollation &c, const char *name,
                                              Item **items, uint nitems,
                                              int item_sep = 1) {
   const uint flags = MY_COLL_ALLOW_SUPERSET_CONV |
                      MY_COLL_ALLOW_COERCIBLE_CONV | MY_COLL_DISALLOW_NONE;
-  return agg_item_charsets(c, name, items, nitems, flags, item_sep, true);
+  return agg_item_charsets(c, name, items, nitems, flags, item_sep);
 }
 
 class Item_num : public Item_basic_constant {
@@ -4099,7 +4115,6 @@ class Item_num : public Item_basic_constant {
   explicit Item_num(const POS &pos) : super(pos) { collation.set_numeric(); }
 
   virtual Item_num *neg() = 0;
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
   bool check_partition_func_processor(uchar *) override { return false; }
 };
 
@@ -4531,6 +4546,7 @@ class Item_field : public Item_ident {
   bool collect_item_field_processor(uchar *arg) override;
   bool collect_item_field_or_ref_processor(uchar *arg) override;
   bool collect_item_field_or_view_ref_processor(uchar *arg) override;
+  bool collect_outer_field_processor(uchar *arg) override;
   bool add_field_to_set_processor(uchar *arg) override;
   bool add_field_to_cond_set_processor(uchar *) override;
   bool remove_column_from_bitmap(uchar *arg) override;
@@ -4568,8 +4584,8 @@ class Item_field : public Item_ident {
   Item *replace_equal_field(uchar *) override;
   inline uint32 max_disp_length() { return field->max_display_length(); }
   Item_field *field_for_view_update() override { return this; }
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
-  int fix_outer_field(THD *thd, Field **field, Item **reference);
+  bool fix_outer_field(THD *thd, Field **field, Item_ident **ref_field,
+                       bool *complete);
   Item *update_value_transformer(uchar *select_arg) override;
   void print(const THD *thd, String *str,
              enum_query_type query_type) const override;
@@ -4765,7 +4781,6 @@ class Item_null : public Item_basic_constant {
     str->append(query_type == QT_NORMALIZED_FORMAT ? "?" : "NULL");
   }
 
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
   bool check_partition_func_processor(uchar *) override { return false; }
 };
 
@@ -5038,17 +5053,6 @@ class Item_param final : public Item, private Settable_routine_parameter {
     return m_param_state == NULL_VALUE;
   }
 
-  /*
-    This method is used to make a copy of a basic constant item when
-    propagating constants in the optimizer. The reason to create a new
-    item and not use the existing one is not precisely known (2005/04/16).
-    Probably we are trying to preserve tree structure of items, in other
-    words, avoid pointing at one item from two different nodes of the tree.
-    Return a new basic constant item if parameter value is a basic
-    constant, assert otherwise. This method is called only if
-    basic_const_item returned true.
-  */
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
   Item *clone_item() const override;
   /*
     Implement by-value equality evaluation if parameter value
@@ -5450,8 +5454,6 @@ class Item_func_pi : public Item_float {
   void print(const THD *, String *str, enum_query_type) const override {
     str->append(func_name);
   }
-
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
 };
 
 class Item_string : public Item_basic_constant {
@@ -5600,8 +5602,6 @@ class Item_string : public Item_basic_constant {
     return new Item_string(static_cast<Name_string>(item_name), str_value.ptr(),
                            str_value.length(), collation.collation);
   }
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
-  Item *charset_converter(THD *thd, const CHARSET_INFO *tocs, bool lossless);
   inline void append(char *str, size_t length) {
     str_value.append(str, length);
     max_length = static_cast<uint32>(str_value.numchars() *
@@ -5673,8 +5673,6 @@ class Item_static_string_func : public Item_string {
                           Derivation dv = DERIVATION_COERCIBLE)
       : Item_string(pos, null_name_string, str, length, cs, dv),
         func_name(name_par) {}
-
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
 
   void print(const THD *, String *str, enum_query_type) const override {
     str->append(func_name);
@@ -5786,7 +5784,6 @@ class Item_hex_string : public Item_basic_constant {
   void print(const THD *thd, String *str,
              enum_query_type query_type) const override;
   bool eq(const Item *item) const override;
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
   bool check_partition_func_processor(uchar *) override { return false; }
   static LEX_CSTRING make_hex_str(const char *str, size_t str_length);
   uint decimal_precision() const override;
@@ -6171,30 +6168,52 @@ class Item_view_ref final : public Item_ref {
   /**
     Takes into account whether an Item in a derived table / view is part of an
     inner table of an outer join.
-
-    1) If the field is an outer reference, return OUTER_REF_TABLE_BIT.
-    2) Else
-       2a) If the field is const_for_execution and the field is used in the
-           inner part of an outer join, return the inner tables of the outer
-           join. (A 'const' field that depends on the inner table of an outer
-           join shouldn't be interpreted as const.)
-       2b) Else return the used_tables info of the underlying field.
-
-    @note The call to const_for_execution has been replaced by
-          "!(inner_map & ~INNER_TABLE_BIT)" to avoid multiple and recursive
-          calls to used_tables. This can create a problem when Views are
-          created using other views
-*/
+  */
   table_map used_tables() const override {
-    if (depended_from != nullptr) return OUTER_REF_TABLE_BIT;
+    const Item_ref *inner_ref = this;
+    const Item *inner_item;
+    /*
+      Check whether any of the inner expressions is an outer reference,
+      and if it is, return OUTER_REF_TABLE_BIT.
+    */
+    while (true) {
+      if (inner_ref->depended_from != nullptr) {
+        return OUTER_REF_TABLE_BIT;
+      }
+      inner_item = inner_ref->ref_item();
+      if (inner_item->type() != REF_ITEM) break;
+      inner_ref = down_cast<const Item_ref *>(inner_item);
+    }
 
-    table_map inner_map = ref_item()->used_tables();
-    return !(inner_map & ~INNER_TABLE_BIT) && first_inner_table != nullptr
-               ? ref_item()->real_item()->type() == FIELD_ITEM
-                     ? down_cast<Item_field *>(ref_item()->real_item())
-                           ->m_table_ref->map()
-                     : first_inner_table->map()
-               : inner_map;
+    const Item_field *field = inner_item->type() == FIELD_ITEM
+                                  ? down_cast<const Item_field *>(inner_item)
+                                  : nullptr;
+
+    // If the field is an outer reference, return OUTER_REF_TABLE_BIT
+    if (field != nullptr && field->depended_from != nullptr) {
+      return OUTER_REF_TABLE_BIT;
+    }
+    /*
+      View references with expressions that are not deemed constant during
+      execution, or when they are constants but the merged view/derived table
+      was not from the inner side of an outer join, simply return the used
+      tables of the underlying item. A "const" field that comes from an inner
+      side of an outer join is not constant, since NULL values are issued
+      when there are no matching rows in the inner table(s).
+    */
+    if (!inner_item->const_for_execution() || first_inner_table == nullptr) {
+      return inner_item->used_tables();
+    }
+    /*
+      This is a const expression on the inner side of an outer join.
+      Augment its used table information with the map of an inner table from
+      the outer join nest. field can be nullptr if it is from a const table.
+      In this case, returning the table's original table map is required by
+      the join optimizer.
+    */
+    return field != nullptr
+               ? field->m_table_ref->map()
+               : inner_item->used_tables() | first_inner_table->map();
   }
 
   bool eq(const Item *item) const override;
@@ -6286,6 +6305,8 @@ class Item_outer_ref final : public Item_ref {
     m_ref_item = &outer_ref;
     link_referenced_item();
     set_properties();
+    // keep any select list alias:
+    item_name = ident_arg->item_name;
     fixed = false;
   }
   Item_outer_ref(Name_resolution_context *context_arg, Item **item,
@@ -6452,68 +6473,6 @@ class Item_time_with_ref final : public Item_temporal_with_ref {
     assert(0);
     return val_int();
   }
-};
-
-/**
-  A dummy item that contains a copy/backup of the given Item's metadata;
-  not valid for data. Used only in type aggregation.
- */
-class Item_metadata_copy final : public Item {
- public:
-  explicit Item_metadata_copy(Item *item) {
-    const bool nullable = item->is_nullable();
-    null_value = nullable;
-    set_nullable(nullable);
-    decimals = item->decimals;
-    max_length = item->max_length;
-    item_name = item->item_name;
-    set_data_type(item->data_type());
-    cached_result_type = item->result_type();
-    unsigned_flag = item->unsigned_flag;
-    fixed = item->fixed;
-    collation.set(item->collation);
-  }
-
-  // This is unused - use same code as type holder item.
-  enum Type type() const override { return TYPE_HOLDER_ITEM; }
-  Item_result result_type() const override { return cached_result_type; }
-  table_map used_tables() const override { return 1; }
-
-  String *val_str(String *) override {
-    assert(false);
-    return nullptr;
-  }
-  my_decimal *val_decimal(my_decimal *) override {
-    assert(false);
-    return nullptr;
-  }
-  double val_real() override {
-    assert(false);
-    return 0.0;
-  }
-  longlong val_int() override {
-    assert(false);
-    return 0;
-  }
-  bool get_date(MYSQL_TIME *, my_time_flags_t) override {
-    assert(false);
-    return true;
-  }
-  bool get_time(MYSQL_TIME *) override {
-    assert(false);
-    return true;
-  }
-  bool val_json(Json_wrapper *) override {
-    assert(false);
-    return true;
-  }
-
- private:
-  /**
-    Stores the result type of the original item, so it can be returned
-    without calling the original item's member function
-  */
-  Item_result cached_result_type;
 };
 
 /**
@@ -7250,7 +7209,7 @@ class Item_aggregate_type : public Item {
   bool get_time(MYSQL_TIME *) override = 0;
 
   Item_result result_type() const override;
-  bool join_types(THD *, Item *);
+  bool unify_types(THD *, Item *);
   Field *make_field_by_type(TABLE *table, bool strict);
   static uint32 display_length(Item *item);
   Field::geometry_type get_geometry_type() const override {
@@ -7283,6 +7242,12 @@ class Item_type_holder final : public Item_aggregate_type {
   Item_type_holder(THD *thd, Item *item) : super(thd, item) {}
 
   enum Type type() const override { return TYPE_HOLDER_ITEM; }
+
+  /**
+    Class is used in type aggregation only - this is needed to ensure
+    that it is not attempted to be evaluated as a const value.
+  */
+  table_map used_tables() const override { return RAND_TABLE_BIT; }
 
   double val_real() override;
   longlong val_int() override;

@@ -588,8 +588,6 @@ class Item_func_sysconst : public Item_str_func {
   explicit Item_func_sysconst(const POS &pos) : super(pos) {
     collation.set(system_charset_info, DERIVATION_SYSCONST);
   }
-
-  Item *safe_charset_converter(THD *thd, const CHARSET_INFO *tocs) override;
   /*
     Used to create correct Item name in new converted item in
     safe_charset_converter, return string representation of this function
@@ -616,7 +614,7 @@ class Item_func_database : public Item_func_sysconst {
 
   String *val_str(String *) override;
   bool resolve_type(THD *) override {
-    set_data_type_string(uint32{MAX_FIELD_NAME});
+    set_data_type_string(uint32{NAME_CHAR_LEN});
     set_nullable(true);
     return false;
   }

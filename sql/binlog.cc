@@ -72,7 +72,6 @@
 #include "my_sqlcommand.h"
 #include "my_stacktrace.h"  // my_safe_print_system_time
 #include "my_thread_local.h"
-#include "mysql/binlog/event/compression/buffer/grow_calculator.h"
 #include "mysql/binlog/event/compression/compressor.h"
 #include "mysql/binlog/event/compression/payload_event_buffer_istream.h"
 #include "mysql/binlog/event/compression/zstd_comp.h"
@@ -82,6 +81,7 @@
 #include "mysql/binlog/event/statement_events.h"
 #include "mysql/binlog/event/table_id.h"
 #include "mysql/components/services/log_builtins.h"
+#include "mysql/containers/buffers/grow_calculator.h"
 #include "mysql/plugin.h"
 #include "mysql/psi/mysql_file.h"
 #include "mysql/service_mysql_alloc.h"
@@ -2175,7 +2175,7 @@ class Binlog_cache_compressor {
   ///
   /// @return true on error, false on success.
   [[NODISCARD]] bool setup_buffer_sequence() {
-    mysql::binlog::event::compression::buffer::Grow_calculator grow_calculator;
+    mysql::containers::buffers::Grow_calculator grow_calculator;
     grow_calculator.set_max_size(
         mysql::binlog::event::Transaction_payload_event::max_payload_length);
     DBUG_EXECUTE_IF("binlog_transaction_compression_max_size_800",
@@ -8795,6 +8795,22 @@ int THD::binlog_setup_trx_data() {
   thd_set_ha_data(this, binlog_hton, cache_mngr);
 
   return 0;
+}
+
+bool THD::binlog_configure_trx_cache_size(ulong new_size) {
+  // Check expected block size.
+  assert((new_size % IO_SIZE) == 0);
+
+  binlog_cache_mngr *const cache_mngr = thd_get_cache_mngr(this);
+  if (cache_mngr == nullptr || !cache_mngr->is_binlog_empty()) {
+    // Must exist and be empty
+    return true;
+  }
+
+  // Close and reopen with new value
+  Binlog_cache_storage *const cache = cache_mngr->get_trx_cache();
+  cache->close();
+  return cache->open(new_size, max_binlog_cache_size);
 }
 
 /**

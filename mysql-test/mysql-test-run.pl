@@ -380,6 +380,7 @@ our $exe_libtool;
 our $exe_mysql;
 our $exe_mysql_migrate_keyring;
 our $exe_mysql_keyring_encryption_test;
+our $exe_mysql_test_jwt_generator;
 our $exe_mysqladmin;
 our $exe_mysqltest;
 our $exe_mysql_test_event_tracking;
@@ -763,8 +764,13 @@ sub main {
     # - Certificates and keys are generated after the Python virtual environment
     #   setup.
     my $oci_instance_id    = $ENV{'OCI_INSTANCE_ID'} || "";
-    if ($oci_instance_id) {
+    # Configuration for ml
+    # 20240613: temporary disabled for MTR until find a solution for SSL3
+    my $ml_encryption_enabled = 0; # Replace with $oci_instance_id?1:0 to enable
+    $ml_encryption_enabled?mtr_report("ML encryption enabled"):mtr_report("ML encryption disabled");
+    if ($ml_encryption_enabled) {
       $ENV{'ML_CERTIFICATES'} = "$::opt_vardir/" . "hwaml_cert_files/";
+      $ENV{'ML_ENABLE_ENCRYPTION'} = "1";
     }
   }
 
@@ -830,7 +836,8 @@ sub main {
     # virtual environment setup and path pre-setting (referenced earlier).
     my $oci_instance_id    = $ENV{'OCI_INSTANCE_ID'} || "";
     my $aws_key_store      = $ENV{'OLRAPID_KEYSTORE'} || "";
-    if ($oci_instance_id) {
+    my $ml_encryption_enabled = $ENV{'ML_ENABLE_ENCRYPTION'} || "";
+    if ($ml_encryption_enabled) {
       if($aws_key_store)
       {
         extract_certs_from_pfx($aws_key_store, $ENV{'ML_CERTIFICATES'});
@@ -1906,18 +1913,6 @@ sub command_line_setup {
     'valgrind-path=s'           => \$opt_valgrind_path,
     'valgrind-secondary-engine' => \$opt_valgrind_secondary_engine,
     'valgrind|valgrind-all'     => \$opt_valgrind,
-    'valgrind-options=s'        => sub {
-      my ($opt, $value) = @_;
-      # Deprecated option unless it's what we know pushbuild uses
-      if (option_equals($value, "--gen-suppressions=all --show-reachable=yes"))
-      {
-        push(@valgrind_args, $_) for (split(' ', $value));
-        return;
-      }
-      die("--valgrind-options=s is deprecated. Use ",
-          "--valgrind-option=s, to be specified several",
-          " times if necessary");
-    },
 
     # Directories
     'clean-vardir'    => \$opt_clean_vardir,
@@ -2938,7 +2933,7 @@ sub executable_setup () {
     mtr_exe_exists("$path_client_bindir/mysql_migrate_keyring");
   $exe_mysql_keyring_encryption_test =
     mtr_exe_exists("$path_client_bindir/mysql_keyring_encryption_test");
-
+  $exe_mysql_test_jwt_generator = mtr_exe_maybe_exists("$path_client_bindir/mysql_test_jwt_generator");
   # Look for mysql_test_event_tracking binary
   $exe_mysql_test_event_tracking = my_find_bin($bindir,
                 [ "runtime_output_directory", "bin" ],
@@ -3117,10 +3112,11 @@ sub mysqldump_arguments ($) {
   return mtr_args2str($exe, @$args);
 }
 
-sub mysql_client_test_arguments() {
+sub mysql_client_test_arguments($) {
+  my ($client_name) = @_;
   my $exe;
   # mysql_client_test executable may _not_ exist
-  $exe = mtr_exe_maybe_exists("$path_client_bindir/mysql_client_test");
+  $exe = mtr_exe_maybe_exists("$path_client_bindir/$client_name");
   return "" unless $exe;
 
   my $args;
@@ -3475,7 +3471,8 @@ sub environment_setup {
   $ENV{'MYSQL_OPTIONS'}       = substr($mysql_cmd, index($mysql_cmd, " "));
   $ENV{'MYSQL_BINLOG'}        = client_arguments("mysqlbinlog");
   $ENV{'MYSQL_CHECK'}         = client_arguments("mysqlcheck");
-  $ENV{'MYSQL_CLIENT_TEST'}   = mysql_client_test_arguments();
+  $ENV{'MYSQL_CLIENT_TEST'}   = mysql_client_test_arguments("mysql_client_test");
+  $ENV{'I_MYSQL_CLIENT_TEST'} = mysql_client_test_arguments("i_mysql_client_test");
   $ENV{'MYSQL_DUMP'}          = mysqldump_arguments(".1");
   $ENV{'MYSQL_DUMP_SLAVE'}    = mysqldump_arguments(".2");
   $ENV{'MYSQL_IMPORT'}        = client_arguments("mysqlimport");
@@ -3496,7 +3493,7 @@ sub environment_setup {
   $ENV{'MYSQL_SECURE_INSTALLATION'} =
     "$path_client_bindir/mysql_secure_installation";
   $ENV{'OPENSSL_EXECUTABLE'} = $exe_openssl;
-
+  $ENV{'MYSQL_TEST_JWT_GENERATOR'} = $exe_mysql_test_jwt_generator;
   my $exe_mysqld = find_mysqld($basedir);
   $ENV{'MYSQLD'} = $exe_mysqld;
 
@@ -6228,17 +6225,24 @@ sub check_expected_crash_and_restart($$) {
           delete $mysqld->{'restart_opts'};
         }
 
-        # Attempt to remove the .expect file. If it fails in
-        # windows, retry removal after a sleep.
-        my $retry = 1;
-        while (
-          unlink($expect_file) == 0 &&
-          $! == 13 &&    # Error = 13, Permission denied
-          IS_WINDOWS && $retry-- >= 0
-          ) {
-          # Permission denied to unlink.
-          # Race condition seen on windows. Wait and retry.
-          mtr_milli_sleep(1000);
+        # Attempt to remove the .expect file. It was observed that on Windows
+        # 439 are sometimes not enough, while 440th attempt succeeded. The exact
+        # cause of the problem is unknown, as trying to list the processes with
+        # open handle using sysinternal tool named Handle, caused the tool
+        # itself to crash. We make only 30 iterations here, as a trade-off,
+        # which seems to be enough in most cases, but waitng longer seems to
+        # risk timing out the whole test suite. Not removing a file might impact
+        # the next test case, thus we emit a warning in such case.
+        my $attempts = 0;
+        while (unlink($expect_file) == 0) {
+          if ($! == 13 && IS_WINDOWS && ++$attempts < 30){
+            # Permission denied to unlink.
+            # Race condition seen on windows. Wait and retry.
+            mtr_milli_sleep(1000);
+          } else {
+            mtr_warning("attempt#$attempts to unlink($expect_file) failed: $!");
+            last;
+          }
         }
 
         # Instruct an implicit wait in case the restart is intended
@@ -6773,6 +6777,10 @@ sub mysqld_start ($$$$) {
 
   # Remember data dir for gmon.out files if using gprof
   $gprof_dirs{ $mysqld->value('datadir') } = 1 if $opt_gprof;
+
+  # Set $AWS_SHARED_CREDENTIALS_FILE required by some AWS tests
+  push(@opt_mysqld_envs,
+       "AWS_SHARED_CREDENTIALS_FILE=$opt_vardir/tmp/credentials");
 
   if (defined $exe) {
     $mysqld->{'proc'} =
@@ -8326,7 +8334,6 @@ Options for valgrind
                         with valgrind.
   valgrind-option=ARGS  Option to give valgrind, replaces default option(s), can
                         be specified more then once.
-  valgrind-options=ARGS Deprecated, use --valgrind-option.
   valgrind-path=<EXE>   Path to the valgrind executable.
 
 Misc options

@@ -116,14 +116,14 @@ struct ExplainChild {
 /// Convenience function to add a json field.
 template <class T, class JsonObjectPtr, class... Args>
 static bool AddMemberToObject(const JsonObjectPtr &obj, const char *alias,
-                              Args &&... ctor_args) {
+                              Args &&...ctor_args) {
   return obj->add_alias(
       alias, create_dom_ptr<T, Args...>(std::forward<Args>(ctor_args)...));
 }
 
 template <class T, class... Args>
 static bool AddElementToArray(const unique_ptr<Json_array> &array,
-                              Args &&... ctor_args) {
+                              Args &&...ctor_args) {
   return array->append_alias(
       create_dom_ptr<T, Args...>(std::forward<Args>(ctor_args)...));
 }
@@ -306,7 +306,7 @@ string HashJoinTypeToString(RelationalExpression::Type join_type,
     case RelationalExpression::SEMIJOIN:
       if (explain_json_value)
         *explain_json_value = JoinTypeToString(JoinType::SEMI);
-      return "Hash semijoin";
+      return "Hash semijoin (FirstMatch)";
     default:
       assert(false);
       return "<error>";
@@ -1015,19 +1015,18 @@ static bool AddPathCosts(const AccessPath *path,
     }
 
     if (init_cost >= 0.0) {
-      double first_row_cost;
-      if (path->num_output_rows() <= 1.0) {
-        first_row_cost = cost;
-      } else {
-        first_row_cost =
-            init_cost + (cost - init_cost) / path->num_output_rows();
-      }
-      error |= AddMemberToObject<Json_double>(obj, "estimated_first_row_cost",
-                                              first_row_cost);
+      error |= AddMemberToObject<Json_double>(
+          obj, "estimated_first_row_cost",
+          FirstRowCost(init_cost, cost, path->num_output_rows()));
     }
     error |= AddMemberToObject<Json_double>(obj, "estimated_total_cost", cost);
-    error |= AddMemberToObject<Json_double>(obj, "estimated_rows",
-                                            path->num_output_rows());
+    // For a MATERIALIZE path, num_output_rows() gives the number of rows read
+    // by materialize().table_path rather than the number of rows materialized.
+    error |=
+        AddMemberToObject<Json_double>(obj, "estimated_rows",
+                                       path->type == AccessPath::MATERIALIZE
+                                           ? path->materialize().subquery_rows
+                                           : path->num_output_rows());
   } /* if (path->num_output_rows() >= 0.0) */
 
   /* Add analyze figures */
@@ -1270,6 +1269,7 @@ static unique_ptr<Json_object> SetObjectMembers(
           get_used_key_parts(path), "lookup",
           RefToString(*path->mrr().ref, key, /*include_nulls=*/false),
           /*ranges=*/nullptr, nullptr, false, table.file->pushed_idx_cond, obj);
+      error |= AddMemberToObject<Json_boolean>(obj, "multi_range_read", true);
       error |= AddChildrenFromPushedCondition(table, children);
       break;
     }
@@ -1292,11 +1292,28 @@ static unique_ptr<Json_object> SetObjectMembers(
       string ranges;
       error |= PrintRanges(param.ranges, param.num_ranges, key_info.key_part,
                            /*single_part_only=*/false, range_arr, &ranges);
+
+      // A range scan could use MRR optimization if possible. However, unless
+      // multi_range_read_init() is called, we do not have a way to know if the
+      // optimization will be used even though range optimizer has picked it. If
+      // the range scan requires rows in order, the storage engine might not be
+      // able to provide the order when using MRR optimization, in which case it
+      // switches to the default implementation. Calling multi_range_read_init()
+      // can potentially be costly, so it is not done when executing an EXPLAIN.
+      // We therefore simulate its effect here:
+      uint mrr_flags = param.mrr_flags;
+      bool using_mrr = false;
+      if ((!(mrr_flags & HA_MRR_SORTED) || mrr_flags & HA_MRR_SUPPORT_SORTED) &&
+          !(mrr_flags & HA_MRR_USE_DEFAULT_IMPL)) {
+        using_mrr = true;
+        error |= AddMemberToObject<Json_boolean>(obj, "multi_range_read", true);
+      }
       error |= SetIndexInfoInObject(
           &description, "index_range_scan", nullptr, table, key_info,
-          get_used_key_parts(path), "range scan", /*lookup condition*/ "",
-          &ranges, std::move(range_arr), path->index_range_scan().reverse,
-          table.file->pushed_idx_cond, obj);
+          get_used_key_parts(path),
+          using_mrr ? "range scan (Multi-Range Read)" : "range scan",
+          /*lookup condition*/ "", &ranges, std::move(range_arr),
+          path->index_range_scan().reverse, table.file->pushed_idx_cond, obj);
 
       error |= AddChildrenFromPushedCondition(table, children);
       break;
@@ -1409,6 +1426,32 @@ static unique_ptr<Json_object> SetObjectMembers(
       error |=
           AddMemberToObject<Json_string>(obj, "join_algorithm", "nested_loop");
       description = "Nested loop " + join_type;
+      if (path->nested_loop_join().join_type == JoinType::SEMI) {
+        description = description + " (FirstMatch)";
+        error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                "firstmatch");
+      }
+      const JoinPredicate *predicate = path->nested_loop_join().join_predicate;
+      if (predicate != nullptr &&
+          predicate->expr->type == RelationalExpression::SEMIJOIN &&
+          path->nested_loop_join().join_type == JoinType::INNER) {
+        if (path->nested_loop_join().outer->type ==
+            AccessPath::REMOVE_DUPLICATES) {
+          description.append(" (LooseScan)");
+          error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                  "loosescan");
+        } else {
+          description.append(" (FirstMatch)");
+          error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                  "firstmatch");
+        }
+      }
+      if (path->nested_loop_join().outer->type ==
+          AccessPath::REMOVE_DUPLICATES_ON_INDEX) {
+        description.append(" (LooseScan)");
+        error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                "loosescan");
+      }
       children->push_back({path->nested_loop_join().outer});
       children->push_back({path->nested_loop_join().inner});
       break;
@@ -1416,8 +1459,12 @@ static unique_ptr<Json_object> SetObjectMembers(
     case AccessPath::NESTED_LOOP_SEMIJOIN_WITH_DUPLICATE_REMOVAL:
       // No json fields since this path is not supported in hypergraph
       description =
-          string("Nested loop semijoin with duplicate removal on ") +
+          string(
+              "Nested loop semijoin (FirstMatch) with duplicate removal "
+              "(LooseScan) on ") +
           path->nested_loop_semijoin_with_duplicate_removal().key->name;
+      error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                              "firstmatch_with_loosescan");
       children->push_back(
           {path->nested_loop_semijoin_with_duplicate_removal().outer});
       children->push_back(
@@ -1443,17 +1490,46 @@ static unique_ptr<Json_object> SetObjectMembers(
 
       string json_join_type;
       description = HashJoinTypeToString(type, &json_join_type);
+      if (predicate->expr->type == RelationalExpression::SEMIJOIN) {
+        error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                "firstmatch");
+      }
+      if (path->hash_join().rewrite_semi_to_inner) {
+        if (path->hash_join().outer->type == AccessPath::REMOVE_DUPLICATES) {
+          description.append(" (LooseScan)");
+          error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                  "loosescan");
+        } else {
+          description.append(" (FirstMatch)");
+          error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                  "firstmatch");
+        }
+      }
+      if ((type != RelationalExpression::SEMIJOIN) &&
+          path->hash_join().inner->type ==
+              AccessPath::REMOVE_DUPLICATES_ON_INDEX) {
+        description.append(" (LooseScan)");
+        error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                "loosescan");
+      }
 
       unique_ptr<Json_array> hash_condition(new (std::nothrow) Json_array());
       if (hash_condition == nullptr) return nullptr;
-
       vector<HashJoinCondition> equijoin_conditions;
       equijoin_conditions.reserve(predicate->expr->equijoin_conditions.size());
       for (Item_eq_base *cond : predicate->expr->equijoin_conditions) {
         equijoin_conditions.emplace_back(cond, thd->mem_root);
       }
       if (equijoin_conditions.empty()) {
-        description.append(" (no condition)");
+        if ((type != RelationalExpression::SEMIJOIN) &&
+            path->hash_join().inner->type == AccessPath::LIMIT_OFFSET &&
+            path->hash_join().inner->limit_offset().limit == 1) {
+          description.append(" (FirstMatch)");
+          error |= AddMemberToObject<Json_string>(obj, "semijoin_strategy",
+                                                  "firstmatch");
+        } else {
+          description.append(" (no condition)");
+        }
       } else {
         bool first = true;
         for (const HashJoinCondition &hj_cond : equijoin_conditions) {
@@ -1776,7 +1852,8 @@ static unique_ptr<Json_object> SetObjectMembers(
       }
       description += " rows using temporary table (weedout)";
       error |= obj->add_alias("tables", std::move(tables));
-      error |= AddMemberToObject<Json_string>(obj, "access_type", "weedout");
+      error |=
+          AddMemberToObject<Json_string>(obj, "semijoin_strategy", "weedout");
       children->push_back({path->weedout().child});
       break;
     }

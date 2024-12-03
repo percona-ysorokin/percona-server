@@ -712,8 +712,9 @@ LEX *sp_lex_instr::parse_statement(THD *thd, sp_head *sp) {
 
 bool sp_lex_instr::validate_lex_and_execute_core(THD *thd, uint *nextp,
                                                  bool open_tables) {
-  // Remember the original state of the general log.
-  const ulonglong orig_log_state = thd->variables.option_bits & OPTION_LOG_OFF;
+  // Remember if the general log was temporarily disabled when repreparing the
+  // statement for a secondary engine.
+  bool general_log_temporarily_disabled = false;
 
   Reprepare_observer reprepare_observer;
 
@@ -730,6 +731,13 @@ bool sp_lex_instr::validate_lex_and_execute_core(THD *thd, uint *nextp,
   if (m_lex != nullptr && m_lex->has_udf() && !m_first_execution) {
     need_reprepare = true;
   }
+
+  // Reprepare statement if its Sql_cmd requires it
+  if (!m_first_execution && m_lex != nullptr && m_lex->m_sql_cmd != nullptr &&
+      m_lex->m_sql_cmd->reprepare_on_execute_required()) {
+    need_reprepare = true;
+  }
+
   DBUG_EXECUTE_IF("simulate_bug18831513", { invalidate(); });
   /*
     Retry execution in a loop until successful, or a fatal error has occurred,
@@ -789,7 +797,10 @@ bool sp_lex_instr::validate_lex_and_execute_core(THD *thd, uint *nextp,
       Re-enable the general log if it was temporarily disabled while repreparing
       and executing a statement for a secondary engine.
     */
-    thd->variables.option_bits &= (OPTION_LOG_OFF ^ ~orig_log_state);
+    if (general_log_temporarily_disabled) {
+      thd->variables.option_bits &= ~OPTION_LOG_OFF;
+      general_log_temporarily_disabled = false;
+    }
 
     m_first_execution = false;
 
@@ -860,7 +871,10 @@ bool sp_lex_instr::validate_lex_and_execute_core(THD *thd, uint *nextp,
       Disable the general log. The query was written to the general log in
       the first attempt to execute it. No need to write it twice.
     */
-    thd->variables.option_bits |= OPTION_LOG_OFF;
+    if ((thd->variables.option_bits & OPTION_LOG_OFF) == 0) {
+      thd->variables.option_bits |= OPTION_LOG_OFF;
+      general_log_temporarily_disabled = true;
+    }
     /*
       Prepare for re-prepare and re-optimization:
       - Clear the current diagnostics area.
@@ -882,7 +896,10 @@ bool sp_lex_instr::validate_lex_and_execute_core(THD *thd, uint *nextp,
 
   // Re-enable the general log if it was temporarily disabled while repreparing
   // and executing a statement for a secondary engine.
-  thd->variables.option_bits &= (OPTION_LOG_OFF ^ ~orig_log_state);
+  if (general_log_temporarily_disabled) {
+    thd->variables.option_bits &= ~OPTION_LOG_OFF;
+    general_log_temporarily_disabled = false;
+  }
 
   return error;
 }
@@ -1129,12 +1146,13 @@ PSI_statement_info sp_instr_set::psi_info = {
 bool sp_instr_set::exec_core(THD *thd, uint *nextp) {
   *nextp = get_ip() + 1;
 
-  if (!thd->sp_runtime_ctx->set_variable(thd, m_offset, &m_value_item))
+  // LEX of instruction keeps execution state of the assignment operation
+  if (!thd->sp_runtime_ctx->set_variable(thd, true, m_offset, &m_value_item))
     return false;
 
   /* Failed to evaluate the value. Reset the variable to NULL. */
 
-  if (thd->sp_runtime_ctx->set_variable(thd, m_offset, nullptr)) {
+  if (thd->sp_runtime_ctx->set_variable(thd, true, m_offset, nullptr)) {
     /* If this also failed, let's abort. */
     my_error(ER_OUT_OF_RESOURCES, MYF(ME_FATALERROR));
   }
@@ -1281,11 +1299,11 @@ PSI_statement_info sp_instr_jump_if_not::psi_info = {
 #endif
 
 bool sp_instr_jump_if_not::exec_core(THD *thd, uint *nextp) {
-  assert(m_expr_item);
+  assert(m_expr_item != nullptr);
 
-  Item *item = sp_prepare_func_item(thd, &m_expr_item);
-
-  if (!item) return true;
+  // LEX of instruction keeps execution state of the expression evaluation
+  Item *item = sp_prepare_func_item(thd, true, &m_expr_item);
+  if (item == nullptr) return true;
 
   *nextp = item->val_bool() ? get_ip() + 1 : m_dest;
 
@@ -1364,11 +1382,11 @@ PSI_statement_info sp_instr_jump_case_when::psi_info = {
 #endif
 
 bool sp_instr_jump_case_when::exec_core(THD *thd, uint *nextp) {
-  assert(m_eq_item);
+  assert(m_eq_item != nullptr);
 
-  Item *item = sp_prepare_func_item(thd, &m_eq_item);
-
-  if (!item) return true;
+  // LEX of instruction keeps execution state of the case expression
+  Item *item = sp_prepare_func_item(thd, true, &m_eq_item);
+  if (item == nullptr) return true;
 
   *nextp = item->val_bool() ? get_ip() + 1 : m_dest;
 
@@ -1451,7 +1469,7 @@ bool sp_instr_freturn::exec_core(THD *thd, uint *nextp) {
     do it in scope of execution the current context/block.
   */
 
-  return thd->sp_runtime_ctx->set_return_value(thd, &m_expr_item);
+  return thd->sp_runtime_ctx->set_return_value(thd, true, &m_expr_item);
 }
 
 void sp_instr_freturn::print(const THD *thd, String *str) {
@@ -1872,21 +1890,21 @@ bool sp_instr_set_case_expr::exec_core(THD *thd, uint *nextp) {
 
   sp_rcontext *rctx = thd->sp_runtime_ctx;
 
-  if (rctx->set_case_expr(thd, m_case_expr_id, &m_expr_item)) {
+  // LEX of instruction keeps execution state of the case expression
+  if (rctx->set_case_expr(thd, true, m_case_expr_id, &m_expr_item)) {
     if (!rctx->get_case_expr(m_case_expr_id)) {
       // Failed to evaluate the value, the case expression is still not
       // initialized. Set to NULL so we can continue.
       Item *null_item = new Item_null();
 
-      if (!null_item || rctx->set_case_expr(thd, m_case_expr_id, &null_item)) {
+      if (null_item == nullptr ||
+          rctx->set_case_expr(thd, true, m_case_expr_id, &null_item)) {
         // If this also failed, we have to abort.
         my_error(ER_OUT_OF_RESOURCES, MYF(ME_FATALERROR));
       }
     }
-
     return true;
   }
-
   return false;
 }
 

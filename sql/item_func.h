@@ -351,7 +351,9 @@ class Item_func : public Item_result_field {
     JSON_STORAGE_SIZE_FUNC,
     JSON_STORAGE_FREE_FUNC,
     JSON_VALUE_FUNC,
-    JSON_SEARCH_FUNC
+    JSON_SEARCH_FUNC,
+    JSON_SCHEMA_VALIDATION_REPORT_FUNC,
+    JSON_SCHEMA_VALID_FUNC
   };
   enum optimize_type {
     OPTIMIZE_NONE,
@@ -569,8 +571,7 @@ class Item_func : public Item_result_field {
 
   bool agg_arg_charsets(DTCollation &c, Item **items, uint nitems, uint flags,
                         int item_sep) {
-    return agg_item_charsets(c, func_name(), items, nitems, flags, item_sep,
-                             false);
+    return agg_item_charsets(c, func_name(), items, nitems, flags, item_sep);
   }
   /*
     Aggregate arguments for string result, e.g: CONCAT(a,b)
@@ -2407,6 +2408,9 @@ class Item_func_get_lock final : public Item_int_func {
   bool do_itemize(Parse_context *pc, Item **res) override;
   longlong val_int() override;
   const char *func_name() const override { return "get_lock"; }
+  table_map get_initial_pseudo_tables() const override {
+    return INNER_TABLE_BIT;
+  }
   bool resolve_type(THD *thd) override {
     if (param_type_is_default(thd, 0, 1)) return true;
     if (param_type_is_default(thd, 1, 2, MYSQL_TYPE_LONGLONG)) return true;
@@ -2435,6 +2439,9 @@ class Item_func_release_lock final : public Item_int_func {
 
   longlong val_int() override;
   const char *func_name() const override { return "release_lock"; }
+  table_map get_initial_pseudo_tables() const override {
+    return INNER_TABLE_BIT;
+  }
   bool resolve_type(THD *thd) override {
     if (param_type_is_default(thd, 0, 1)) return true;
     max_length = 1;
@@ -2460,6 +2467,9 @@ class Item_func_release_all_locks final : public Item_int_func {
 
   longlong val_int() override;
   const char *func_name() const override { return "release_all_locks"; }
+  table_map get_initial_pseudo_tables() const override {
+    return INNER_TABLE_BIT;
+  }
   bool resolve_type(THD *) override {
     unsigned_flag = true;
     return false;
@@ -2491,6 +2501,9 @@ class Item_source_pos_wait : public Item_int_func {
   bool do_itemize(Parse_context *pc, Item **res) override;
   longlong val_int() override;
   const char *func_name() const override { return "source_pos_wait"; }
+  table_map get_initial_pseudo_tables() const override {
+    return INNER_TABLE_BIT;
+  }
   bool resolve_type(THD *thd) override {
     if (param_type_is_default(thd, 0, 1)) return true;
     if (param_type_is_default(thd, 1, 3, MYSQL_TYPE_LONGLONG)) return true;
@@ -3825,6 +3838,9 @@ class Item_func_is_free_lock final : public Item_int_func {
   bool do_itemize(Parse_context *pc, Item **res) override;
   longlong val_int() override;
   const char *func_name() const override { return "is_free_lock"; }
+  table_map get_initial_pseudo_tables() const override {
+    return INNER_TABLE_BIT;
+  }
   bool resolve_type(THD *thd) override {
     if (param_type_is_default(thd, 0, 1)) return true;
     max_length = 1;
@@ -3852,6 +3868,9 @@ class Item_func_is_used_lock final : public Item_int_func {
   bool do_itemize(Parse_context *pc, Item **res) override;
   longlong val_int() override;
   const char *func_name() const override { return "is_used_lock"; }
+  table_map get_initial_pseudo_tables() const override {
+    return INNER_TABLE_BIT;
+  }
   bool resolve_type(THD *thd) override {
     if (param_type_is_default(thd, 0, 1)) return true;
     unsigned_flag = true;

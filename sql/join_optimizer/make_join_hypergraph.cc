@@ -177,7 +177,7 @@ void ReorderConditions(Mem_root_array<Item *> *condition_parts) {
 
   std::stable_partition(
       condition_parts->begin(), condition_parts->end(),
-      [](const Item *item) { return item->cost().IsExpensive(); });
+      [](const Item *item) { return !item->cost().IsExpensive(); });
 }
 
 /**
@@ -338,17 +338,13 @@ RelationalExpression *MakeRelationalExpressionFromJoinList(
     const mem_root_deque<Table_ref *> &join_list_arg, bool toplevel) {
   assert(!join_list_arg.empty());
   bool join_order_hinted = false;
-  mem_root_deque<Table_ref *> *join_list = nullptr;
+  const mem_root_deque<Table_ref *> *join_list = &join_list_arg;
 
   if (query_block->opt_hints_qb &&
       query_block->opt_hints_qb->has_join_order_hints()) {
     join_order_hinted = true;
     join_list = query_block->opt_hints_qb->sort_tables_in_join_order(
-        query_block->join, &join_list_arg, toplevel);
-  }
-
-  if (join_list == nullptr) {
-    join_list = const_cast<mem_root_deque<Table_ref *> *>(&join_list_arg);
+        thd, join_list_arg, toplevel);
   }
 
   RelationalExpression *ret = nullptr;
@@ -368,6 +364,9 @@ RelationalExpression *MakeRelationalExpressionFromJoinList(
           thd, query_block, tl->nested_join->m_tables);
       join->type = tl->is_sj_nest() ? RelationalExpression::SEMIJOIN
                                     : RelationalExpression::ANTIJOIN;
+      if (tl->is_sj_nest()) {
+        join->enable_semijoin_strategies(tl);
+      }
     } else {
       join->right = MakeRelationalExpression(thd, query_block, tl);
       if (tl->outer_join) {

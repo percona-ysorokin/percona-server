@@ -62,6 +62,7 @@
 #include "sql/error_handler.h"
 #include "sql/field.h"
 #include "sql/histograms/histogram.h"
+#include "sql/item.h"
 #include "sql/item_func.h"
 #include "sql/item_json_func.h"  // json_value, get_json_atom_wrapper
 #include "sql/item_subselect.h"  // Item_subselect
@@ -1143,11 +1144,10 @@ bool Arg_comparator::get_date_from_const(Item *date_arg, Item *str_arg,
       value = get_date_from_str(thd, str_val, t_type, date_arg->item_name.ptr(),
                                 &error);
       if (error) {
-        const char *typestr = (date_arg_type == MYSQL_TYPE_DATE)
-                                  ? "DATE"
-                                  : (date_arg_type == MYSQL_TYPE_DATETIME)
-                                        ? "DATETIME"
-                                        : "TIMESTAMP";
+        const char *typestr = (date_arg_type == MYSQL_TYPE_DATE) ? "DATE"
+                              : (date_arg_type == MYSQL_TYPE_DATETIME)
+                                  ? "DATETIME"
+                                  : "TIMESTAMP";
 
         const ErrConvString err(str_val->ptr(), str_val->length(),
                                 thd->variables.character_set_client);
@@ -1341,15 +1341,17 @@ bool Arg_comparator::set_cmp_func(Item_func *owner_arg, Item **left_arg,
     DTCollation coll;
     coll.set((*left)->collation, (*right)->collation, MY_COLL_CMP_CONV);
     /*
-      DTCollation::set() may have chosen a charset that's a superset of both
-      and "left" and "right", so we need to convert both items.
+      DTCollation::set() may have chosen a charset that is a superset of both
+      and "left" and "right", so both items may need conversion.
+      Note this may be considered redundant for non-row arguments but necessary
+      for row arguments.
      */
-    const char *func_name = owner != nullptr ? owner->func_name() : "";
-    if (agg_item_set_converter(coll, func_name, left, 1, MY_COLL_CMP_CONV, 1,
-                               true) ||
-        agg_item_set_converter(coll, func_name, right, 1, MY_COLL_CMP_CONV, 1,
-                               true))
+    if (convert_const_strings(coll, left, 1, 1)) {
       return true;
+    }
+    if (convert_const_strings(coll, right, 1, 1)) {
+      return true;
+    }
   } else if (try_year_cmp_func(type)) {
     return false;
   } else if (type == REAL_RESULT &&
@@ -2184,6 +2186,7 @@ static bool compare_pair_for_nulls(Item *a, Item *b, bool *result) {
 bool Arg_comparator::compare_null_values() {
   bool result;
   (void)compare_pair_for_nulls(*left, *right, &result);
+  if (current_thd->is_error()) return false;
   return result;
 }
 
@@ -3302,10 +3305,9 @@ static inline longlong compare_between_int_result(
     bool negated, Item **args, bool *null_value) {
   {
     LLorULL a, b, value;
-    value = compare_as_temporal_times
-                ? args[0]->val_time_temporal()
-                : compare_as_temporal_dates ? args[0]->val_date_temporal()
-                                            : args[0]->val_int();
+    value = compare_as_temporal_times   ? args[0]->val_time_temporal()
+            : compare_as_temporal_dates ? args[0]->val_date_temporal()
+                                        : args[0]->val_int();
     if ((*null_value = args[0]->null_value)) return 0; /* purecov: inspected */
     if (compare_as_temporal_times) {
       a = args[1]->val_time_temporal();
@@ -3556,18 +3558,17 @@ bool Item_func_ifnull::time_op(MYSQL_TIME *ltime) {
 
 String *Item_func_ifnull::str_op(String *str) {
   assert(fixed);
-  String *res = args[0]->val_str(str);
+  String *res = eval_string_arg(collation.collation, args[0], str);
   if (current_thd->is_error()) return error_str();
   if (!args[0]->null_value) {
     null_value = false;
-    res->set_charset(collation.collation);
     return res;
   }
-  res = args[1]->val_str(str);
+  res = eval_string_arg(collation.collation, args[1], str);
   if (current_thd->is_error()) return error_str();
 
   if ((null_value = args[1]->null_value)) return nullptr;
-  res->set_charset(collation.collation);
+
   return res;
 }
 
@@ -3693,12 +3694,10 @@ String *Item_func_if::val_str(String *str) {
     default: {
       Item *item = args[0]->val_bool() ? args[1] : args[2];
       if (current_thd->is_error()) return error_str();
-      String *res;
-      if ((res = item->val_str(str))) {
-        res->set_charset(collation.collation);
-        null_value = false;
-        return res;
-      }
+      String *res = eval_string_arg(collation.collation, item, str);
+      if (res == nullptr) return error_str();
+      null_value = false;
+      return res;
     }
   }
   null_value = true;
@@ -3926,14 +3925,11 @@ String *Item_func_case::val_str(String *str) {
       return val_string_from_time(str);
     default: {
       Item *item = find_item(str);
-      if (item != nullptr) {
-        String *res = item->val_str(str);
-        if (res != nullptr) {
-          res->set_charset(collation.collation);
-          null_value = false;
-          return res;
-        }
-      }
+      if (item == nullptr) return error_str();
+      String *res = eval_string_arg(collation.collation, item, str);
+      if (res == nullptr) return error_str();
+      null_value = false;
+      return res;
     }
   }
   if (current_thd->is_error()) {
@@ -4319,12 +4315,12 @@ String *Item_func_coalesce::str_op(String *str) {
   assert(fixed);
   null_value = false;
   for (uint i = 0; i < arg_count; i++) {
-    String *res = args[i]->val_str(str);
+    String *res = eval_string_arg(collation.collation, args[i], str);
     if (current_thd->is_error()) return error_str();
     if (res != nullptr) return res;
   }
   null_value = true;
-  return nullptr;
+  return error_str();
 }
 
 bool Item_func_coalesce::val_json(Json_wrapper *wr) {
@@ -6849,7 +6845,6 @@ Item *Item_func_nop_all::truth_transformer(THD *, Bool_test test) {
   // "NOT (e $cmp$ ANY (SELECT ...)) -> e $rev_cmp$" ALL (SELECT ...)
   Item_func_not_all *new_item = new Item_func_not_all(args[0]);
   Item_allany_subselect *allany = down_cast<Item_allany_subselect *>(args[0]);
-  allany->m_func = allany->m_func_creator(false);
   allany->m_all = !allany->m_all;
   allany->m_upper_item = new_item;
   return new_item;
@@ -6861,7 +6856,6 @@ Item *Item_func_not_all::truth_transformer(THD *, Bool_test test) {
   Item_func_nop_all *new_item = new Item_func_nop_all(args[0]);
   Item_allany_subselect *allany = down_cast<Item_allany_subselect *>(args[0]);
   allany->m_all = !allany->m_all;
-  allany->m_func = allany->m_func_creator(true);
   allany->m_upper_item = new_item;
   return new_item;
 }
@@ -6997,15 +6991,15 @@ uint Item_multi_eq::members() { return fields.elements; }
 
   The function checks whether field is occurred in the Item_multi_eq object .
 
-  @param field   field whose occurrence is to be checked
+  @param field   Item field whose occurrence is to be checked
 
   @returns true if multiple equality contains a reference to field, false
   otherwise.
 */
 
-bool Item_multi_eq::contains(const Field *field) const {
+bool Item_multi_eq::contains(const Item_field *field) const {
   for (const Item_field &item : fields) {
-    if (field->eq(item.field)) return true;
+    if (field->eq(&item)) return true;
   }
   return false;
 }
@@ -7310,7 +7304,7 @@ bool Item_multi_eq::eq_specific(const Item *item) const {
     return false;
   }
   for (const Item_field &field : get_fields()) {
-    if (!item_eq->contains(field.field)) {
+    if (!item_eq->contains(&field)) {
       return false;
     }
   }

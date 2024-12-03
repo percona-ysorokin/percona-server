@@ -40,6 +40,7 @@
 #include "mysql/harness/net_ts/io_context.h"
 #include "mysql/harness/net_ts/socket.h"
 #include "mysql/harness/stdx/expected.h"  // make_unexpected
+#include "mysql/harness/stdx/monitor.h"
 #include "mysqlrouter/classic_protocol.h"
 #include "mysqlrouter/cluster_metadata.h"
 #include "mysqlrouter/mysql_session.h"
@@ -52,8 +53,6 @@
 #include "tcp_port_pool.h"
 
 using mysqlrouter::ClusterType;
-using mysqlrouter::MySQLSession;
-using ::testing::PrintToString;
 using namespace std::chrono_literals;
 using namespace std::string_literals;
 
@@ -90,8 +89,6 @@ class SocketCloseTest : public RouterComponentTest {
                      const bool no_primary = false) {
     assert(nodes_count > 0);
 
-    const std::string json_metadata = get_data_dir().join(tracefile).str();
-
     for (size_t i = 0; i < nodes_count; ++i) {
       // if we are "relaunching" the cluster we want to use the same port as
       // before as router has them in the configuration
@@ -101,8 +98,10 @@ class SocketCloseTest : public RouterComponentTest {
       }
 
       cluster_nodes.push_back(
-          &launch_mysql_server_mock(json_metadata, node_ports[i], EXIT_SUCCESS,
-                                    false, node_http_ports[i]));
+          &mock_server_spawner().spawn(mock_server_cmdline(tracefile)
+                                           .port(node_ports[i])
+                                           .http_port(node_http_ports[i])
+                                           .args()));
     }
 
     for (size_t i = 0; i < nodes_count; ++i) {
@@ -1125,21 +1124,28 @@ class AcceptingEndpointUser {
  public:
   class AcceptCompletor {
    public:
-    AcceptCompletor(AcceptorType &acceptor) : acceptor_(acceptor) {}
+    AcceptCompletor(AcceptorType &acceptor, Monitor<bool> &is_stopped)
+        : acceptor_(acceptor), is_stopped_(is_stopped) {}
 
     void operator()(std::error_code ec, auto client_sock) {
-      if (ec == std::errc::operation_canceled) return;
+      if (ec) return;
 
       ErrmsgResponder responder(std::move(client_sock));
 
       responder.respond();
 
-      // accept the next one.
-      acceptor_.async_accept(AcceptCompletor(acceptor_));
+      is_stopped_([&](bool stopped) {
+        if (stopped) return;
+
+        // accept the next one.
+        acceptor_.async_accept(AcceptCompletor(acceptor_, is_stopped_));
+      });
     }
 
    private:
     AcceptorType &acceptor_;
+
+    Monitor<bool> &is_stopped_;
   };
 
   virtual ~AcceptingEndpointUser() { unlock(); }
@@ -1157,9 +1163,17 @@ class AcceptingEndpointUser {
   }
 
   virtual void unlock() {
-    acceptor_.close();  // stops the io-ctx too as there is no other user.
+    is_stopped_([this](bool &stopped) {
+      stopped = true;
+
+      // abort a currently running accept(), if there is one.
+      acceptor_.cancel();
+    });
 
     if (worker_.joinable()) worker_.join();
+
+    // exits the io_ctx_.run() is as there is no other user.
+    acceptor_.close();
 
     if (worker_ec_) {
       FAIL() << "acceptor() failed after accept() with: " << worker_ec_ << " "
@@ -1180,13 +1194,15 @@ class AcceptingEndpointUser {
 
     // spawn off a thread to handle a connect.
     worker_ = std::thread([this]() {
-      acceptor_.async_accept(AcceptCompletor(acceptor_));
+      acceptor_.async_accept(AcceptCompletor(acceptor_, is_stopped_));
 
       io_ctx_.run();
     });
 
     return true;
   }
+
+  Monitor<bool> is_stopped_{false};
 
   std::thread worker_;
   std::error_code worker_ec_{};
@@ -1297,9 +1313,12 @@ TEST_F(SocketCloseTest, StaticRoundRobinTCPPort) {
                std::to_string(node_ports[0]) +
                " to bring the destination back from "
                "quarantine.");
-  const std::string json_metadata = get_data_dir().join("my_port.js").str();
-  cluster_nodes.push_back(&launch_mysql_server_mock(
-      json_metadata, node_ports[0], EXIT_SUCCESS, false, node_http_ports[0]));
+
+  cluster_nodes.push_back(
+      &mock_server_spawner().spawn(mock_server_cmdline("my_port.js")
+                                       .port(node_ports[0])
+                                       .http_port(node_http_ports[0])
+                                       .args()));
 
   set_mock_metadata(
       node_http_ports[0], "uuid", classic_ports_to_gr_nodes(node_ports), 0,
@@ -1383,9 +1402,12 @@ TEST_F(SocketCloseTest, StaticRoundRobinUnixSocket) {
                std::to_string(node_ports[0]) +
                " to bring the destination back from "
                "quarantine.");
-  const std::string json_metadata = get_data_dir().join("my_port.js").str();
-  cluster_nodes.push_back(&launch_mysql_server_mock(
-      json_metadata, node_ports[0], EXIT_SUCCESS, false, node_http_ports[0]));
+
+  cluster_nodes.push_back(
+      &mock_server_spawner().spawn(mock_server_cmdline("my_port.js")
+                                       .port(node_ports[0])
+                                       .http_port(node_http_ports[0])
+                                       .args()));
 
   set_mock_metadata(
       node_http_ports[0], "uuid", classic_ports_to_gr_nodes(node_ports), 0,

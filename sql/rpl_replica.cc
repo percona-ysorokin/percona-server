@@ -526,6 +526,9 @@ void ReplicaInitializer::start_threads() {
       if (mi->is_source_connection_auto_failover())
         m_thread_mask |= SLAVE_MONITOR;
 
+      mi->set_applier_metric_collection_status(
+          opt_collect_replica_applier_metrics);
+
       if (start_slave_threads(true /*need_lock_slave=true*/,
                               false /*wait_for_start=false*/, mi,
                               m_thread_mask)) {
@@ -4058,9 +4061,8 @@ int init_replica_thread(THD *thd, SLAVE_THD_TYPE thd_type) {
 #endif
   thd->system_thread = (thd_type == SLAVE_THD_WORKER)
                            ? SYSTEM_THREAD_SLAVE_WORKER
-                           : (thd_type == SLAVE_THD_SQL)
-                                 ? SYSTEM_THREAD_SLAVE_SQL
-                                 : SYSTEM_THREAD_SLAVE_IO;
+                       : (thd_type == SLAVE_THD_SQL) ? SYSTEM_THREAD_SLAVE_SQL
+                                                     : SYSTEM_THREAD_SLAVE_IO;
   thd->get_protocol_classic()->init_net(nullptr);
   thd->slave_thread = true;
   thd->enable_slow_log = opt_log_slow_replica_statements;
@@ -4524,8 +4526,6 @@ apply_event_and_update_pos(Log_event **ptr_ev, THD *thd, Relay_log_info *rli) {
     --rli->slave_skip_counter;
     skip_event = true;
   }
-  set_timespec_nsec(&rli->ts_exec[0], 0);
-  rli->stats_read_time += diff_timespec(&rli->ts_exec[0], &rli->ts_exec[1]);
 
   if (reason == Log_event::EVENT_SKIP_NOT) {
     // Sleeps if needed, and unlocks rli->data_lock.
@@ -4544,7 +4544,11 @@ apply_event_and_update_pos(Log_event **ptr_ev, THD *thd, Relay_log_info *rli) {
 
     if (!exec_res && (ev->worker != rli)) {
       if (ev->worker) {
-        Slave_job_item item = {ev, rli->get_event_start_pos(), {'\0'}};
+        Slave_job_item item = {
+            ev,
+            rli->get_event_start_pos(),
+            {'\0'},
+            rli->get_applier_metrics().is_after_metrics_breakpoint()};
         if (rli->get_event_relay_log_name())
           strcpy(item.event_relay_log_name, rli->get_event_relay_log_name());
         Slave_job_item *job_item = &item;
@@ -4612,31 +4616,9 @@ apply_event_and_update_pos(Log_event **ptr_ev, THD *thd, Relay_log_info *rli) {
         }
       }
       *ptr_ev = nullptr;  // announcing the event is passed to w-worker
-
-      if (rli->is_parallel_exec() &&
-          rli->mts_online_stat_curr > mts_online_stat_count) {
-        time_t my_now = time(nullptr);
-
-        if (((my_now - rli->mts_last_online_stat) >= mts_online_stat_period) ||
-            DBUG_EVALUATE_IF("simulate_log_err_ER_RPL_MTA_STATISTICS", 1, 0)) {
-          LogErr(INFORMATION_LEVEL, ER_RPL_MTA_STATISTICS,
-                 rli->get_for_channel_str(),
-                 static_cast<unsigned long>(my_now - rli->mts_last_online_stat),
-                 rli->mts_events_assigned, rli->mts_wq_overrun_cnt.load(),
-                 rli->mts_wq_overfill_cnt, rli->wq_size_waits_cnt,
-                 rli->mts_total_wait_overlap.load(),
-                 rli->mts_wq_no_underrun_cnt, rli->mts_total_wait_worker_avail);
-          rli->mts_last_online_stat = my_now;
-        }
-
-        rli->mts_online_stat_curr = 0;
-      }
     }
   } else
     mysql_mutex_unlock(&rli->data_lock);
-
-  set_timespec_nsec(&rli->ts_exec[1], 0);
-  rli->stats_exec_time += diff_timespec(&rli->ts_exec[1], &rli->ts_exec[0]);
 
   DBUG_PRINT("info", ("apply_event error = %d", exec_res));
   if (exec_res == 0) {
@@ -5573,6 +5555,7 @@ extern "C" void *handle_slave_io(void *arg) {
       const char *event_buf;
 
       assert(mi->last_error().number == 0);
+
       while (!io_slave_killed(thd, mi)) {
         ulong event_len;
         /*
@@ -5693,6 +5676,7 @@ extern "C" void *handle_slave_io(void *arg) {
                      "could not queue event from source");
           goto err;
         }
+
 #ifndef NDEBUG
         if (was_in_trx && !mi->is_queueing_trx()) {
           DBUG_EXECUTE_IF("rpl_ps_tables",
@@ -6125,11 +6109,6 @@ static void *handle_slave_worker(void *arg) {
 
   assert(thd->is_slave_error == 0);
 
-  w->stats_exec_time = w->stats_read_time = 0;
-  set_timespec_nsec(&w->ts_exec[0], 0);
-  set_timespec_nsec(&w->ts_exec[1], 0);
-  set_timespec_nsec(&w->stats_begin, 0);
-
   // No need to report anything, all error handling will be performed in the
   // slave SQL thread.
   if (!rli->check_privilege_checks_user())
@@ -6177,21 +6156,6 @@ static void *handle_slave_worker(void *arg) {
     thd->rli_slave = nullptr;
   }
   mysql_mutex_lock(&w->jobs_lock);
-
-  struct timespec stats_end;
-  set_timespec_nsec(&stats_end, 0);
-  DBUG_PRINT("info",
-             ("Worker %lu statistics: "
-              "events processed = %lu "
-              "online time = %llu "
-              "events exec time = %llu "
-              "events read time = %llu "
-              "hungry waits = %lu "
-              "priv queue overfills = %llu ",
-              w->id, w->events_done, diff_timespec(&stats_end, &w->stats_begin),
-              w->stats_exec_time, w->stats_read_time, w->wq_empty_waits,
-              w->jobs.waited_overfill));
-
   w->running_status = Slave_worker::NOT_RUNNING;
 
   mysql_mutex_lock(&w->info_thd_lock);
@@ -6732,6 +6696,8 @@ static int slave_start_workers(Relay_log_info *rli, ulong n, bool *mts_inited) {
     workers_copy_pfs has elements
   */
   bool clear_gtid_monitoring_info = false;
+  int64_t order_commit_wait_count{0};
+  int64_t order_commit_waited_time{0};
 
   mysql_mutex_assert_owner(&rli->run_lock);
 
@@ -6768,14 +6734,12 @@ static int slave_start_workers(Relay_log_info *rli, ulong n, bool *mts_inited) {
   rli->mts_pending_jobs_size_max = ::opt_mts_pending_jobs_size_max;
   rli->mts_wq_underrun_w_id = MTS_WORKER_UNDEF;
   rli->mts_wq_excess_cnt = 0;
-  rli->mts_wq_overrun_cnt = 0;
   rli->mts_wq_oversize = false;
   rli->mts_coordinator_basic_nap = mts_coordinator_basic_nap;
   rli->mts_worker_underrun_level = mts_worker_underrun_level;
   rli->curr_group_seen_begin = rli->curr_group_seen_gtid = false;
   rli->curr_group_isolated = false;
   rli->rli_checkpoint_seqno = 0;
-  rli->mts_last_online_stat = time(nullptr);
   rli->mta_coordinator_has_waited_stat = time(nullptr);
   rli->mts_group_status = Relay_log_info::MTS_NOT_IN_GROUP;
   clear_gtid_monitoring_info = true;
@@ -6800,10 +6764,19 @@ end:
   */
   for (int i = static_cast<int>(rli->workers_copy_pfs.size()) - 1; i >= 0;
        i--) {
+    // Don't loose the stats on commit order waits
+    order_commit_wait_count += rli->workers_copy_pfs[i]
+                                   ->get_worker_metrics()
+                                   .get_number_of_waits_on_commit_order();
+    order_commit_waited_time += rli->workers_copy_pfs[i]
+                                    ->get_worker_metrics()
+                                    .get_wait_time_on_commit_order();
     delete rli->workers_copy_pfs[i];
     if (!clear_gtid_monitoring_info) clear_gtid_monitoring_info = true;
   }
   rli->workers_copy_pfs.clear();
+  rli->get_applier_metrics().inc_commit_order_wait_stored_metrics(
+      order_commit_wait_count, order_commit_waited_time);
 
   // Effective end of the recovery right now when there is no gaps
   if (!error && rli->mts_recovery_group_cnt == 0) {
@@ -6848,7 +6821,7 @@ static void slave_stop_workers(Relay_log_info *rli, bool *mts_inited) {
   if (!rli->workers.empty()) {
     for (int i = static_cast<int>(rli->workers.size()) - 1; i >= 0; i--) {
       Slave_worker *w = rli->workers[i];
-      struct slave_job_item item = {nullptr, 0, {'\0'}};
+      struct slave_job_item item = {nullptr, 0, {'\0'}, false};
       struct slave_job_item *job_item = &item;
       mysql_mutex_lock(&w->jobs_lock);
 
@@ -6909,6 +6882,7 @@ static void slave_stop_workers(Relay_log_info *rli, bool *mts_inited) {
     worker_copy->copy_values_for_PFS(w->id, w->running_status, w->info_thd,
                                      w->last_error(),
                                      w->get_gtid_monitoring_info());
+    worker_copy->copy_worker_metrics(w);
     rli->workers_copy_pfs.push_back(worker_copy);
   }
 
@@ -6926,25 +6900,6 @@ static void slave_stop_workers(Relay_log_info *rli, bool *mts_inited) {
       delete w;
     }
   }
-
-  struct timespec stats_end;
-  set_timespec_nsec(&stats_end, 0);
-
-  DBUG_PRINT(
-      "info",
-      ("Total MTA session statistics: "
-       "events processed = %llu; "
-       "online time = %llu "
-       "worker queues filled over overrun level = %lu "
-       "waited due a Worker queue full = %lu "
-       "waited due the total size = %lu "
-       "total wait at clock conflicts = %llu "
-       "found (count) workers occupied = %lu "
-       "waited when workers occupied = %llu",
-       rli->mts_events_assigned, diff_timespec(&stats_end, &rli->stats_begin),
-       rli->mts_wq_overrun_cnt.load(), rli->mts_wq_overfill_cnt,
-       rli->wq_size_waits_cnt, rli->mts_total_wait_overlap.load(),
-       rli->mts_wq_no_underrun_cnt, rli->mts_total_wait_worker_avail));
 
   assert(rli->pending_jobs == 0);
   assert(rli->mts_pending_jobs_size == 0);
@@ -7165,10 +7120,7 @@ extern "C" void *handle_slave_sql(void *arg) {
     thd_manager->add_thd(thd);
     thd_added = true;
 
-    rli->stats_exec_time = rli->stats_read_time = 0;
-    set_timespec_nsec(&rli->ts_exec[0], 0);
-    set_timespec_nsec(&rli->ts_exec[1], 0);
-    set_timespec_nsec(&rli->stats_begin, 0);
+    rli->get_applier_metrics().start_applier_timer();
 
     if (RUN_HOOK(binlog_relay_io, applier_start, (thd, rli->mi))) {
       mysql_cond_broadcast(&rli->start_cond);
@@ -7447,6 +7399,9 @@ extern "C" void *handle_slave_sql(void *arg) {
     /* When source_pos_wait() wakes up it will check this and terminate */
     rli->slave_running = 0;
     rli->atomic_is_stopping = false;
+
+    rli->get_applier_metrics().stop_applier_timer();
+
     /* Forget the relay log's format */
     if (rli->set_rli_description_event(nullptr)) {
 #ifndef NDEBUG
@@ -7842,6 +7797,19 @@ QUEUE_EVENT_RESULT queue_event(Master_info *mi, const char *buf,
            mi->get_master_log_name(), mi->get_master_log_pos());
   }
 
+  // When the receiver connects, one of the header events (typically a rotate)
+  // in one of the first relay logs it writes will be a "parallelization
+  // barrier", i.e., the coordinator will wait for workers to finish and then
+  // the coordinator applies the event. The relay log containing this barrier
+  // is the "metrics breakpoint". See
+  // Applier_metrics_interface::is_after_metrics_breakpoint for details.
+  if (Log_event::get_mts_execution_mode(
+          false, event_type, log_event_info.server_id,
+          log_event_info.log_pos) == Log_event::EVENT_EXEC_SYNC) {
+    mi->rli->get_applier_metrics().set_metrics_breakpoint(
+        rli->relay_log.get_log_fname());
+  }
+
   switch (event_type) {
     case mysql::binlog::event::STOP_EVENT:
       /*
@@ -7904,27 +7872,28 @@ QUEUE_EVENT_RESULT queue_event(Master_info *mi, const char *buf,
         save_buf = buf;
         buf = rot_buf;
       } else
-          /*
-            RSC_2: If NM \and fake Rotate \and slave does not compute checksum
-            the fake Rotate's checksum is stripped off before relay-logging.
-          */
-          if (uint4korr(&buf[0]) == 0 &&
-              checksum_alg != mysql::binlog::event::BINLOG_CHECKSUM_ALG_OFF &&
-              mi->rli->relay_log.relay_log_checksum_alg ==
-                  mysql::binlog::event::BINLOG_CHECKSUM_ALG_OFF) {
-        event_len -= BINLOG_CHECKSUM_LEN;
-        memcpy(rot_buf, buf, event_len);
-        int4store(&rot_buf[EVENT_LEN_OFFSET],
-                  uint4korr(rot_buf + EVENT_LEN_OFFSET) - BINLOG_CHECKSUM_LEN);
-        assert(event_len == uint4korr(&rot_buf[EVENT_LEN_OFFSET]));
-        assert(mi->get_mi_description_event()->common_footer->checksum_alg ==
-               mi->rli->relay_log.relay_log_checksum_alg);
-        /* the first one */
-        assert(mi->checksum_alg_before_fd !=
-               mysql::binlog::event::BINLOG_CHECKSUM_ALG_UNDEF);
-        save_buf = buf;
-        buf = rot_buf;
-      }
+        /*
+          RSC_2: If NM \and fake Rotate \and slave does not compute checksum
+          the fake Rotate's checksum is stripped off before relay-logging.
+        */
+        if (uint4korr(&buf[0]) == 0 &&
+            checksum_alg != mysql::binlog::event::BINLOG_CHECKSUM_ALG_OFF &&
+            mi->rli->relay_log.relay_log_checksum_alg ==
+                mysql::binlog::event::BINLOG_CHECKSUM_ALG_OFF) {
+          event_len -= BINLOG_CHECKSUM_LEN;
+          memcpy(rot_buf, buf, event_len);
+          int4store(
+              &rot_buf[EVENT_LEN_OFFSET],
+              uint4korr(rot_buf + EVENT_LEN_OFFSET) - BINLOG_CHECKSUM_LEN);
+          assert(event_len == uint4korr(&rot_buf[EVENT_LEN_OFFSET]));
+          assert(mi->get_mi_description_event()->common_footer->checksum_alg ==
+                 mi->rli->relay_log.relay_log_checksum_alg);
+          /* the first one */
+          assert(mi->checksum_alg_before_fd !=
+                 mysql::binlog::event::BINLOG_CHECKSUM_ALG_UNDEF);
+          save_buf = buf;
+          buf = rot_buf;
+        }
       /*
         Now the I/O thread has just changed its mi->get_master_log_name(), so
         incrementing mi->get_master_log_pos() is nonsense.
@@ -8046,6 +8015,9 @@ QUEUE_EVENT_RESULT queue_event(Master_info *mi, const char *buf,
                                    compressed_transaction_bytes,
                                    uncompressed_transaction_bytes);
       inc_pos = event_len;
+      mi->m_queueing_transaction_size =
+          mi->m_queueing_transaction_gtid_event_size +
+          uncompressed_transaction_bytes;
       break;
     }
 
@@ -8081,6 +8053,8 @@ QUEUE_EVENT_RESULT queue_event(Master_info *mi, const char *buf,
           gtid_ev.get_trx_length() - gtid_ev.get_event_length();
 
       inc_pos = event_len;
+      mi->m_queueing_transaction_size = gtid_ev.get_trx_length();
+      mi->m_queueing_transaction_gtid_event_size = gtid_ev.get_event_length();
     } break;
 
     case mysql::binlog::event::ANONYMOUS_GTID_LOG_EVENT: {
@@ -8133,6 +8107,10 @@ QUEUE_EVENT_RESULT queue_event(Master_info *mi, const char *buf,
       immediate_commit_timestamp = anon_gtid_ev.immediate_commit_timestamp;
       compressed_transaction_bytes = uncompressed_transaction_bytes =
           anon_gtid_ev.get_trx_length() - anon_gtid_ev.get_event_length();
+
+      mi->m_queueing_transaction_size = anon_gtid_ev.get_trx_length();
+      mi->m_queueing_transaction_gtid_event_size =
+          anon_gtid_ev.get_event_length();
     }
       [[fallthrough]];
     default:
@@ -8273,7 +8251,6 @@ QUEUE_EVENT_RESULT queue_event(Master_info *mi, const char *buf,
         // set the timestamp for the start time of queueing this transaction
         mi->started_queueing(gtid, original_commit_timestamp,
                              immediate_commit_timestamp);
-
         auto gtid_monitoring_info = mi->get_gtid_monitoring_info();
         gtid_monitoring_info->update(
             mysql::binlog::event::compression::type::NONE,
@@ -8935,6 +8912,19 @@ bool start_slave(THD *thd, LEX_REPLICA_CONNECTION *connection_param,
       is_error = true;
       my_error(ER_CONNECTION_METADATA, MYF(0));
     } else if (*mi->host || !(thread_mask & REPLICA_IO)) {
+      // If the all threads are stopped and the metrics are disabled
+      // we can reset the statistics in case they ran in the past and are
+      // again enabled in the future.
+      // If metrics are enabled, don't reset anything to save
+      // ongoing metrics from before the stop
+      if ((thread_mask & REPLICA_IO) != 0 && (thread_mask & REPLICA_SQL) != 0 &&
+          !opt_collect_replica_applier_metrics) {
+        mi->rli->get_applier_metrics().reset();
+      }
+
+      mi->set_applier_metric_collection_status(
+          opt_collect_replica_applier_metrics);
+
       /*
         If we will start IO thread we need to take care of possible
         options provided through the START REPLICA if there is any.
@@ -9314,6 +9304,13 @@ int reset_slave(THD *thd, Master_info *mi, bool reset_all) {
     unlock_slave_threads(mi);
     mi->channel_unlock();
     goto err;
+  }
+
+  // Reset statistics
+  mi->rli->get_applier_metrics().reset();
+
+  for (size_t idx = 0; idx < mi->rli->get_worker_count(); idx++) {
+    mi->rli->get_worker(idx)->get_worker_metrics().reset();
   }
 
   assert(!mi->rli || !mi->rli->slave_running);  // none writes in rli table
@@ -11422,4 +11419,12 @@ static bool check_replica_configuration_errors(Master_info *mi,
   }
 
   return false;
+}
+
+void enable_applier_metric_collection() {
+  opt_collect_replica_applier_metrics = true;
+}
+
+void disable_applier_metric_collection() {
+  opt_collect_replica_applier_metrics = false;
 }

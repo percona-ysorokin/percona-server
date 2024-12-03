@@ -49,7 +49,6 @@ innodb.slow_shutdown                              : Bug#31763837 mtr hits this d
 innodb.instant_ddl_recovery_old                   : WL#12527 Redo format has changed - crashed_datadir.zip needs to be recreated.
 innodb.log_logical_size                           : Bug#35543413 Test is shaky - needs to be fixed.
 innodb.set_concurrency_in_readonly                : Bug#35573783 innodb.set_concurrency_in_readonly is failing in trunk
-innodb.row_format                                 : Bug#36687409 innodb.row_format is failing after removal of mysql_native_password
 
 # innodb_fts suite test
 innodb_fts.sync_block : BUG#2232 percona https://jira.percona.com/browse/PS-2232
@@ -63,16 +62,6 @@ innodb.check_table                         : Bug#36312666 Several InnoDB testcas
 innodb.discarded_partition_upgrade_from_80 : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.innodb_autoextend_upgrade           : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.instant_ddl_recovery_old_2          : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade                 : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_debug           : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_metadata        : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_metadata_debug  : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_part            : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_part_debug      : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_part_metadata       : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_part_metadata_debug : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_rollback        : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.instant_ddl_upgrade_update          : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.log_8_0_11_case1                    : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.log_8_0_19_case1                    : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.log_deprecated_params_upgrade       : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
@@ -96,9 +85,6 @@ innodb.partition_upgrade_8019_win_lctn_2       : Bug#36312666 Several InnoDB tes
 innodb.partition_upgrade_8019_win_lctn_2_debug : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.portability_tablespace_linux         : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.portability_tablespace_windows       : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.bug33788578                          : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.bug33788578_ddl                      : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
-innodb.bug33788578_online_ddl               : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.log_upgrade_empty_disabled_log_normal_shutdown : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.log_upgrade_empty_log_fast_shutdown            : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
 innodb.log_upgrade                                    : Bug#36312666 Several InnoDB testcases fail after the change to 9.0
@@ -139,6 +125,7 @@ max_parts.innodb_partition_open_files_limit                 : BUG#27423163 Test 
 
 # percona suite test
 percona.bug100352 : BUG#100352 https://bugs.mysql.com/bug.php?id=100352
+percona.backup_safe_binlog_info : BUG#0000 - PS-8897 Test for broken and unused functionality.
 
 # perfschema suite test
 perfschema.threads_history      : BUG#27712231
@@ -174,7 +161,6 @@ rpl.rpl_writeset_add_unique_key : Bug#33134835 RPL_WRITESET_ADD_UNIQUE_KEY FAILS
 
 # sys_vars tests
 sys_vars.max_execution_time_basic @freebsd : BUG#31041720
-sys_vars.innodb_log_writer_threads_basic : Bug#32129814 SYS_VARS.INNODB_LOG_WRITER_THREADS_BASIC TIMES OUT SPORADICALLY ON PB2
 
 # sysschema suite tests
 sysschema.v_wait_classes_global_by_avg_latency : BUG#21550054 Test fails too often.

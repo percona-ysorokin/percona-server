@@ -28,8 +28,6 @@
 #include <string>
 #include <vector>
 
-#define RAPIDJSON_HAS_STDSTRING 1
-
 #include "my_rapidjson_size_t.h"
 
 #include <rapidjson/document.h>
@@ -80,7 +78,12 @@ class Json_reader {
   /** Destructor */
   virtual ~Json_reader() = default;
 
-  std::string version() const;
+  /**
+    Get version info
+
+    @returns version string in case same is present, empty string otherwise.
+  */
+  std::string version() const { return property(version_key_); }
 
   /**
     Get number of elements in the document
@@ -117,6 +120,14 @@ class Json_reader {
   virtual bool get_elements(output_vector &output) const;
 
   bool valid() const { return valid_; }
+
+  /**
+    Get property from the main JSON object. It is intended to be used for some
+    specific, data file-wide properties.
+
+    @returns value of the property
+  */
+  std::string property(const std::string property_key) const;
 
  private:
   /** Data in JSON DOM format */

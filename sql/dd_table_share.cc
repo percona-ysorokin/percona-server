@@ -303,8 +303,9 @@ static bool prepare_share(THD *thd, TABLE_SHARE *share,
   if (share->keys) {
     KEY *keyinfo;
     KEY_PART_INFO *key_part;
-    uint primary_key = (uint)(
-        find_type(primary_key_name, &share->keynames, FIND_TYPE_NO_PREFIX) - 1);
+    uint primary_key = (uint)(find_type(primary_key_name, &share->keynames,
+                                        FIND_TYPE_NO_PREFIX) -
+                              1);
 
     /*
       The following if-else is here for MyRocks:
@@ -2124,6 +2125,11 @@ static bool fill_partitioning_from_dd(THD *thd, TABLE_SHARE *share,
     if (part_info->partitions.push_back(curr_part_elem, &share->mem_root))
       return true;
 
+    const auto &part_options = part_obj->options();
+    if (part_options.exists("secondary_load")) {
+      part_options.get("secondary_load", &curr_part_elem->secondary_load);
+    }
+
     for (const dd::Partition *sub_part_obj : part_obj->subpartitions()) {
       partition_element *curr_sub_part_elem =
           new (&share->mem_root) partition_element;
@@ -2139,6 +2145,12 @@ static bool fill_partitioning_from_dd(THD *thd, TABLE_SHARE *share,
       if (curr_part_elem->subpartitions.push_back(curr_sub_part_elem,
                                                   &share->mem_root))
         return true;
+
+      const auto &sub_part_options = sub_part_obj->options();
+      if (sub_part_options.exists("secondary_load")) {
+        sub_part_options.get("secondary_load",
+                             &curr_sub_part_elem->secondary_load);
+      }
     }
   }
 
@@ -2342,7 +2354,8 @@ static bool fill_check_constraints_from_dd(TABLE_SHARE *share,
 }
 
 /**
-  Fill information about triggers from dd::Table object to the TABLE_SHARE.
+  Add sharable information about triggers to the TABLE_SHARE
+  from a dd::Table object.
 */
 static bool fill_triggers_from_dd(THD *thd, TABLE_SHARE *share,
                                   const dd::Table *tab_obj) {
