@@ -38,7 +38,8 @@ namespace masking_functions {
 //     mysql_service_mysql_command_field_info,
 //     mysql_service_mysql_command_options,
 //     mysql_service_mysql_command_factory,
-//     mysql_service_mysql_command_error_info
+//     mysql_service_mysql_command_error_info,
+//     mysql_service_mysql_command_thread
 //   };
 // ...
 // sql_context ctx{primitive_singleton<mysql_command_query>::instance()};
@@ -49,6 +50,7 @@ struct command_service_tuple {
   SERVICE_TYPE(mysql_command_options) * options;
   SERVICE_TYPE(mysql_command_factory) * factory;
   SERVICE_TYPE(mysql_command_error_info) * error_info;
+  SERVICE_TYPE(mysql_command_thread) * thread;
 };
 
 }  // namespace masking_functions

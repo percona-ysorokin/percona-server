@@ -14,7 +14,14 @@
    along with this program; if not, write to the Free Software Foundation,
    51 Franklin Street, Suite 500, Boston, MA 02110-1335 USA */
 
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+
 #include <boost/preprocessor/stringize.hpp>
+
+#include <my_dbug.h>
 
 #include <mysql/components/component_implementation.h>
 
@@ -32,11 +39,9 @@
 
 #include <mysqlpp/udf_error_reporter.hpp>
 
-#include <my_dbug.h>
 #include <mysqld_error.h>
 
-#include <sql/current_thd.h>
-#include <sql/debug_sync.h>
+#include "sql/debug_sync.h"
 
 #include "masking_functions/command_service_tuple.hpp"
 #include "masking_functions/component_sys_variable_service_tuple.hpp"
@@ -72,6 +77,7 @@ REQUIRES_SERVICE_PLACEHOLDER(mysql_command_field_info);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_options);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_factory);
 REQUIRES_SERVICE_PLACEHOLDER(mysql_command_error_info);
+REQUIRES_SERVICE_PLACEHOLDER(mysql_command_thread);
 
 REQUIRES_PSI_THREAD_SERVICE_PLACEHOLDER;
 
@@ -133,7 +139,8 @@ static mysql_service_status_t component_init() {
           mysql_service_mysql_command_field_info,
           mysql_service_mysql_command_options,
           mysql_service_mysql_command_factory,
-          mysql_service_mysql_command_error_info};
+          mysql_service_mysql_command_error_info,
+          mysql_service_mysql_command_thread};
   masking_functions::primitive_singleton<
       masking_functions::component_sys_variable_service_tuple>::instance() =
       masking_functions::component_sys_variable_service_tuple{
@@ -186,26 +193,19 @@ static mysql_service_status_t component_init() {
     const auto flush_interval_seconds{
         masking_functions::get_flush_interval_seconds()};
     if (flush_interval_seconds > 0U) {
-      auto static_sql_context_builder{
-          std::make_shared<masking_functions::static_sql_context_builder>(
-              command_services,
-              masking_functions::sql_context_registry_access::non_locking)};
-      auto flusher_cache{std::make_shared<masking_functions::query_cache>(
-          cache_core, static_sql_context_builder, sql_query_builder)};
-
       auto flusher{
           std::make_unique<masking_functions::dictionary_flusher_thread>(
-              flusher_cache, flush_interval_seconds)};
+              cache_core, sql_query_builder, flush_interval_seconds)};
 
       masking_functions::primitive_singleton<
           masking_functions::dictionary_flusher_thread_ptr>::instance() =
           std::move(flusher);
 
-      DBUG_EXECUTE_IF("masking_functions_flusher_create", {
-        DBUG_SET("-d,masking_functions_flusher_create");
-        const char act[] =
-            "now WAIT_FOR masking_functions_flusher_create_after_signal";
-        assert(!debug_sync_set_action(current_thd, STRING_WITH_LEN(act)));
+      DBUG_EXECUTE_IF("enable_masking_functions_flusher_create_sync", {
+        MYSQL_THD extracted_thd{nullptr};
+        mysql_service_mysql_current_thread_reader->get(&extracted_thd);
+        assert(extracted_thd != nullptr);
+        DEBUG_SYNC(extracted_thd, "masking_functions_after_flusher_create");
       });
     }
 
@@ -221,10 +221,17 @@ static mysql_service_status_t component_init() {
 
 static mysql_service_status_t component_deinit() {
   int result = 0;
+  auto &flusher{masking_functions::primitive_singleton<
+      masking_functions::dictionary_flusher_thread_ptr>::instance()};
+  if (flusher && !flusher->request_termination()) {
+    // early return if flusher thread cannot be safely stopped
+    // (if it hasn't tried to initialize the internal MySQL command service
+    // connection yet)
+    result = 1;
+    return result;
+  }
 
-  masking_functions::primitive_singleton<
-      masking_functions::dictionary_flusher_thread_ptr>::instance()
-      .reset();
+  flusher.reset();
 
   masking_functions::primitive_singleton<
       masking_functions::query_cache_ptr>::instance()
@@ -280,6 +287,7 @@ BEGIN_COMPONENT_REQUIRES(CURRENT_COMPONENT_NAME)
   REQUIRES_SERVICE(mysql_command_options),
   REQUIRES_SERVICE(mysql_command_factory),
   REQUIRES_SERVICE(mysql_command_error_info),
+  REQUIRES_SERVICE(mysql_command_thread),
 
   REQUIRES_SERVICE(udf_registration),
   REQUIRES_SERVICE(dynamic_privilege_register),

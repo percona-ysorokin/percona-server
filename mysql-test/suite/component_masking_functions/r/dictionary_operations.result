@@ -56,11 +56,11 @@ ERROR HY000: gen_blocklist<string> UDF failed; argument 3 cannot be null
 #
 # checking the case when there is no mysql.masking_dictionaries table
 SELECT gen_blocklist('Berlin', 'de_cities', 'us_cities');
-ERROR HY000: Error in command service backend interface, because of : "Table 'mysql.masking_dictionaries' doesn't exist"
+ERROR HY000: Error in command service backend interface, because of : "SELECT command denied to user 'mysql.session'@'localhost' for table 'masking_dictionaries'"
 SELECT gen_dictionary('us_cities');
-ERROR HY000: Error in command service backend interface, because of : "Table 'mysql.masking_dictionaries' doesn't exist"
+ERROR HY000: Error in command service backend interface, because of : "SELECT command denied to user 'mysql.session'@'localhost' for table 'masking_dictionaries'"
 SELECT masking_dictionaries_flush();
-ERROR HY000: Error in command service backend interface, because of : "Table 'mysql.masking_dictionaries' doesn't exist"
+ERROR HY000: Error in command service backend interface, because of : "SELECT command denied to user 'mysql.session'@'localhost' for table 'masking_dictionaries'"
 #
 # NULL for NULL checks
 include/assert.inc [gen_blocklist() for the NULL primary argument should return NULL]
@@ -70,10 +70,12 @@ CREATE TABLE mysql.masking_dictionaries(
 Dictionary VARCHAR(256) NOT NULL,
 UNIQUE INDEX dictionary_term_idx (Dictionary)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries TO 'mysql.session'@'localhost';
 SELECT gen_blocklist('Berlin', 'de_cities', 'us_cities');
 ERROR HY000: Error in command service backend interface, because of : "Unknown column 'Term' in 'field list'"
 SELECT gen_dictionary('us_cities');
 ERROR HY000: Error in command service backend interface, because of : "Unknown column 'Term' in 'field list'"
+REVOKE SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries FROM 'mysql.session'@'localhost';
 DROP TABLE mysql.masking_dictionaries;
 #
 # checks for an unprivileged user
@@ -90,6 +92,7 @@ Dictionary VARCHAR(256) NOT NULL,
 Term VARCHAR(256) NOT NULL,
 UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries TO 'mysql.session'@'localhost';
 include/assert.inc [gen_dictionary on an empty table must return NULL]
 SET @check_expression_result = gen_blocklist('Berlin', 'de_cities', 'us_cities');
 include/assert.inc [the result of evaluating 'gen_blocklist('Berlin', 'de_cities', 'us_cities')' must be equal to 'Berlin']
@@ -5037,4 +5040,5 @@ include/assert.inc [mysql.masking_dictionaries must have 0 records]
 DROP USER udftest_unpriv@localhost;
 DROP USER udftest_priv@localhost;
 UNINSTALL COMPONENT 'file://component_masking_functions';
+REVOKE SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries FROM 'mysql.session'@'localhost';
 DROP TABLE mysql.masking_dictionaries;

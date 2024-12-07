@@ -22,7 +22,6 @@
 
 #include "masking_functions/basic_sql_context_builder.hpp"
 #include "masking_functions/bookshelf.hpp"
-#include "masking_functions/command_service_tuple.hpp"
 #include "masking_functions/query_builder.hpp"
 #include "masking_functions/sql_context.hpp"
 

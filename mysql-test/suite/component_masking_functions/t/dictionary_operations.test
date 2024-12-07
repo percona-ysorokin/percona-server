@@ -103,6 +103,8 @@ CREATE TABLE mysql.masking_dictionaries(
     Dictionary VARCHAR(256) NOT NULL,
     UNIQUE INDEX dictionary_term_idx (Dictionary)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries TO 'mysql.session'@'localhost';
+
 --connection con_unpriv
 
 --error ER_COMMAND_SERVICE_BACKEND_FAILED
@@ -112,6 +114,7 @@ SELECT gen_blocklist('Berlin', 'de_cities', 'us_cities');
 SELECT gen_dictionary('us_cities');
 
 --connection default
+REVOKE SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries FROM 'mysql.session'@'localhost';
 DROP TABLE mysql.masking_dictionaries;
 
 --echo #
@@ -135,6 +138,7 @@ CREATE TABLE mysql.masking_dictionaries(
     Term VARCHAR(256) NOT NULL,
     UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries TO 'mysql.session'@'localhost';
 --connection con_unpriv
 
 --let $assert_cond = gen_dictionary("us_cities") IS NULL
@@ -468,6 +472,7 @@ DROP USER udftest_priv@localhost;
 
 UNINSTALL COMPONENT 'file://component_masking_functions';
 
+REVOKE SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries FROM 'mysql.session'@'localhost';
 DROP TABLE mysql.masking_dictionaries;
 
 --source include/wait_until_count_sessions.inc

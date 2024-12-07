@@ -27,6 +27,7 @@ CREATE TABLE dict_db.masking_dictionaries(
     Term VARCHAR(256) NOT NULL,
     UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dict_db.masking_dictionaries TO 'mysql.session'@'localhost';
 
 --let $restart_parameters="restart: --log-error=$error_log_file --masking-functions.masking-database='dict_db'"
 --source include/restart_mysqld.inc
@@ -44,6 +45,8 @@ SELECT gen_dictionary('single_dict');
 #
 # Cleanup
 UNINSTALL COMPONENT 'file://component_masking_functions';
+REVOKE SELECT, INSERT, UPDATE, DELETE ON dict_db.masking_dictionaries FROM 'mysql.session'@'localhost';
+DROP TABLE dict_db.masking_dictionaries;
 DROP DATABASE dict_db;
 DROP USER udftest_priv@localhost;
 

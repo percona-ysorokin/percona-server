@@ -1,37 +1,52 @@
 --source include/have_debug.inc
 --source include/have_debug_sync.inc
 --source include/have_masking_functions_component.inc
---source include/rpl/init_source_replica.inc
 
---source include/rpl/connection_source.inc
-SET GLOBAL DEBUG='+d,masking_functions_cache_reload';
-INSTALL COMPONENT 'file://component_masking_functions';
+--source include/master-slave.inc
 
-
---source include/rpl/connection_replica.inc
-SET GLOBAL DEBUG='+d,masking_functions_cache_reload';
-INSTALL COMPONENT 'file://component_masking_functions';
-
---source include/rpl/connection_source.inc
+--source include/rpl_connection_master.inc
 CREATE TABLE mysql.masking_dictionaries(
     Dictionary VARCHAR(256) NOT NULL,
     Term VARCHAR(256) NOT NULL,
     UNIQUE INDEX dictionary_term_idx (Dictionary, Term)
 ) ENGINE = InnoDB DEFAULT CHARSET=utf8mb4;
+SET sql_log_bin = OFF;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries TO 'mysql.session'@'localhost';
+SET sql_log_bin = ON;
+
+
+--source include/rpl_sync.inc
+--source include/rpl_connection_slave.inc
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries TO 'mysql.session'@'localhost';
+
+--source include/rpl_connection_master.inc
+SET GLOBAL debug ='+d,enable_masking_functions_flush_thread_sync';
+INSTALL COMPONENT 'file://component_masking_functions';
+SET sql_log_bin = OFF;
 GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
+SET sql_log_bin = ON;
+
+
+--source include/rpl_connection_slave.inc
+SET GLOBAL debug ='+d,enable_masking_functions_flush_thread_sync';
+INSTALL COMPONENT 'file://component_masking_functions';
+GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
+
+
+--source include/rpl_connection_master.inc
 --let $assert_cond = gen_dictionary("dict1") IS NULL
 --let $assert_text = The very first call to gen_dictionary("dict1") on source must load empty cache and return NULL
 --source include/assert.inc
 
 
---source include/rpl/connection_replica.inc
-GRANT MASKING_DICTIONARIES_ADMIN ON *.* TO root@localhost;
+--source include/rpl_sync.inc
+--source include/rpl_connection_slave.inc
 --let $assert_cond = gen_dictionary("dict1") IS NULL
 --let $assert_text = The very first call to gen_dictionary("dict1") on replica must load empty cache and return NULL
 --source include/assert.inc
 
 
---source include/rpl/connection_source.inc
+--source include/rpl_connection_master.inc
 SELECT masking_dictionary_term_add('dict1', 'term1');
 SELECT masking_dictionary_term_add('dict2', 'term2');
 
@@ -44,8 +59,8 @@ SELECT masking_dictionary_term_add('dict2', 'term2');
 --source include/assert.inc
 
 
---source include/rpl/sync.inc
---source include/rpl/connection_replica.inc
+--source include/rpl_sync.inc
+--source include/rpl_connection_slave.inc
 --let $assert_cond = [SELECT COUNT(*) FROM mysql.masking_dictionaries] = 2
 --let $assert_text = The number of dictionary terms on replica after synchronization must be 2
 --source include/assert.inc
@@ -69,22 +84,22 @@ SELECT masking_dictionaries_flush();
 --source include/assert.inc
 
 
---source include/rpl/connection_source.inc
+--source include/rpl_connection_master.inc
 INSERT INTO mysql.masking_dictionaries VALUES ('dict3', 'term3');
 
 --let $assert_cond = gen_dictionary("dict3") IS NULL
 --let $assert_text = The call to gen_dictionary("dict3") on source with suspended flusher thread must return NULL
 --source include/assert.inc
 
-SET DEBUG_SYNC='now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR masking_functions_cache_reload_after_signal';
+SET debug_sync = 'now SIGNAL masking_functions_before_cache_reload_signal WAIT_FOR masking_functions_after_cache_reload_signal';
 
 --let $assert_cond = gen_dictionary("dict3") = "term3"
 --let $assert_text = The call to gen_dictionary("dict3") on source after resuming flusher thread must return "term3"
 --source include/assert.inc
 
 
---source include/rpl/sync.inc
---source include/rpl/connection_replica.inc
+--source include/rpl_sync.inc
+--source include/rpl_connection_slave.inc
 --let $assert_cond = [SELECT COUNT(*) FROM mysql.masking_dictionaries] = 3
 --let $assert_text = The number of dictionary terms on replica after the second synchronization must be 3
 --source include/assert.inc
@@ -93,7 +108,7 @@ SET DEBUG_SYNC='now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR
 --let $assert_text = The call to gen_dictionary("dict3") on replica with suspended flusher thread must return NULL
 --source include/assert.inc
 
-SET DEBUG_SYNC='now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR masking_functions_cache_reload_after_signal';
+SET debug_sync = 'now SIGNAL masking_functions_before_cache_reload_signal WAIT_FOR masking_functions_after_cache_reload_signal';
 
 --let $assert_cond = gen_dictionary("dict3") = "term3"
 --let $assert_text = The call to gen_dictionary("dict3") on replica after resuming flusher thread must return "term3"
@@ -101,17 +116,23 @@ SET DEBUG_SYNC='now SIGNAL masking_functions_cache_reload_before_signal WAIT_FOR
 
 #
 # Cleanup
---source include/rpl/connection_replica.inc
+--source include/rpl_connection_slave.inc
 REVOKE MASKING_DICTIONARIES_ADMIN ON *.* FROM root@localhost;
-SET GLOBAL DEBUG='-d,masking_functions_cache_reload';
-UNINSTALL COMPONENT 'file://component_masking_functions';
+SET GLOBAL debug ='-d,enable_masking_functions_flush_thread_sync';
+--source wait_for_component_uninstall.inc
+REVOKE SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries FROM 'mysql.session'@'localhost';
 
---source include/rpl/connection_source.inc
+--source include/rpl_connection_master.inc
+SET sql_log_bin = OFF;
 REVOKE MASKING_DICTIONARIES_ADMIN ON *.* FROM root@localhost;
-SET GLOBAL DEBUG='-d,masking_functions_cache_reload';
-UNINSTALL COMPONENT 'file://component_masking_functions';
+SET sql_log_bin = ON;
+SET GLOBAL debug ='-d,enable_masking_functions_flush_thread_sync';
+--source wait_for_component_uninstall.inc
+SET sql_log_bin = OFF;
+REVOKE SELECT, INSERT, UPDATE, DELETE ON mysql.masking_dictionaries FROM 'mysql.session'@'localhost';
+SET sql_log_bin = ON;
 
 DROP TABLE mysql.masking_dictionaries;
 
---source include/rpl/sync.inc
---source include/rpl/deinit.inc
+--source include/rpl_sync.inc
+--source include/rpl_end.inc

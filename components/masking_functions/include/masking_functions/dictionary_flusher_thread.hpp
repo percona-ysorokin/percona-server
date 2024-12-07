@@ -18,18 +18,70 @@
 
 #include "masking_functions/dictionary_flusher_thread_fwd.hpp"
 
-#include <condition_variable>
+#include <atomic>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 
-#include "masking_functions/query_cache_fwd.hpp"
+#include "masking_functions/query_builder_fwd.hpp"
+#include "masking_functions/query_cache_core_fwd.hpp"
 
 namespace masking_functions {
 
+// Facts that impacted 'dictionary_flusher_thread' design.
+// - 'mysql_command_xxx' services cannot be used inside component 'init()' /
+//   'deinit()' handlers as that may mess up with the 'THD' object of the
+//   connection that executes 'INSTALL COMPONENT' / 'UNINSTALL COMPONENT'.
+//   Therefore, 'INSTALL COMPONENT' cannot immediately reload dictionary
+//   cache. It can only spawn a background thread that will do this later.
+//
+// - MySQL internal connection (an instance of the 'sql_context' class,
+//   which in turn uses 'mysql_command_xxx' services) must not be created
+//   in the component 'init()' handler but inside the background thread.
+//   The main reason for this is that it needs to have its own THD
+//   object associated with it. Internally it is done by seting
+//   'MYSQL_COMMAND_LOCAL_THD_HANDLE' option for the internal connection.
+//
+// - MySQL Service registry is locked inside component 'init()' / 'deinit()'
+//   handlers. In other words, we cannot instruct component 'init()' handler
+//   to wait for background thread to initiate the connection as this will
+//   result in a deadlock.
+//
+// - Similarly, we cannot instruct component 'deinit()' handler to wait for
+//   internal connection to be closed using regular means. However, if we
+//   set the 'MYSQL_NO_LOCK_REGISTRY' for this internal connection, it will
+//   be closed without trying to lock MySQL Service registry (which is
+//   already locked by the 'UNINSTALL COMPONENT' logic).
+//
+// - During startup when server installs components that are marked for
+//   loading in the Data Dictionary, Session Server is not yet available
+//   ('srv_session_server_is_available()' returns false) and
+//   'mysql_command_xxx' cannot be used immediately. Therefore, the
+//   first step the background thread needs to do is to wait until the
+//   Session Server becomes available (until
+//   'srv_session_server_is_available()' returns true) and only then
+//   initiate an internal connection.
+//
+// - During shutdown MySQL server before uninstalling components tries
+//   to gracefully close all remaining sessions (those registered in the
+//   session manager). Our background thread is also in this list as it
+//   sets 'MYSQL_COMMAND_LOCAL_THD_HANDLE' option for the internal
+//   connection. Therefore, our background thread needs to respond to
+//   'KILL CONNECTION' statement (to setting 'thd->is_killed') because
+//   otherwise the thread will be killed by force (via 'ptheread_cancel()'
+//   or similar) which most probably will result in server crash.
+//
+// - In rare cases when 'UNINSTALL COMPONENT' is called immediately after
+//   'INSTALL COMPONENT' (and when background thread has been spawned but
+//   not yet initialized the connection), the only safe way to avoid
+//   deadlocks is to let 'UNINSTALL COMPONENT' ('deinit()' handler) to fail
+//   earlier (without waiting for the background thread to join) by just
+//   requesting it to stop later (by setting the state to 'stopped').
+//   Performing several attempts to 'UNINSTALL COMPONENT' should eventually
+//   succeed.
 class dictionary_flusher_thread {
  public:
-  dictionary_flusher_thread(const query_cache_ptr &cache,
+  dictionary_flusher_thread(const query_cache_core_ptr &cache_core,
+                            const query_builder_ptr &sql_query_builder,
                             std::uint64_t flush_interval_seconds);
   dictionary_flusher_thread(const dictionary_flusher_thread &other) = delete;
   dictionary_flusher_thread(dictionary_flusher_thread &&other) = delete;
@@ -39,13 +91,20 @@ class dictionary_flusher_thread {
       delete;
   ~dictionary_flusher_thread();
 
+  // sets state to stopped and returns a flag indicating whether it is safe to
+  // wait for this thread to join inside the component 'deinit()' handler
+  // (if before this call the thread was in any state but initial - when the
+  // internal connection had already been initialized, in other words)
+  bool request_termination();
+
  private:
-  query_cache_ptr cache_;
+  query_cache_core_ptr cache_core_;
+  query_builder_ptr sql_query_builder_;
   std::uint64_t flush_interval_seconds_;
 
-  bool stopped_;
-  std::mutex flusher_mutex_;
-  std::condition_variable flusher_condition_var_;
+  enum class state_type;
+  using atomic_state_type = std::atomic<state_type>;
+  atomic_state_type state_;
 
   struct jthread_deleter {
     void operator()(void *ptr) const noexcept;

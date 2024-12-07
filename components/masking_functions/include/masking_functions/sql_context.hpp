@@ -43,7 +43,8 @@ class sql_context {
       std::function<void(const field_value_container<NumberOfFields> &)>;
 
   sql_context(const command_service_tuple &services,
-              sql_context_registry_access registry_locking_mode);
+              sql_context_registry_access registry_locking_mode,
+              bool initialize_thread);
 
   sql_context(sql_context const &) = delete;
   sql_context(sql_context &&) noexcept = default;
@@ -52,6 +53,8 @@ class sql_context {
   sql_context &operator=(sql_context &&) noexcept = default;
 
   ~sql_context() = default;
+
+  void reset();
 
   const command_service_tuple &get_services() const noexcept {
     return *impl_.get_deleter().services;

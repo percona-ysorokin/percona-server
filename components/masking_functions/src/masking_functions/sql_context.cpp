@@ -29,8 +29,6 @@ namespace {
 
 MYSQL_H to_mysql_h(void *p) noexcept { return static_cast<MYSQL_H>(p); }
 
-constexpr const char default_command_user_name[] = "root";
-
 }  // anonymous namespace
 
 namespace masking_functions {
@@ -40,7 +38,8 @@ void sql_context::deleter::operator()(void *ptr) const noexcept {
 }
 
 sql_context::sql_context(const command_service_tuple &services,
-                         sql_context_registry_access registry_locking_mode)
+                         sql_context_registry_access registry_locking_mode,
+                         bool initialize_thread)
     : impl_{nullptr, deleter{&services}} {
   MYSQL_H local_mysql_h = nullptr;
   if ((*get_services().factory->init)(&local_mysql_h) != 0) {
@@ -49,6 +48,16 @@ sql_context::sql_context(const command_service_tuple &services,
   assert(local_mysql_h != nullptr);
   impl_.reset(local_mysql_h);
 
+  if (initialize_thread) {
+    if ((*get_services().options->set)(
+            local_mysql_h, MYSQL_COMMAND_LOCAL_THD_HANDLE, nullptr) != 0) {
+      raise_with_error_message("Couldn't set local THD handle");
+    }
+  }
+
+  // setting MYSQL_NO_LOCK_REGISTRY is needed for cases when we destroy
+  // 'sql_context' from the 'UNINSTALL COMPONENT' handler (component's
+  // 'deinit()' function)
   const bool no_lock_registry_option_value{
       registry_locking_mode == sql_context_registry_access::non_locking};
   if ((*get_services().options->set)(local_mysql_h, MYSQL_NO_LOCK_REGISTRY,
@@ -63,11 +72,9 @@ sql_context::sql_context(const command_service_tuple &services,
     raise_with_error_message("Couldn't set protocol");
   }
 
-  // setting MYSQL_COMMAND_USER_NAME to default_command_user_name here
-  // as the default MYSQL_SESSION_USER ("mysql.session") does not have
-  // access to the mysql.masking_dictionaries
+  // nullptr here will be translated into MYSQL_SESSION_USER ("mysql.session")
   if ((*get_services().options->set)(local_mysql_h, MYSQL_COMMAND_USER_NAME,
-                                     default_command_user_name) != 0) {
+                                     nullptr) != 0) {
     raise_with_error_message("Couldn't set username");
   }
 
@@ -87,19 +94,25 @@ sql_context::sql_context(const command_service_tuple &services,
   // value of '@@global.autocommit' (we want all operations to be committed
   // immediately), we are setting the value of the 'autocommit' session
   // variable here explicitly to 'ON'.
-  if ((*get_services().factory->autocommit)(to_mysql_h(impl_.get()), true)) {
+  if ((*get_services().factory->autocommit)(local_mysql_h, true) != 0) {
     raise_with_error_message("Couldn't set autocommit");
   }
 }
 
+void sql_context::reset() {
+  if ((*get_services().factory->reset)(to_mysql_h(impl_.get())) != 0) {
+    raise_with_error_message("Couldn't reset connection");
+  }
+}
+
 bool sql_context::execute_dml(std::string_view query) {
-  if ((*get_services().query->query)(to_mysql_h(impl_.get()), query.data(),
+  const auto casted_impl{to_mysql_h(impl_.get())};
+  if ((*get_services().query->query)(casted_impl, query.data(),
                                      query.length()) != 0) {
     raise_with_error_message("Error while executing SQL DML query");
   }
   std::uint64_t row_count = 0;
-  if ((*get_services().query->affected_rows)(to_mysql_h(impl_.get()),
-                                             &row_count) != 0) {
+  if ((*get_services().query->affected_rows)(casted_impl, &row_count) != 0) {
     raise_with_error_message("Couldn't get number of affected rows");
   }
   return row_count > 0;
@@ -108,14 +121,15 @@ bool sql_context::execute_dml(std::string_view query) {
 void sql_context::execute_select_internal(
     std::string_view query, std::size_t expected_number_of_fields,
     const row_internal_callback &callback) {
-  if ((*get_services().query->query)(to_mysql_h(impl_.get()), query.data(),
+  const auto casted_impl{to_mysql_h(impl_.get())};
+  if ((*get_services().query->query)(casted_impl, query.data(),
                                      query.length()) != 0) {
     raise_with_error_message("Error while executing SQL select query");
   }
 
   unsigned int actual_number_of_fields = 0;
   if ((*get_services().field_info->field_count)(
-          to_mysql_h(impl_.get()), &actual_number_of_fields) != 0) {
+          casted_impl, &actual_number_of_fields) != 0) {
     raise_with_error_message("Couldn't get number of fields");
   }
 
@@ -125,8 +139,8 @@ void sql_context::execute_select_internal(
   }
 
   MYSQL_RES_H mysql_res = nullptr;
-  if ((*get_services().query_result->store_result)(to_mysql_h(impl_.get()),
-                                                   &mysql_res) != 0) {
+  if ((*get_services().query_result->store_result)(casted_impl, &mysql_res) !=
+      0) {
     raise_with_error_message("Couldn't store MySQL result");
   }
   if (mysql_res == nullptr) {
@@ -147,8 +161,7 @@ void sql_context::execute_select_internal(
   // service is implemented via 'mysql_affected_rows()' MySQL client
   // function, it is OK to use it for SELECT statements as well, because
   // in this case it will work like 'mysql_num_rows()'.
-  if ((*get_services().query->affected_rows)(to_mysql_h(impl_.get()),
-                                             &row_count) != 0)
+  if ((*get_services().query->affected_rows)(casted_impl, &row_count) != 0)
     raise_with_error_message("Couldn't query row count");
 
   for (std::uint64_t i = 0; i < row_count; ++i) {
@@ -183,7 +196,7 @@ void sql_context::execute_select_internal(
   using error_message_buffer_type = std::array<char, MYSQL_ERRMSG_SIZE>;
   error_message_buffer_type error_message_buffer;
   char *error_message_buffer_ptr{std::data(error_message_buffer)};
-  auto casted_impl{to_mysql_h(impl_.get())};
+  const auto casted_impl{to_mysql_h(impl_.get())};
   if (casted_impl != nullptr &&
       (*get_services().error_info->sql_errno)(casted_impl, &error_number) ==
           0 &&

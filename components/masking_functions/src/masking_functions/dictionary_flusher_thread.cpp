@@ -20,41 +20,55 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 #include <my_dbug.h>
+#include <my_sys.h>
+#include <mysqld_error.h>
+
+#include <mysql/service_srv_session.h>
 
 #include <mysql/components/services/log_builtins.h>
+#include <mysql/components/services/mysql_current_thread_reader.h>
 
-#include <sql/debug_sync.h>
-#include <sql/sql_class.h>
+#include <mysql/psi/mysql_thread.h>
 
+#include "masking_functions/basic_sql_context_builder.hpp"
+#include "masking_functions/command_service_tuple.hpp"
+#include "masking_functions/primitive_singleton.hpp"
 #include "masking_functions/query_cache.hpp"
+#ifndef NDEBUG
+#include "masking_functions/sql_context.hpp"
+#endif
+#include "masking_functions/static_sql_context_builder.hpp"
+
+#include "sql/debug_sync.h"
 
 extern SERVICE_TYPE(log_builtins) * log_bi;
 extern SERVICE_TYPE(log_builtins_string) * log_bs;
 
+extern REQUIRES_SERVICE_PLACEHOLDER(mysql_current_thread_reader);
+
 namespace {
 
+using global_command_services = masking_functions::primitive_singleton<
+    masking_functions::command_service_tuple>;
+
 // an auxilary RAII class that is intended to be used inside 'jthread' handler
-// function: it calls 'my_thread_init()', sets up 'THD' object / 'PSI' info in
-// constructor and calls 'my_thread_end()' in destructor
-//
-// the instance of this class must be declared as the very first element of
-// the jthread's handler function so that 'thread_stack' member of the 'THD'
-// object would be initialized properly
+// function: it calls 'init()' method from the 'mysql_command_thread' service
+// in constructor and 'end()' method from the 'mysql_command_thread' service
+// in destructor
 class thread_handler_context {
  public:
   thread_handler_context() {
-    if (my_thread_init()) {
-      throw std::runtime_error{"Cannot initialize my_thread"};
+    if ((*global_command_services::instance().thread->init)() != 0) {
+      throw std::runtime_error{"Cannot initialize thread handler context"};
     }
-    thd_.set_new_thread_id();
-    thd_.thread_stack = reinterpret_cast<char *>(this);
-    thd_.store_globals();
   }
 
   thread_handler_context(const thread_handler_context &) = delete;
@@ -62,18 +76,9 @@ class thread_handler_context {
   thread_handler_context(thread_handler_context &&) = delete;
   thread_handler_context &operator=(thread_handler_context &&) = delete;
 
-  ~thread_handler_context() { my_thread_end(); }
-
-  void actualize_psi(std::string_view description) noexcept {
-    struct PSI_thread *psi = thd_.get_psi();
-    PSI_THREAD_CALL(set_thread_id)(psi, thd_.thread_id());
-    PSI_THREAD_CALL(set_thread_THD)(psi, &thd_);
-    PSI_THREAD_CALL(set_thread_command)(thd_.get_command());
-    PSI_THREAD_CALL(set_thread_info)(description.data(), description.size());
+  ~thread_handler_context() {
+    (*global_command_services::instance().thread->end)();
   }
-
- private:
-  THD thd_;
 };
 
 // an auxiliary RAII class that wraps an instance of 'my_thread_attr_t': it
@@ -117,12 +122,11 @@ class jthread {
 
   // passing 'handler_function' deliberately by value to move from
   jthread(handler_function_type handler_function, const char *category_name,
-          const char *name, const char *os_name, const char *description)
+          const char *name, const char *os_name)
       : handler_function_{std::move(handler_function)},
         psi_thread_key_{PSI_NOT_INSTRUMENTED},
         psi_thread_info_{&psi_thread_key_,   name, os_name,
                          PSI_FLAG_SINGLETON, 0,    PSI_DOCUMENT_ME},
-        description_{description},
         handle_{} {
     thread_attributes attributes{};
     attributes.make_joinable();
@@ -147,19 +151,13 @@ class jthread {
 
   PSI_thread_key psi_thread_key_;
   PSI_thread_info psi_thread_info_;
-  std::string_view description_;
 
   my_thread_handle handle_;
 
   static void *raw_handler(void *arg) {
     try {
-      // the instance of this class needs to be declared as the very first
-      // object within the thread handler function, so that its address ("this"
-      // inside class's constructor) would represent the beginning of the thread
-      // stack
       thread_handler_context handler_ctx{};
       const auto *self = static_cast<jthread *>(arg);
-      handler_ctx.actualize_psi(self->description_);
       (self->handler_function_)();
     } catch (const std::exception &e) {
       std::string message{"Exception caught in jthread handler - "};
@@ -176,12 +174,17 @@ class jthread {
 constexpr char flusher_psi_category_name[]{"masking_functions"};
 constexpr char flusher_psi_thread_info_name[]{"masking_functions_dict_flusher"};
 constexpr char flusher_psi_thread_info_os_name[]{"mf_flusher"};
-constexpr char flusher_psi_description[]{
-    "Masking functions component cache flusher"};
 
 }  // anonymous namespace
 
 namespace masking_functions {
+
+enum class dictionary_flusher_thread::state_type {
+  initial,
+  initialization_failure,
+  operational,
+  stopped
+};
 
 void dictionary_flusher_thread::jthread_deleter::operator()(
     void *ptr) const noexcept {
@@ -189,16 +192,16 @@ void dictionary_flusher_thread::jthread_deleter::operator()(
 }
 
 dictionary_flusher_thread::dictionary_flusher_thread(
-    const query_cache_ptr &cache, std::uint64_t flush_interval_seconds)
-    : cache_{cache},
+    const query_cache_core_ptr &cache_core,
+    const query_builder_ptr &sql_query_builder,
+    std::uint64_t flush_interval_seconds)
+    : cache_core_{cache_core},
+      sql_query_builder_{sql_query_builder},
       flush_interval_seconds_{flush_interval_seconds},
-      stopped_{false},
-      flusher_mutex_{},
-      flusher_condition_var_{},
-      thread_impl_{new jthread(
+      state_{state_type::initial},
+      thread_impl_{new jthread{
           [this]() { do_periodic_reload(); }, flusher_psi_category_name,
-          flusher_psi_thread_info_name, flusher_psi_thread_info_os_name,
-          flusher_psi_description)} {
+          flusher_psi_thread_info_name, flusher_psi_thread_info_os_name}} {
   // we do not try to populate dict_cache here immediately as this constructor
   // is called from the component initialization method and any call to
   // mysql_command_query service may mess up with current THD
@@ -208,62 +211,143 @@ dictionary_flusher_thread::dictionary_flusher_thread(
 }
 
 dictionary_flusher_thread::~dictionary_flusher_thread() {
-  {
-    std::unique_lock flusher_mutex_lock{flusher_mutex_};
-    stopped_ = true;
-  }
-  flusher_condition_var_.notify_one();
+  request_termination();
   // thread_impl_'s destructor will join the thread
 }
 
+bool dictionary_flusher_thread::request_termination() {
+  return state_.exchange(state_type::stopped) != state_type::initial;
+}
+
 void dictionary_flusher_thread::do_periodic_reload() {
+  // waiting for Session Server availability
+  static constexpr auto sleep_interval{std::chrono::seconds(1)};
+  static constexpr std::size_t max_number_of_attempts{30};
+  std::size_t number_of_attempts{0U};
+
+  while (number_of_attempts < max_number_of_attempts &&
+         state_ != state_type::stopped && !srv_session_server_is_available()) {
+    std::this_thread::sleep_for(sleep_interval);
+    ++number_of_attempts;
+  }
+
+  if (state_ == state_type::stopped) {
+    LogComponentErr(
+        WARNING_LEVEL, ER_LOG_PRINTF_MSG,
+        "Flusher thread terminated while waiting for session server");
+    return;
+  }
+  if (number_of_attempts >= max_number_of_attempts) {
+    LogComponentErr(
+        ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+        "Session server is unavailable during flusher thread initialization");
+    state_ = state_type::initialization_failure;
+    return;
+  }
+
+  // initializing internal connection (along with THD)
+  query_cache_ptr cache;
+
+  using optional_string_type = std::optional<std::string>;
+  optional_string_type failure_message;
+  try {
+    // it is important that 'static_sql_context_builder' is created here
+    // (inside the background thread) because the "static" instance of the
+    // 'sql_context', which will be created inside 'static_sql_context_builder'
+    // constructor, will set the 'MYSQL_COMMAND_LOCAL_THD_HANDLE' option to
+    // 'nullptr' meaning that internal THD object must be created and associated
+    // with the current thread
+    basic_sql_context_builder_ptr sql_ctx_builder{
+        std::make_shared<static_sql_context_builder>(
+            global_command_services::instance(),
+            sql_context_registry_access::non_locking)};
+    cache = std::make_shared<query_cache>(cache_core_, sql_ctx_builder,
+                                          sql_query_builder_);
+
+    DBUG_EXECUTE_IF("enable_masking_functions_flush_thread_sync", {
+      const auto sql_ctx{sql_ctx_builder->build()};
+      std::string wait_action{
+          "SET debug_sync = 'masking_functions_before_cache_reload WAIT_FOR "
+          "masking_functions_before_cache_reload_signal"};
+      std::string signal_action{
+          "SET debug_sync = 'masking_functions_after_cache_reload SIGNAL "
+          "masking_functions_after_cache_reload_signal"};
+      DBUG_EXECUTE_IF("enable_masking_functions_flush_thread_double_pass", {
+        wait_action += " EXECUTE 2";
+        signal_action += " EXECUTE 2";
+      });
+      wait_action += '\'';
+      signal_action += '\'';
+
+      sql_ctx->execute_dml(wait_action);
+      sql_ctx->execute_dml(signal_action);
+    });
+  } catch (const std::exception &e) {
+    failure_message.emplace(
+        "Exception during flusher thread initialization - ");
+    failure_message->append(e.what());
+  } catch (...) {
+    failure_message.emplace(
+        "Unknown exception during flusher thread initialization");
+  }
+
+  MYSQL_THD extracted_thd{nullptr};
+  mysql_service_mysql_current_thread_reader->get(&extracted_thd);
+  assert(extracted_thd != nullptr);
+
+  const auto is_terminated_lambda{[thd = extracted_thd, this]() {
+    if ((*is_killed_hook)(thd) != 0) {
+      state_ = state_type::stopped;
+    }
+    return state_ == state_type::stopped;
+  }};
+
+  if (is_terminated_lambda()) {
+    LogComponentErr(
+        WARNING_LEVEL, ER_LOG_PRINTF_MSG,
+        "Flusher thread terminated after creating internal connection");
+    return;
+  }
+  if (failure_message.has_value()) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, failure_message->c_str());
+    state_ = state_type::initialization_failure;
+    return;
+  }
+  state_ = state_type::operational;
+
   const auto flush_interval_duration{
       std::chrono::seconds{flush_interval_seconds_}};
-  std::unique_lock lock{flusher_mutex_};
-  while (!stopped_) {
-    flusher_condition_var_.wait_for(
-        lock, flush_interval_duration,
-        [&stopped = stopped_, expires_at = std::chrono::steady_clock::now() +
-                                           flush_interval_duration]() {
-          return stopped || std::chrono::steady_clock::now() > expires_at;
-        });
 
-    if (!stopped_) {
-      // 'clear_error()' and 'reset_condition_info()' are needed here because
-      // cache reload may generate an sql error (for instance, when dictionary
-      // table simply does not exist) and 'debug_sync_set_action()' expects
-      // THD to be in clear state
-      DBUG_EXECUTE_IF("masking_functions_cache_reload", {
-        const char act[] =
-            "now WAIT_FOR masking_functions_cache_reload_before_signal";
-        assert(!debug_sync_set_action(current_thd, STRING_WITH_LEN(act)));
+  auto expires_at{std::chrono::steady_clock::now()};
+  while (!is_terminated_lambda()) {
+    if (std::chrono::steady_clock::now() >= expires_at) {
+      DBUG_EXECUTE_IF("enable_masking_functions_flush_thread_sync", {
+        DEBUG_SYNC(extracted_thd, "masking_functions_before_cache_reload");
       });
 
+      failure_message.reset();
       try {
-        cache_->reload_cache();
+        cache->reload_cache();
       } catch (const std::exception &e) {
-        std::string message{"Exception during reloading dictionary cache - "};
-        message += e.what();
-        LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, message.c_str());
+        failure_message.emplace(
+            "Exception during reloading dictionary cache - ");
+        failure_message->append(e.what());
+      } catch (...) {
+        failure_message.emplace(
+            "Unknown exception during reloading dictionary cache");
       }
-      // DEBUG_SYNC logic expects THD object to be in clear (error-wise) state -
-      // that is wy we need to clear all potential errors generated by
-      // 'reload_cache()'
-      current_thd->clear_error();
-      current_thd->get_stmt_da()->reset_condition_info(current_thd);
+      if (failure_message.has_value()) {
+        LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                        failure_message->c_str());
+      }
 
-      DBUG_EXECUTE_IF("masking_functions_cache_reload", {
-        const char act[] =
-            "now SIGNAL masking_functions_cache_reload_after_signal";
-        assert(!debug_sync_set_action(current_thd, STRING_WITH_LEN(act)));
-
-        static std::size_t static_pass_counter{
-            DBUG_EVALUATE_IF("masking_functions_flusher_double_pass", 2U, 1U)};
-        --static_pass_counter;
-        if (static_pass_counter == 0) {
-          DBUG_SET("-d,masking_functions_cache_reload");
-        }
+      DBUG_EXECUTE_IF("enable_masking_functions_flush_thread_sync", {
+        DEBUG_SYNC(extracted_thd, "masking_functions_after_cache_reload");
       });
+
+      expires_at = std::chrono::steady_clock::now() + flush_interval_duration;
+    } else {
+      std::this_thread::sleep_for(sleep_interval);
     }
   }
 }

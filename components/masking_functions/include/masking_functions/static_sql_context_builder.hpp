@@ -26,14 +26,11 @@ namespace masking_functions {
 class static_sql_context_builder : public basic_sql_context_builder {
  public:
   static_sql_context_builder(const command_service_tuple &services,
-                             sql_context_registry_access registry_locking_mode)
-      : basic_sql_context_builder{services},
-        registry_locking_mode_{registry_locking_mode},
-        static_instance_{} {}
+                             sql_context_registry_access registry_locking_mode);
+  ~static_sql_context_builder() override;
 
  private:
-  sql_context_registry_access registry_locking_mode_;
-  mutable sql_context_ptr static_instance_;
+  sql_context_ptr static_instance_;
 
   sql_context_ptr do_build() const override;
 };

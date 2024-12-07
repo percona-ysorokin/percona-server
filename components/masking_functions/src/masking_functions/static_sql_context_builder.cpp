@@ -22,11 +22,15 @@
 
 namespace masking_functions {
 
+static_sql_context_builder::static_sql_context_builder(
+    const command_service_tuple &services,
+    sql_context_registry_access registry_locking_mode)
+    : basic_sql_context_builder{services},
+      static_instance_{std::make_shared<sql_context>(
+          get_services(), registry_locking_mode, true)} {}
+static_sql_context_builder::~static_sql_context_builder() = default;
+
 sql_context_ptr static_sql_context_builder::do_build() const {
-  if (!static_instance_) {
-    static_instance_ =
-        std::make_shared<sql_context>(get_services(), registry_locking_mode_);
-  }
   return static_instance_;
 }
 
