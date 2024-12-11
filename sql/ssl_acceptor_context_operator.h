@@ -24,7 +24,10 @@
 #ifndef SSL_ACCEPTOR_CONTEXT_OPERATOR
 #define SSL_ACCEPTOR_CONTEXT_OPERATOR
 
-#include <my_rcu_lock.h>                   /* MyRcuLock */
+#include <atomic>
+#include <memory>
+#include <string>
+
 #include "sql/ssl_acceptor_context_data.h" /** Ssl_acceptor_context_data */
 
 /* Types of supported contexts */
@@ -34,27 +37,11 @@ enum class Ssl_acceptor_context_type {
   context_last
 };
 
-class Lock_and_access_ssl_acceptor_context;
-class TLS_channel;
+using Ssl_acceptor_context_data_ptr =
+    std::shared_ptr<const Ssl_acceptor_context_data>;
 
-/** TLS context access protector */
-class Ssl_acceptor_context_container {
- protected:
-  Ssl_acceptor_context_container(Ssl_acceptor_context_data *data);
-  ~Ssl_acceptor_context_container();
-  void switch_data(Ssl_acceptor_context_data *new_data);
-
-  using Ssl_acceptor_context_data_lock = MyRcuLock<Ssl_acceptor_context_data>;
-
-  Ssl_acceptor_context_data_lock *lock_;
-
-  /* F.R.I.E.N.D.S. */
-  friend class Lock_and_access_ssl_acceptor_context;
-  friend class TLS_channel;
-};
-
-extern Ssl_acceptor_context_container *mysql_main;
-extern Ssl_acceptor_context_container *mysql_admin;
+extern Ssl_acceptor_context_data_ptr mysql_main;
+extern Ssl_acceptor_context_data_ptr mysql_admin;
 
 /** TLS context manager */
 class TLS_channel {
@@ -74,69 +61,55 @@ class TLS_channel {
     @retval true failure to init
     @retval false initialized ok
 */
-  static bool singleton_init(Ssl_acceptor_context_container **out,
-                             std::string channel, bool use_ssl_arg,
+  static bool singleton_init(Ssl_acceptor_context_data_ptr &out,
+                             const std::string &channel, bool use_ssl_arg,
                              Ssl_init_callback *callbacks, bool db_init);
 
   /**
     De-initialize the single instance of the acceptor
 
-    @param [in] container TLS acceptor context object
+    @param [in] data TLS acceptor context object
   */
-  static void singleton_deinit(Ssl_acceptor_context_container *container);
+  static void singleton_deinit(Ssl_acceptor_context_data_ptr &data);
   /**
     Re-initialize the single instance of the acceptor
 
-    @param [in,out] container TLS acceptor context object
+    @param [in,out] data      TLS acceptor context object
     @param [in]     channel   Name of the channel
     @param [in]     callbacks Handle to the initialization callback object
     @param [out]    error     SSL Error information
     @param [in]     force     Activate the SSL settings even if this will lead
                               to disabling SSL
   */
-  static void singleton_flush(Ssl_acceptor_context_container *container,
-                              std::string channel, Ssl_init_callback *callbacks,
+  static void singleton_flush(Ssl_acceptor_context_data_ptr &data,
+                              const std::string &channel,
+                              Ssl_init_callback *callbacks,
                               enum enum_ssl_init_error *error, bool force);
 };
 
-using Ssl_acceptor_context_data_lock = MyRcuLock<Ssl_acceptor_context_data>;
-
 /** TLS context access wrapper for ease of use */
-class Lock_and_access_ssl_acceptor_context {
+class Lock_and_access_ssl_acceptor_context_data {
  public:
-  Lock_and_access_ssl_acceptor_context(Ssl_acceptor_context_container *context)
-      : read_lock_(context->lock_) {}
-  ~Lock_and_access_ssl_acceptor_context() = default;
+  Lock_and_access_ssl_acceptor_context_data(
+      const Ssl_acceptor_context_data_ptr &data)
+      : data_(std::atomic_load(&data)) {}
+  Lock_and_access_ssl_acceptor_context_data(
+      const Lock_and_access_ssl_acceptor_context_data &) = delete;
+  Lock_and_access_ssl_acceptor_context_data &operator=(
+      const Lock_and_access_ssl_acceptor_context_data &) = delete;
+  Lock_and_access_ssl_acceptor_context_data(
+      Lock_and_access_ssl_acceptor_context_data &&) = delete;
+  Lock_and_access_ssl_acceptor_context_data &operator=(
+      Lock_and_access_ssl_acceptor_context_data &&) = delete;
+  ~Lock_and_access_ssl_acceptor_context_data() = default;
 
   /** Access protected @ref Ssl_acceptor_context_data */
-  operator const Ssl_acceptor_context_data *() {
-    const Ssl_acceptor_context_data *c = read_lock_;
-    return c;
-  }
-
-  /**
-    Access to the SSL_CTX from the protected @ref Ssl_acceptor_context_data
-  */
-  operator SSL_CTX *() {
-    const Ssl_acceptor_context_data *c = read_lock_;
-    return c->ssl_acceptor_fd_->ssl_context;
-  }
-
-  /**
-    Access to the SSL from the protected @ref Ssl_acceptor_context_data
-  */
-  operator SSL *() {
-    const Ssl_acceptor_context_data *c = read_lock_;
-    return c->acceptor_;
-  }
+  const Ssl_acceptor_context_data *get() { return data_.get(); }
 
   /**
     Access to st_VioSSLFd from the protected @ref Ssl_acceptor_context_data
   */
-  operator struct st_VioSSLFd *() {
-    const Ssl_acceptor_context_data *c = read_lock_;
-    return c->ssl_acceptor_fd_;
-  }
+  st_VioSSLFd *get_vio_ssl_fd() { return data_->ssl_acceptor_fd_; }
 
   /**
     Fetch given property from underlying TLS context
@@ -145,14 +118,15 @@ class Lock_and_access_ssl_acceptor_context {
 
    @returns Value of property for given context. Empty in case of failure.
   */
-  std::string show_property(Ssl_acceptor_context_property_type property_type);
+  std::string show_property(
+      Ssl_acceptor_context_property_type property_type) const;
 
   /**
     Fetch channel name
 
     @returns Name of underlying channel
   */
-  std::string channel_name();
+  std::string channel_name() const;
 
   /**
     TLS context validity
@@ -161,11 +135,11 @@ class Lock_and_access_ssl_acceptor_context {
       @retval true  Valid
       @retval false Invalid
   */
-  bool have_ssl();
+  bool have_ssl() const;
 
  private:
-  /** Read lock over TLS context */
-  Ssl_acceptor_context_data_lock::ReadLock read_lock_;
+  /** Shallow copy of the TLS context */
+  Ssl_acceptor_context_data_ptr data_;
 };
 
 bool have_ssl();

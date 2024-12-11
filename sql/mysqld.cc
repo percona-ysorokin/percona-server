@@ -5732,7 +5732,7 @@ static int init_ssl() {
 }
 
 static int init_ssl_communication() {
-  if (TLS_channel::singleton_init(&mysql_main, mysql_main_channel, opt_use_ssl,
+  if (TLS_channel::singleton_init(mysql_main, mysql_main_channel, opt_use_ssl,
                                   &server_main_callback, opt_initialize))
     return 1;
 
@@ -5750,13 +5750,13 @@ static int init_ssl_communication() {
           : false;
 
   Ssl_init_callback_server_admin server_admin_callback;
-  if (TLS_channel::singleton_init(&mysql_admin, mysql_admin_channel,
+  if (TLS_channel::singleton_init(mysql_admin, mysql_admin_channel,
                                   initialize_admin_tls, &server_admin_callback,
                                   opt_initialize))
     return 1;
 
   if (initialize_admin_tls && !g_admin_ssl_configured) {
-    Lock_and_access_ssl_acceptor_context context(mysql_main);
+    Lock_and_access_ssl_acceptor_context_data context(mysql_main);
     if (context.have_ssl())
       LogErr(SYSTEM_LEVEL, ER_TLS_CONFIGURATION_REUSED,
              mysql_admin_channel.c_str(), mysql_main_channel.c_str());

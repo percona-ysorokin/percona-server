@@ -31,9 +31,7 @@
 #include "sql/ssl_init_callback.h" /* Ssl_init_callback */
 #include "violite.h"               /* st_VioSSLFd, enum_ssl_init_error */
 
-class Ssl_acceptor_context_container;
 class TLS_channel;
-class Lock_and_access_ssl_acceptor_context;
 
 /**
   Properties exposed by Ssl Acceptor context
@@ -213,9 +211,8 @@ class Ssl_acceptor_context_data final {
   bool current_tls_session_cache_mode_;
 
   /* F.R.I.E.N.D.S. */
-  friend class Ssl_acceptor_context_container;
   friend class TLS_channel;
-  friend class Lock_and_access_ssl_acceptor_context;
+  friend class Lock_and_access_ssl_acceptor_context_data;
 };
 
 #endif  // SSL_ACCEPTOR_CONTEXT_DATA_INCLUDED

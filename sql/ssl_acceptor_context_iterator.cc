@@ -54,8 +54,8 @@ class Ssl_acceptor_context_iterator {
  public:
   using Ssl_acceptor_context_iterator_data_container =
       std::vector<Ssl_acceptor_context_iterator_data>;
-  Ssl_acceptor_context_iterator(Ssl_acceptor_context_container *context_type) {
-    Lock_and_access_ssl_acceptor_context context(context_type);
+  Ssl_acceptor_context_iterator(const Ssl_acceptor_context_data_ptr &data) {
+    Lock_and_access_ssl_acceptor_context_data context(data);
     const std::string channel_name = context.channel_name();
     Ssl_acceptor_context_iterator_data first_one(
         channel_name, "Enabled", context.have_ssl() ? "Yes" : "No");

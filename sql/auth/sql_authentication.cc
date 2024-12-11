@@ -1623,11 +1623,11 @@ static bool send_server_handshake_packet(MPVIO_EXT *mpvio, const char *data,
   protocol->add_client_capability(CAN_CLIENT_COMPRESS);
 
   bool have_ssl = false;
-  if (current_thd->is_admin_connection() && g_admin_ssl_configured == true) {
-    Lock_and_access_ssl_acceptor_context context(mysql_admin);
-    have_ssl = context.have_ssl();
-  } else {
-    Lock_and_access_ssl_acceptor_context context(mysql_main);
+  {
+    Lock_and_access_ssl_acceptor_context_data context(
+        current_thd->is_admin_connection() && g_admin_ssl_configured
+            ? mysql_admin
+            : mysql_main);
     have_ssl = context.have_ssl();
   }
 
@@ -2892,23 +2892,19 @@ skip_to_ssl:
       We need to make sure that reference count for
       SSL context is kept till the end of function
     */
-    std::unique_ptr<Lock_and_access_ssl_acceptor_context> context;
-    if (thd->is_admin_connection() && g_admin_ssl_configured == true)
-      context =
-          std::make_unique<Lock_and_access_ssl_acceptor_context>(mysql_admin);
-    else
-      context =
-          std::make_unique<Lock_and_access_ssl_acceptor_context>(mysql_main);
-    /* Do the SSL layering. */
-    if (!context.get()->have_ssl()) return packet_error;
-    DBUG_PRINT("info", ("IO layer change in progress..."));
-    if (sslaccept(*(context.get()), protocol->get_vio(),
-                  protocol->get_net()->read_timeout, &errptr)) {
-      DBUG_PRINT("error", ("Failed to accept new SSL connection"));
-      return packet_error;
+    {
+      Lock_and_access_ssl_acceptor_context_data context(
+          thd->is_admin_connection() && g_admin_ssl_configured ? mysql_admin
+                                                               : mysql_main);
+      /* Do the SSL layering. */
+      if (!context.have_ssl()) return packet_error;
+      DBUG_PRINT("info", ("IO layer change in progress..."));
+      if (sslaccept(context.get_vio_ssl_fd(), protocol->get_vio(),
+                    protocol->get_net()->read_timeout, &errptr)) {
+        DBUG_PRINT("error", ("Failed to accept new SSL connection"));
+        return packet_error;
+      }
     }
-
-    context.reset();
 
     DBUG_PRINT("info", ("Reading user information over SSL layer"));
     int rc = protocol->read_packet();
