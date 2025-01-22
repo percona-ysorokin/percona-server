@@ -18,10 +18,9 @@
 
 #include "masking_functions/bookshelf_fwd.hpp"  // IWYU pragma: export
 
-#include <string>
-#include <string_view>
-#include <unordered_map>
+#include <map>
 
+#include "masking_functions/charset_string.hpp"
 #include "masking_functions/dictionary.hpp"
 
 namespace masking_functions {
@@ -31,33 +30,31 @@ namespace masking_functions {
 // by dictionary. It operates on (dictionary_name, term)-pairs.
 class bookshelf {
  public:
-  bool contains(const std::string &dictionary_name,
-                const std::string &term) const noexcept;
-  // returns empty std::string_view if no such dictionary exist
-  std::string_view get_random(
-      const std::string &dictionary_name) const noexcept;
+  bool contains(const charset_string &dictionary_name,
+                const charset_string &term) const noexcept;
+  // returns empty charset_string if no such dictionary exist
+  const charset_string &get_random(
+      const charset_string &dictionary_name) const noexcept;
   // returns true if there was at least one term in the 'dictionary_name'
   // dictionary
   // returns false if there was not a single term that belongs to the
   // 'dictionary_name' dictionary
-  bool remove(const std::string &dictionary_name) noexcept;
+  bool remove(const charset_string &dictionary_name) noexcept;
   // returns true if the term has been successfully removed from the
   // 'dictionary_name' dictionary
   // returns false if the term was not present in the 'dictionary_name'
   // dictionary
-  bool remove(const std::string &dictionary_name,
-              const std::string &term) noexcept;
+  bool remove(const charset_string &dictionary_name,
+              const charset_string &term) noexcept;
   // returns true if the term has been successfully inserted into the
   // 'dictionary_name' dictionary
   // returns false if the term is alreaddy in the 'dictionary_name'
   // dictionary
-  bool insert(const std::string &dictionary_name, const std::string &term);
+  bool insert(const charset_string &dictionary_name,
+              const charset_string &term);
 
  private:
-  // TODO: in c++20 change to method signatures to accept std::string_view
-  //       and container to std::unordered_map<std::string, dictionary,
-  //       transparent_string_like_hash, std::equal_to<>>.
-  using dictionary_container = std::unordered_map<std::string, dictionary>;
+  using dictionary_container = std::map<charset_string, dictionary>;
   dictionary_container dictionaries_;
 };
 

@@ -17,10 +17,8 @@
 
 #include <exception>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "masking_functions/abstract_sql_context_builder.hpp"
@@ -29,6 +27,7 @@
 #include "masking_functions/primitive_singleton.hpp"
 #include "masking_functions/query_builder.hpp"
 #include "masking_functions/sql_context.hpp"
+#include "masking_functions/string_service_tuple.hpp"
 
 namespace masking_functions {
 
@@ -49,14 +48,14 @@ bool term_cache_core::contains(
       sql_ctx_builder, sql_ctx, read_lock, write_lock)};
 
   charset_string dictionary_name_buffer;
-  std::string utf8mb4_dictionary_name{
+  const auto &utf8mb4_dictionary_name{
       to_utf8mb4(dictionary_name, dictionary_name_buffer)};
   charset_string term_buffer;
-  std::string utf8mb4_term{to_utf8mb4(term, term_buffer)};
+  const auto &utf8mb4_term{to_utf8mb4(term, term_buffer)};
   return acquired_dict_cache.contains(utf8mb4_dictionary_name, utf8mb4_term);
 }
 
-optional_charset_string term_cache_core::get_random(
+charset_string term_cache_core::get_random(
     const abstract_sql_context_builder &sql_ctx_builder,
     const charset_string &dictionary_name) const {
   sql_context_ptr sql_ctx;
@@ -66,16 +65,9 @@ optional_charset_string term_cache_core::get_random(
       sql_ctx_builder, sql_ctx, read_lock, write_lock)};
 
   charset_string dictionary_name_buffer;
-  std::string utf8mb4_dictionary_name{
+  const auto &utf8mb4_dictionary_name{
       to_utf8mb4(dictionary_name, dictionary_name_buffer)};
-  const auto random_term{
-      acquired_dict_cache.get_random(utf8mb4_dictionary_name)};
-  if (random_term.data() == nullptr) {
-    return std::nullopt;
-  }
-  return optional_charset_string{std::in_place, dictionary_name.get_services(),
-                                 random_term,
-                                 charset_string::utf8mb4_collation_name};
+  return acquired_dict_cache.get_random(utf8mb4_dictionary_name);
 }
 
 bool term_cache_core::remove(
@@ -99,7 +91,7 @@ bool term_cache_core::remove(
   // this is why we rely only on the result of the cache operation
   sql_ctx->execute_dml(query);
   charset_string dictionary_name_buffer;
-  std::string utf8mb4_dictionary_name{
+  const auto &utf8mb4_dictionary_name{
       to_utf8mb4(dictionary_name, dictionary_name_buffer)};
   return acquired_dict_cache.remove(utf8mb4_dictionary_name);
 }
@@ -123,10 +115,10 @@ bool term_cache_core::remove(
   // sql operation and rely only on the result of the cache modification
   sql_ctx->execute_dml(query);
   charset_string dictionary_name_buffer;
-  std::string utf8mb4_dictionary_name{
+  const auto &utf8mb4_dictionary_name{
       to_utf8mb4(dictionary_name, dictionary_name_buffer)};
   charset_string term_buffer;
-  std::string utf8mb4_term{to_utf8mb4(term, term_buffer)};
+  const auto &utf8mb4_term{to_utf8mb4(term, term_buffer)};
   return acquired_dict_cache.remove(utf8mb4_dictionary_name, utf8mb4_term);
 }
 
@@ -148,10 +140,10 @@ bool term_cache_core::insert(
   // here, as cache insert may throw, we start the 2-phase operation
   // with this cache insert because it can be easily reversed without throwing
   charset_string dictionary_name_buffer;
-  std::string utf8mb4_dictionary_name{
+  const auto &utf8mb4_dictionary_name{
       to_utf8mb4(dictionary_name, dictionary_name_buffer)};
   charset_string term_buffer;
-  std::string utf8mb4_term{to_utf8mb4(term, term_buffer)};
+  const auto &utf8mb4_term{to_utf8mb4(term, term_buffer)};
   const auto result{
       acquired_dict_cache.insert(utf8mb4_dictionary_name, utf8mb4_term)};
   try {
@@ -187,7 +179,13 @@ bookshelf_ptr term_cache_core::create_dict_cache_internal(
     auto local_dict_cache{std::make_unique<bookshelf>()};
     sql_context::row_callback<2> result_inserter{[&terms = *local_dict_cache](
                                                      const auto &field_values) {
-      terms.insert(std::string{field_values[0]}, std::string{field_values[1]});
+      const auto &string_services{
+          primitive_singleton<string_service_tuple>::instance()};
+      charset_string dictionary_name{string_services, field_values[0],
+                                     charset_string::utf8mb4_collation_name};
+      charset_string term{string_services, field_values[1],
+                          charset_string::utf8mb4_collation_name};
+      terms.insert(dictionary_name, term);
     }};
     sql_ctx.execute_select(query, result_inserter);
     result = std::move(local_dict_cache);
@@ -230,11 +228,10 @@ bookshelf &term_cache_core::acquire_dict_cache_unique(
   return *dict_cache_;
 }
 
-std::string_view term_cache_core::to_utf8mb4(const charset_string &str,
-                                             charset_string &buffer) {
-  const auto &utf8mb4_str = smart_convert_to_collation(
-      str, charset_string::utf8mb4_collation_name, buffer);
-  return utf8mb4_str.get_buffer();
+const charset_string &term_cache_core::to_utf8mb4(const charset_string &str,
+                                                  charset_string &buffer) {
+  return smart_convert_to_collation(str, charset_string::utf8mb4_collation_name,
+                                    buffer);
 }
 
 }  // namespace masking_functions

@@ -57,9 +57,8 @@ class term_cache_core {
                 const charset_string &term) const;
   // returns a copy of the string to avoid race conditions
   // an empty string is returned if the dictionary does not exist
-  optional_charset_string get_random(
-      const abstract_sql_context_builder &sql_ctx_builder,
-      const charset_string &dictionary_name) const;
+  charset_string get_random(const abstract_sql_context_builder &sql_ctx_builder,
+                            const charset_string &dictionary_name) const;
   // returns true if there was at least one term in the 'dictionary_name'
   // dictionary
   // returns false if there was not a single term that belongs to the
@@ -100,8 +99,8 @@ class term_cache_core {
       const abstract_sql_context_builder &sql_ctx_builder,
       sql_context_ptr &sql_ctx, unique_lock_type &write_lock) const;
 
-  static std::string_view to_utf8mb4(const charset_string &str,
-                                     charset_string &buffer);
+  static const charset_string &to_utf8mb4(const charset_string &str,
+                                          charset_string &buffer);
 };
 
 }  // namespace masking_functions

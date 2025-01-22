@@ -35,7 +35,7 @@
 #include <mysql/components/services/component_sys_var_service.h>  // IWYU pragma: keep
 #include <mysql/components/services/log_builtins.h>
 #include <mysql/components/services/mysql_command_services.h>  // IWYU pragma: keep
-#include <mysql/components/services/mysql_current_thread_reader.h>
+#include <mysql/components/services/mysql_current_thread_reader.h>  // IWYU pragma: keep
 #include <mysql/components/services/mysql_runtime_error.h>
 #include <mysql/components/services/mysql_string.h>  // IWYU pragma: keep
 #include <mysql/components/services/psi_thread.h>
@@ -45,7 +45,7 @@
 
 #include <mysqlpp/udf_error_reporter.hpp>
 
-#include "sql/debug_sync.h"
+#include "sql/debug_sync.h"  // IWYU pragma: keep
 
 #include "masking_functions/command_service_tuple.hpp"
 #include "masking_functions/component_sys_variable_service_tuple.hpp"
@@ -54,7 +54,6 @@
 #include "masking_functions/primitive_singleton.hpp"
 #include "masking_functions/query_builder.hpp"
 #include "masking_functions/registration_routines.hpp"
-#include "masking_functions/sql_context_fwd.hpp"
 #include "masking_functions/string_service_tuple.hpp"
 #include "masking_functions/sys_vars.hpp"
 #include "masking_functions/term_cache.hpp"

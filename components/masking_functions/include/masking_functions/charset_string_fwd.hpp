@@ -22,8 +22,6 @@ namespace masking_functions {
 
 class charset_string;
 
-using optional_charset_string = std::optional<charset_string>;
-
 }  // namespace masking_functions
 
 #endif  // MASKING_FUNCTIONS_CHARSET_STRING_FWD_HPP

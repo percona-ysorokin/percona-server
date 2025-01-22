@@ -15,15 +15,15 @@
 
 #include "masking_functions/bookshelf.hpp"
 
-#include <string>
-#include <string_view>
+#include <iterator>
 
+#include "masking_functions/charset_string.hpp"
 #include "masking_functions/dictionary.hpp"
 
 namespace masking_functions {
 
-bool bookshelf::contains(const std::string &dictionary_name,
-                         const std::string &term) const noexcept {
+bool bookshelf::contains(const charset_string &dictionary_name,
+                         const charset_string &term) const noexcept {
   const auto dictionary_it{dictionaries_.find(dictionary_name)};
   if (dictionary_it == std::cend(dictionaries_)) {
     return false;
@@ -31,21 +31,21 @@ bool bookshelf::contains(const std::string &dictionary_name,
   return dictionary_it->second.contains(term);
 }
 
-std::string_view bookshelf::get_random(
-    const std::string &dictionary_name) const noexcept {
+const charset_string &bookshelf::get_random(
+    const charset_string &dictionary_name) const noexcept {
   const auto dictionary_it{dictionaries_.find(dictionary_name)};
   if (dictionary_it == std::cend(dictionaries_)) {
-    return {};
+    return dictionary::shared_empty;
   }
   return dictionary_it->second.get_random();
 }
 
-bool bookshelf::remove(const std::string &dictionary_name) noexcept {
+bool bookshelf::remove(const charset_string &dictionary_name) noexcept {
   return dictionaries_.erase(dictionary_name) != 0U;
 }
 
-bool bookshelf::remove(const std::string &dictionary_name,
-                       const std::string &term) noexcept {
+bool bookshelf::remove(const charset_string &dictionary_name,
+                       const charset_string &term) noexcept {
   const auto dictionary_it{dictionaries_.find(dictionary_name)};
   if (dictionary_it == std::end(dictionaries_)) {
     return false;
@@ -57,8 +57,8 @@ bool bookshelf::remove(const std::string &dictionary_name,
   return result;
 }
 
-bool bookshelf::insert(const std::string &dictionary_name,
-                       const std::string &term) {
+bool bookshelf::insert(const charset_string &dictionary_name,
+                       const charset_string &term) {
   // here we use try_emplace as a combined version of find and
   // insert
   const auto [dictionary_it,

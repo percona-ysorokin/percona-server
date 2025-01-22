@@ -32,7 +32,7 @@ bool term_cache::contains(const charset_string &dictionary_name,
   return core_->contains(*sql_ctx_builder_, dictionary_name, term);
 }
 
-optional_charset_string term_cache::get_random(
+charset_string term_cache::get_random(
     const charset_string &dictionary_name) const {
   return core_->get_random(*sql_ctx_builder_, dictionary_name);
 }

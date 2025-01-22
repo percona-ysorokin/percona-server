@@ -1035,16 +1035,16 @@ class gen_blocklist_impl {
     const auto cs_random_term =
         global_term_cache::instance()->get_random(cs_dict_b);
 
-    if (!cs_random_term.has_value()) {
+    if (cs_random_term.is_default_constructed()) {
       return std::nullopt;
     }
     // random term should be in utf8mb4
-    assert(cs_random_term->get_collation() ==
+    assert(cs_random_term.get_collation() ==
            masking_functions::charset_string::get_utf8mb4_collation(
                global_string_services::instance()));
     masking_functions::charset_string conversion_buffer;
     const auto &cs_result = masking_functions::smart_convert_to_collation(
-        *cs_random_term, cs_term.get_collation(), conversion_buffer);
+        cs_random_term, cs_term.get_collation(), conversion_buffer);
     return {std::string{cs_result.get_buffer()}};
   }
 };
@@ -1080,15 +1080,15 @@ class gen_dictionary_impl {
     const auto cs_random_term =
         global_term_cache::instance()->get_random(cs_dictionary);
 
-    if (!cs_random_term.has_value()) {
+    if (cs_random_term.is_default_constructed()) {
       return std::nullopt;
     }
 
     // random term should already be in utf8mb4
-    assert(cs_random_term->get_collation() ==
+    assert(cs_random_term.get_collation() ==
            masking_functions::charset_string::get_utf8mb4_collation(
                global_string_services::instance()));
-    return {std::string{cs_random_term->get_buffer()}};
+    return {std::string{cs_random_term.get_buffer()}};
   }
 };
 

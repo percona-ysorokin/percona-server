@@ -89,6 +89,8 @@ class charset_string {
 
   ~charset_string() = default;
 
+  bool is_default_constructed() const noexcept { return !impl_; }
+
   const string_service_tuple &get_services() const noexcept {
     return *impl_.get_deleter().services;
   }

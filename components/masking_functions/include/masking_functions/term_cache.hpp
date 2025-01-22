@@ -53,8 +53,7 @@ class term_cache {
                 const charset_string &term) const;
   // returns a copy of the string to avoid race conditions
   // an empty string is returned if the dictionary does not exist
-  optional_charset_string get_random(
-      const charset_string &dictionary_name) const;
+  charset_string get_random(const charset_string &dictionary_name) const;
   // returns true if there was at least one term in the 'dictionary_name'
   // dictionary
   // returns false if there was not a single term that belongs to the

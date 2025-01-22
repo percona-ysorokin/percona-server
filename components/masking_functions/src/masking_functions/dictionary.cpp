@@ -17,21 +17,22 @@
 
 #include <cstddef>
 #include <iterator>
-#include <string>
-#include <string_view>
 
+#include "masking_functions/charset_string.hpp"
 #include "masking_functions/random_string_generators.hpp"
 
 namespace masking_functions {
 
-bool dictionary::contains(const std::string &term) const noexcept {
+const charset_string dictionary::shared_empty{};
+
+bool dictionary::contains(const charset_string &term) const noexcept {
   // TODO: in c++20 change to terms_.contains(term)
   return terms_.count(term) > 0U;
 }
 
-std::string_view dictionary::get_random() const noexcept {
+const charset_string &dictionary::get_random() const noexcept {
   if (terms_.empty()) {
-    return {};
+    return shared_empty;
   }
 
   const auto random_index{random_number(0, terms_.size() - 1U)};
@@ -39,11 +40,11 @@ std::string_view dictionary::get_random() const noexcept {
                     static_cast<std::ptrdiff_t>(random_index));
 }
 
-bool dictionary::insert(const std::string &term) {
+bool dictionary::insert(const charset_string &term) {
   return terms_.emplace(term).second;
 }
 
-bool dictionary::remove(const std::string &term) noexcept {
+bool dictionary::remove(const charset_string &term) noexcept {
   return terms_.erase(term) > 0U;
 }
 

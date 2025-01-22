@@ -18,9 +18,9 @@
 
 #include "masking_functions/dictionary_fwd.hpp"  // IWYU pragma: export
 
-#include <string>
-#include <string_view>
-#include <unordered_set>
+#include <set>
+
+#include "masking_functions/charset_string.hpp"
 
 namespace masking_functions {
 
@@ -28,23 +28,22 @@ namespace masking_functions {
 // structure for caching dictionary terms within a single dictionary.
 class dictionary {
  public:
+  static const charset_string shared_empty;
+
   bool is_empty() const noexcept { return terms_.empty(); }
 
-  bool contains(const std::string &term) const noexcept;
-  // returns empty std::string_view if the dictionary is empty
-  std::string_view get_random() const noexcept;
+  bool contains(const charset_string &term) const noexcept;
+  // returns empty charset_string if the dictionary is empty
+  const charset_string &get_random() const noexcept;
   // returns true if the term has been successfully inserted
   // returns false if the term is alreaddy in the dictionary
-  bool insert(const std::string &term);
+  bool insert(const charset_string &term);
   // returns true if the term has been successfully removed
   // returns false if the term was not present in the dictionary
-  bool remove(const std::string &term) noexcept;
+  bool remove(const charset_string &term) noexcept;
 
  private:
-  // TODO: in c++20 change to method signatures to accept std::string_view
-  //       and container to std::unordered_set<std::string,
-  //       transparent_string_like_hash, std::equal_to<>>.
-  using term_container = std::unordered_set<std::string>;
+  using term_container = std::set<charset_string>;
   term_container terms_;
 };
 
