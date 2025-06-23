@@ -22,7 +22,7 @@ list(APPEND SRC_FILES
 
 add_library(component_keyring_vault_test STATIC ${SRC_FILES})
 add_dependencies(component_keyring_vault_test GenError)
-target_link_libraries(component_keyring_vault_test extra::rapidjson)
+target_link_libraries(component_keyring_vault_test extra::rapidjson library_mysys)
 target_compile_definitions(component_keyring_vault_test PUBLIC LOG_COMPONENT_TAG="component_keyring_vault")
 target_include_directories(component_keyring_vault_test SYSTEM PUBLIC
   ${CMAKE_SOURCE_DIR}

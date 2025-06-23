@@ -2,12 +2,17 @@
 #ifndef PFS_STRING_INCLUDED
 #define PFS_STRING_INCLUDED
 
+#include <cassert>
 #include <limits>
+#include <new>
 #include <optional>
 #include <sstream>
-#include "my_sys.h"
-#include "mysql/service_mysql_alloc.h"
-#include "sql/psi_memory_key.h"
+#include <string>
+#include <utility>
+
+#include <mysql/components/library_mysys/component_malloc_allocator.h>
+
+#include <my_sys.h>
 
 extern PSI_memory_key KEY_mem_keyring;
 

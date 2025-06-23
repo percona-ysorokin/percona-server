@@ -40,7 +40,6 @@ class Data;
 namespace keyring_vault {
 namespace backend {
 
-using keyring_common::data::Comp_keyring_alloc;
 using keyring_common::data::Data;
 using keyring_common::meta::Metadata;
 using keyring_vault::config::Vault_version_type;

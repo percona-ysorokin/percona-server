@@ -83,11 +83,13 @@ bool Keyring_vault_backend::init() {
     m_valid = true;
 
     return false;
+  } catch (const std::exception &e) {
+    LogComponentErr(ERROR_LEVEL, ER_STD_UNKNOWN_EXCEPTION, e.what(), __func__);
   } catch (...) {
-    mysql_components_handle_std_exception(__func__);
-    curl_global_cleanup();
-    return true;
+    LogComponentErr(ERROR_LEVEL, ER_UNKNOWN_ERROR, MYF(0));
   }
+  curl_global_cleanup();
+  return true;
 }
 
 bool Keyring_vault_backend::load_cache(
